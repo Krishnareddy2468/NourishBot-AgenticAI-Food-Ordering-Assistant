@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
-from app.models.schemas import ChatMessage, ChatResponse
-from app.services.gemini_agent import gemini_agent
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from app.models.schemas import ChatMessage, ChatResponse, VoiceChatMessage
+from app.services.langgraph_agent import langgraph_food_agent
 from app.services.session_service import session_service
 from app.services.restaurant_service import restaurant_service
 from app.services.zomato_mcp import global_zomato_mcp
+from app.services.voice_service import voice_service
 import asyncio
 import json
 import logging
@@ -19,12 +20,14 @@ async def send_message(chat: ChatMessage):
     """main chat endpoint - processes user message and returns bot response"""
     try:
         response, thinking_steps = await asyncio.wait_for(
-            gemini_agent.process_message(
+            langgraph_food_agent.process_message(
                 user_id=chat.user_id,
                 message=chat.message,
                 user_name=chat.user_name,
                 user_location=chat.user_location,
                 filters=chat.filters,
+                channel="web",
+                input_mode="text",
             ),
             timeout=CHAT_REQUEST_TIMEOUT_SECONDS,
         )
@@ -71,6 +74,71 @@ async def send_message(chat: ChatMessage):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # Persist sessions to disk so they survive backend restarts
+        session_service.save()
+
+
+@router.post("/voice-message", response_model=ChatResponse)
+async def send_voice_message(chat: VoiceChatMessage):
+    """Voice chat endpoint when transcript is provided by client."""
+    try:
+        response, thinking_steps = await asyncio.wait_for(
+            langgraph_food_agent.process_message(
+                user_id=chat.user_id,
+                message=chat.transcript,
+                user_name=chat.user_name,
+                user_location=chat.user_location,
+                filters=chat.filters,
+                channel="web",
+                input_mode="voice",
+            ),
+            timeout=CHAT_REQUEST_TIMEOUT_SECONDS,
+        )
+        session = session_service.get_session(chat.user_id)
+        return ChatResponse(
+            response=response,
+            state=session.state.value,
+            cart_items=[item.model_dump() for item in session.cart],
+            thinking_steps=thinking_steps,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Voice request timed out. Please retry.")
+    finally:
+        session_service.save()
+
+
+@router.post("/voice-upload", response_model=ChatResponse)
+async def send_voice_upload(
+    audio: UploadFile = File(...),
+    user_id: str = Form("web_user"),
+    user_name: str = Form("Guest"),
+    user_location: str | None = Form(None),
+):
+    """Voice chat endpoint for raw uploaded audio."""
+    try:
+        audio_bytes = await audio.read()
+        transcript = await voice_service.transcribe_ogg(audio_bytes)
+        response, thinking_steps = await asyncio.wait_for(
+            langgraph_food_agent.process_message(
+                user_id=user_id,
+                message=transcript,
+                user_name=user_name,
+                user_location=user_location,
+                channel="web",
+                input_mode="voice",
+            ),
+            timeout=CHAT_REQUEST_TIMEOUT_SECONDS,
+        )
+        session = session_service.get_session(user_id)
+        return ChatResponse(
+            response=response,
+            state=session.state.value,
+            cart_items=[item.model_dump() for item in session.cart],
+            thinking_steps=["Transcribed voice input", *thinking_steps],
+        )
+    except Exception as e:
+        logger.error("Voice upload processing failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
         session_service.save()
 
 

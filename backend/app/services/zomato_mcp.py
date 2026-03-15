@@ -4,12 +4,13 @@ import time
 from contextlib import AsyncExitStack
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
+from app.config import app_config
 
 logger = logging.getLogger(__name__)
 
-MCP_CONNECT_TIMEOUT = 12   # seconds to wait for initial OAuth + connect
-MCP_TOOL_TIMEOUT    = 10   # seconds to wait for a single tool call
-MCP_RETRY_COOLDOWN  = 60   # seconds before retrying a failed connect
+MCP_CONNECT_TIMEOUT = app_config.mcp_connect_timeout
+MCP_TOOL_TIMEOUT = app_config.mcp_tool_timeout
+MCP_RETRY_COOLDOWN = app_config.mcp_retry_cooldown
 
 class ZomatoMCP:
     def __init__(self):
@@ -35,8 +36,8 @@ class ZomatoMCP:
 
         logger.info("Connecting to Zomato MCP Server (timeout=%ds)...", MCP_CONNECT_TIMEOUT)
         server_params = StdioServerParameters(
-            command="npx",
-            args=["-y", "mcp-remote@0.1.37", "https://mcp-server.zomato.com/mcp"],
+            command=app_config.mcp_command,
+            args=app_config.mcp_args,
         )
 
         try:

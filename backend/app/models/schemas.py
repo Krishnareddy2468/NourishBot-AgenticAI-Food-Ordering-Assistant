@@ -116,6 +116,15 @@ class ChatResponse(BaseModel):
     thinking_steps: List[str] = []  # what the agent did, shown in the UI
 
 
+class VoiceChatMessage(BaseModel):
+    """Voice chat payload when transcript is already available from client."""
+    transcript: str
+    user_id: str = "web_user"
+    user_name: Optional[str] = "Guest"
+    user_location: Optional[str] = None
+    filters: Optional[SearchFilters] = None
+
+
 class AIIntent(BaseModel):
     """Parsed intent from AI"""
     intent: str

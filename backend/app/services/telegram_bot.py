@@ -1,31 +1,32 @@
-import os
 import asyncio
 import logging
 from telegram import Update, Bot
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, ContextTypes,
 )
-from app.services.gemini_agent import gemini_agent
+from app.services.langgraph_agent import langgraph_food_agent
 from app.services.order_service import order_service
+from app.services.voice_service import voice_service
+from app.config import app_config
 
 logger = logging.getLogger(__name__)
 
 
 class TelegramBotService:
     def __init__(self):
-        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+        self.token = app_config.telegram_bot_token
         self.app = None
         self.bot = None
         self._running = False
 
-        if not self.token or self.token == "your_telegram_bot_token_here":
+        if not self.token:
             logger.warning("TELEGRAM_BOT_TOKEN not configured - bot won't start")
             return
 
         self.bot = Bot(token=self.token)
 
     async def start(self):
-        if not self.token or self.token == "your_telegram_bot_token_here":
+        if not self.token:
             logger.warning("Skipping telegram bot - no valid token set")
             return
 
@@ -41,6 +42,7 @@ class TelegramBotService:
             self.app.add_handler(CommandHandler("reset", self._handle_reset))
             self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
             self.app.add_handler(MessageHandler(filters.LOCATION, self._handle_location))
+            self.app.add_handler(MessageHandler(filters.VOICE, self._handle_voice))
 
             self._running = True
             logger.info("Telegram bot starting polling...")
@@ -91,32 +93,32 @@ class TelegramBotService:
         user = update.effective_user
         user_id = str(user.id)
         user_name = user.first_name or user.username or ""
-        response = await gemini_agent.process_message(user_id, "hi", user_name)
+        response, _ = await langgraph_food_agent.process_message(user_id, "hi", user_name, channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
-        response = await gemini_agent.process_message(user_id, "help")
+        response, _ = await langgraph_food_agent.process_message(user_id, "help", channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     async def _handle_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
-        response = await gemini_agent.process_message(user_id, "show menu")
+        response, _ = await langgraph_food_agent.process_message(user_id, "show menu", channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     async def _handle_cart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
-        response = await gemini_agent.process_message(user_id, "show cart")
+        response, _ = await langgraph_food_agent.process_message(user_id, "show cart", channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
-        response = await gemini_agent.process_message(user_id, "order status")
+        response, _ = await langgraph_food_agent.process_message(user_id, "order status", channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     async def _handle_reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
-        response = await gemini_agent.process_message(user_id, "start over")
+        response, _ = await langgraph_food_agent.process_message(user_id, "start over", channel="telegram", input_mode="text")
         await self._send_response(update, response)
 
     # -- message handlers --
@@ -130,7 +132,13 @@ class TelegramBotService:
         logger.info(f"[{user_name}] ({user_id}): {message}")
         await update.message.chat.send_action("typing")
 
-        response = await gemini_agent.process_message(user_id, message, user_name)
+        response, _ = await langgraph_food_agent.process_message(
+            user_id=user_id,
+            message=message,
+            user_name=user_name,
+            channel="telegram",
+            input_mode="text",
+        )
         logger.info(f"Response to {user_name}: {response[:80]}...")
         await self._send_response(update, response)
 
@@ -152,10 +160,43 @@ class TelegramBotService:
         user_id = str(user.id)
         loc = update.message.location
 
-        # we don't have reverse geocoding so just use coords + hardcoded area
-        address = f"Location: {loc.latitude:.4f}, {loc.longitude:.4f}\n(Near Koramangala, Bangalore)"
-        response = await gemini_agent.process_message(user_id, address)
+        address = f"lat={loc.latitude:.6f}, lon={loc.longitude:.6f}"
+        response, _ = await langgraph_food_agent.process_message(
+            user_id=user_id,
+            message=f"My location is {address}",
+            user_location=address,
+            channel="telegram",
+            input_mode="text",
+        )
         await self._send_response(update, response)
+
+    async def _handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        user_id = str(user.id)
+        user_name = user.first_name or user.username or ""
+        if not update.message or not update.message.voice:
+            return
+
+        try:
+            await update.message.chat.send_action("typing")
+            file = await context.bot.get_file(update.message.voice.file_id)
+            audio_bytes = await file.download_as_bytearray()
+            transcript = await voice_service.transcribe_ogg(bytes(audio_bytes))
+            logger.info("Voice transcript for user %s: %s", user_id, transcript[:120])
+            response, _ = await langgraph_food_agent.process_message(
+                user_id=user_id,
+                message=transcript,
+                user_name=user_name,
+                channel="telegram",
+                input_mode="voice",
+            )
+            await self._send_response(update, f"🎙️ {transcript}\n\n{response}")
+        except Exception as e:
+            logger.error("Voice handling failed for user %s: %s", user_id, e)
+            await self._send_response(
+                update,
+                "I could not process that voice note. Set VOICE_API_KEY/VOICE_MODEL and try again, or send text.",
+            )
 
     # -- utils --
 
