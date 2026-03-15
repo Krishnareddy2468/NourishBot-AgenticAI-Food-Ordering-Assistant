@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swiggybot — Technical Report & Interview Guide</title>
+<style>
+  @page { margin: 1.5cm; size: A4; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #1a1a2e; background: #fff; line-height: 1.7;
+    padding: 40px 60px; max-width: 900px; margin: 0 auto;
+  }
+  h1 { font-size: 28px; color: #e23744; margin-bottom: 6px; border-bottom: 3px solid #e23744; padding-bottom: 8px; }
+  h2 { font-size: 22px; color: #16213e; margin-top: 36px; margin-bottom: 10px; border-left: 4px solid #e23744; padding-left: 12px; }
+  h3 { font-size: 17px; color: #0f3460; margin-top: 20px; margin-bottom: 6px; }
+  h4 { font-size: 15px; color: #333; margin-top: 14px; margin-bottom: 4px; }
+  p, li { font-size: 14px; }
+  p { margin-bottom: 10px; }
+  ul, ol { margin-left: 24px; margin-bottom: 12px; }
+  li { margin-bottom: 5px; }
+  code {
+    background: #f0f0f5; padding: 2px 6px; border-radius: 4px;
+    font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; color: #c0392b;
+  }
+  pre {
+    background: #1a1a2e; color: #eee; padding: 16px; border-radius: 8px;
+    overflow-x: auto; margin: 12px 0 16px; font-size: 13px; line-height: 1.5;
+  }
+  pre code { background: none; color: #eee; padding: 0; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; color: #fff; margin-right: 6px;
+  }
+  .badge-py   { background: #306998; }
+  .badge-js   { background: #f7df1e; color: #333; }
+  .badge-api  { background: #e23744; }
+  .badge-ai   { background: #0f3460; }
+  .badge-mcp  { background: #27ae60; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 16px;
+    font-size: 13px;
+  }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #16213e; color: #fff; font-weight: 600; }
+  tr:nth-child(even) { background: #f8f8fc; }
+  .flow-box {
+    background: #f8f8fc; border: 1px solid #ddd; border-radius: 8px;
+    padding: 16px; margin: 12px 0; font-size: 13px;
+  }
+  .flow-box .step { margin-bottom: 4px; }
+  .flow-box .arrow { color: #e23744; font-weight: bold; }
+  .highlight { background: #fff3cd; padding: 12px; border-left: 4px solid #ffc107; border-radius: 4px; margin: 12px 0; }
+  .section-divider { border: none; border-top: 2px solid #eee; margin: 30px 0; }
+  .subtitle { font-size: 15px; color: #666; margin-bottom: 24px; }
+  .toc { background: #f8f8fc; padding: 16px 24px; border-radius: 8px; margin: 16px 0 30px; }
+  .toc li { margin-bottom: 3px; }
+  .toc a { text-decoration: none; color: #0f3460; }
+  .toc a:hover { color: #e23744; }
+  @media print {
+    body { padding: 0; }
+    h2 { page-break-after: avoid; }
+    pre, .flow-box, table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Swiggybot — AI Food Ordering Chatbot</h1>
+<p class="subtitle">Technical Report &amp; Step-by-Step Backend Explanation &bull; Interview Guide</p>
+<p>
+  <span class="badge badge-py">Python 3</span>
+  <span class="badge badge-api">FastAPI</span>
+  <span class="badge badge-ai">Google Gemini AI</span>
+  <span class="badge badge-mcp">Zomato MCP</span>
+  <span class="badge badge-js">Next.js</span>
+</p>
+
+<div class="toc">
+<strong>Table of Contents</strong>
+<ol>
+  <li><a href="#overview">Project Overview</a></li>
+  <li><a href="#architecture">System Architecture</a></li>
+  <li><a href="#tech-stack">Tech Stack &amp; Why Each Choice</a></li>
+  <li><a href="#project-structure">Project Structure</a></li>
+  <li><a href="#backend-step-by-step">Backend — Step-by-Step Working</a></li>
+  <li><a href="#state-machine">Conversation State Machine</a></li>
+  <li><a href="#mcp-integration">Zomato MCP Integration (Real-Time Data)</a></li>
+  <li><a href="#gemini-agent">Gemini AI Agent — Core Logic</a></li>
+  <li><a href="#session-management">Session Management &amp; Persistence</a></li>
+  <li><a href="#api-endpoints">API Endpoints</a></li>
+  <li><a href="#frontend">Frontend Overview</a></li>
+  <li><a href="#order-flow">Complete Order Flow (End to End)</a></li>
+  <li><a href="#challenges">Challenges &amp; Solutions</a></li>
+  <li><a href="#interview-qa">Interview Q&amp;A</a></li>
+</ol>
+</div>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 1. OVERVIEW ─────────────────────── -->
+<h2 id="overview">1. Project Overview</h2>
+<p>
+  <strong>Swiggybot</strong> is a conversational AI chatbot that lets users order real food from <strong>Zomato</strong> through natural language. Instead of navigating the Zomato app, users simply chat — <em>"show me biryani restaurants"</em>, <em>"add 2 Poori"</em>, <em>"checkout"</em> — and the bot handles everything end to end: searching restaurants, displaying menus, building a cart, creating an order on Zomato, and tracking delivery.
+</p>
+
+<h3>Key Highlights</h3>
+<ul>
+  <li><strong>Real Zomato Integration</strong> — Uses Zomato's official MCP (Model Context Protocol) server for live restaurant search, menus, cart creation, checkout, and order tracking.</li>
+  <li><strong>AI-Powered Conversation</strong> — Google Gemini 2.0 Flash understands natural language, extracts intent (cuisine, budget, veg preference), and drives the conversation.</li>
+  <li><strong>Two Client Channels</strong> — Web chat (Next.js frontend) and Telegram bot.</li>
+  <li><strong>Stateful Sessions</strong> — File-persisted sessions survive server restarts; each user's cart, location, and order state are maintained.</li>
+  <li><strong>Full Order Lifecycle</strong> — Search → Menu → Cart → Address → Payment → Confirmation → Place Order → Track → Cancel.</li>
+</ul>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 2. ARCHITECTURE ─────────────────────── -->
+<h2 id="architecture">2. System Architecture</h2>
+<pre><code>
+┌──────────────────┐     ┌──────────────────┐
+│   Web Chat UI    │     │   Telegram App   │
+│   (Next.js)      │     │                  │
+└────────┬─────────┘     └────────┬─────────┘
+         │  HTTP REST             │  Telegram Bot API
+         │                        │
+┌────────▼────────────────────────▼─────────┐
+│            FastAPI Backend (Port 8000)     │
+│                                           │
+│  ┌─────────────┐   ┌──────────────────┐   │
+│  │ Chat Router  │   │ Restaurant Router│   │
+│  └──────┬──────┘   └────────┬─────────┘   │
+│         │                    │             │
+│  ┌──────▼────────────────────▼─────────┐  │
+│  │         Gemini AI Agent             │  │
+│  │   (Intent Detection, State Machine, │  │
+│  │    Tool Calling, Response Building) │  │
+│  └──────────────┬──────────────────────┘  │
+│                 │                          │
+│  ┌──────────────▼──────────────────────┐  │
+│  │       Session Service               │  │
+│  │   (In-Memory + File Persistence)    │  │
+│  └─────────────────────────────────────┘  │
+│                 │                          │
+└─────────────────┼──────────────────────────┘
+                  │  MCP Protocol (stdio)
+                  │
+┌─────────────────▼──────────────────────────┐
+│       Zomato MCP Server (Remote)           │
+│  https://mcp-server.zomato.com/mcp         │
+│                                            │
+│  11 Tools: search, menu, cart, checkout,   │
+│  tracking, addresses, offers, etc.         │
+└────────────────────────────────────────────┘
+</code></pre>
+
+<h3>Data Flow Summary</h3>
+<div class="flow-box">
+  <div class="step">1. User sends message via Web UI or Telegram</div>
+  <div class="step"><span class="arrow">→</span> 2. FastAPI <code>/api/chat/message</code> endpoint receives it</div>
+  <div class="step"><span class="arrow">→</span> 3. <code>GeminiAgent.process_message()</code> detects intent</div>
+  <div class="step"><span class="arrow">→</span> 4. If search/menu/order needed → calls Zomato MCP tools</div>
+  <div class="step"><span class="arrow">→</span> 5. MCP results parsed, formatted into user-friendly text</div>
+  <div class="step"><span class="arrow">→</span> 6. Session state updated, response returned to client</div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 3. TECH STACK ─────────────────────── -->
+<h2 id="tech-stack">3. Tech Stack &amp; Why Each Choice</h2>
+<table>
+  <tr><th>Component</th><th>Technology</th><th>Why This Choice</th></tr>
+  <tr><td>Backend Framework</td><td>FastAPI (Python)</td><td>Async-first, auto-generates OpenAPI docs, Pydantic validation, ideal for AI/MCP async calls</td></tr>
+  <tr><td>AI / LLM</td><td>Google Gemini 2.0 Flash</td><td>Fast inference, function calling support, free tier available, good at intent extraction</td></tr>
+  <tr><td>LLM Client</td><td>OpenAI Python SDK</td><td>Gemini exposes an OpenAI-compatible endpoint; using the OpenAI SDK gives us tool-calling abstraction</td></tr>
+  <tr><td>Real-Time Data</td><td>Zomato MCP Server</td><td>Official Zomato integration via Model Context Protocol — live restaurants, menus, orders</td></tr>
+  <tr><td>MCP Client</td><td><code>mcp</code> Python SDK</td><td>Official MCP client for stdio transport; handles OAuth and tool discovery</td></tr>
+  <tr><td>Frontend</td><td>Next.js (React)</td><td>SSR-capable, fast page loads, simple deployment to Vercel/Render</td></tr>
+  <tr><td>Telegram Bot</td><td><code>python-telegram-bot</code></td><td>Mature library with async support for Telegram Bot API</td></tr>
+  <tr><td>Data Validation</td><td>Pydantic v2</td><td>Schema validation, serialization, and IDE autocomplete for all data models</td></tr>
+  <tr><td>Session Persistence</td><td>JSON file (<code>data/sessions.json</code>)</td><td>Lightweight, no database needed for a demo; sessions survive restarts</td></tr>
+  <tr><td>Deployment</td><td>Render</td><td>Easy Python + Node.js hosting, auto-deploy from GitHub</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 4. PROJECT STRUCTURE ─────────────────────── -->
+<h2 id="project-structure">4. Project Structure</h2>
+<pre><code>
+Swiggybot/
+├── backend/
+│   ├── main.py                          # FastAPI app entry point, lifespan, CORS
+│   ├── requirements.txt                 # Python dependencies
+│   └── app/
+│       ├── models/
+│       │   └── schemas.py               # Pydantic models (Session, Cart, Order, Enums)
+│       ├── routes/
+│       │   ├── chat.py                  # /api/chat/* endpoints (message, session, reset, order-status)
+│       │   └── restaurants.py           # /api/restaurants/* endpoints (search, menu, orders)
+│       ├── services/
+│       │   ├── gemini_agent.py          # 🧠 CORE: AI agent (1900+ lines) — state machine, intent, MCP calls
+│       │   ├── zomato_mcp.py            # MCP client — connects to Zomato, calls tools
+│       │   ├── session_service.py       # Session management with file persistence
+│       │   ├── restaurant_service.py    # Stubbed fallback (real data comes from MCP)
+│       │   ├── order_service.py         # Legacy local order service (unused, kept as fallback)
+│       │   └── telegram_bot.py          # Telegram bot handlers (/start, /help, messages)
+│       └── utils/
+│           └── __init__.py
+├── frontend/
+│   ├── app/
+│   │   ├── page.js                      # Main chat UI — messages, quick replies, sidebar
+│   │   ├── layout.js                    # Root layout
+│   │   └── globals.css                  # Dark theme styles
+│   ├── package.json
+│   └── next.config.mjs
+├── data/
+│   ├── orders.json                      # Legacy local orders (unused now)
+│   └── sessions.json                    # Persisted user sessions (auto-created)
+└── docs/
+    └── technical_documentation.html
+</code></pre>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 5. BACKEND STEP BY STEP ─────────────────────── -->
+<h2 id="backend-step-by-step">5. Backend — Step-by-Step Working</h2>
+
+<h3>Step 1: Server Startup (<code>main.py</code>)</h3>
+<p>When you run <code>python3 main.py</code>:</p>
+<ol>
+  <li><strong>Environment variables loaded</strong> — <code>load_dotenv()</code> reads <code>.env</code> file (contains <code>GEMINI_API_KEY</code>, <code>TELEGRAM_BOT_TOKEN</code>).</li>
+  <li><strong>FastAPI app created</strong> with CORS middleware allowing all origins (for the Next.js frontend).</li>
+  <li><strong>Lifespan handler</strong> starts the Telegram bot as a background task via <code>asyncio.create_task(telegram_bot.start())</code>.</li>
+  <li><strong>Routers mounted</strong> — <code>/api/chat</code> and <code>/api/restaurants</code>.</li>
+  <li><strong>Server runs</strong> on port 8000 using Uvicorn with hot-reload.</li>
+</ol>
+<pre><code># main.py — simplified
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(telegram_bot.start())  # Telegram runs in background
+    yield
+    await telegram_bot.stop()
+
+app = FastAPI(title="AI Restaurant Order Bot", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], ...)
+app.include_router(chat_router)      # /api/chat/*
+app.include_router(restaurant_router) # /api/restaurants/*
+</code></pre>
+
+<h3>Step 2: Receiving a Chat Message (<code>routes/chat.py</code>)</h3>
+<p>When the frontend sends a POST to <code>/api/chat/message</code>:</p>
+<ol>
+  <li>The request body is validated by Pydantic: <code>ChatMessage(message, user_id, user_name, user_location, filters)</code></li>
+  <li>The handler calls <code>gemini_agent.process_message()</code> with a <strong>28-second timeout</strong></li>
+  <li>Response includes: bot text, conversation state, cart items, restaurant info, order data, and thinking steps</li>
+  <li>Sessions are saved to disk after every message via <code>session_service.save()</code></li>
+</ol>
+<pre><code># routes/chat.py
+@router.post("/message", response_model=ChatResponse)
+async def send_message(chat: ChatMessage):
+    response, thinking_steps = await asyncio.wait_for(
+        gemini_agent.process_message(
+            user_id=chat.user_id,
+            message=chat.message,
+            user_location=chat.user_location,
+            filters=chat.filters,
+        ),
+        timeout=28,  # Render has a 30s limit
+    )
+    session = session_service.get_session(chat.user_id)
+    return ChatResponse(response=response, state=session.state.value, ...)
+</code></pre>
+
+<h3>Step 3: The Gemini Agent Processes the Message (<code>services/gemini_agent.py</code>)</h3>
+<p>This is the <strong>brain of the entire application</strong> — a 1900+ line Python class. Here's what happens inside <code>process_message()</code>:</p>
+
+<h4>3a. Session &amp; Location Setup</h4>
+<ol>
+  <li>Gets or creates user session from <code>SessionService</code></li>
+  <li>Updates location if user provided one (via GPS or text)</li>
+  <li><strong>Clears cached <code>address_id</code></strong> if location changed (so Zomato re-resolves the correct delivery address)</li>
+  <li>Adds the user's message to conversation history (kept at last 20 messages)</li>
+</ol>
+
+<h4>3b. Intent Detection (No LLM — Pure Python)</h4>
+<p>Before calling Gemini, the agent tries to handle the message with <strong>fast pattern matching</strong>. This avoids slow LLM calls for common actions:</p>
+<table>
+  <tr><th>Check</th><th>Method</th><th>What It Does</th></tr>
+  <tr><td>State-based intercepts</td><td>State machine checks</td><td>CONFIRMING_ORDER → intercept yes/no; AWAITING_ADDRESS → capture address; AWAITING_PAYMENT → capture payment choice</td></tr>
+  <tr><td>Location update</td><td><code>_is_location_update_only()</code></td><td>Messages like "Amaravati, Andhra Pradesh" → save location, skip LLM</td></tr>
+  <tr><td>Smalltalk</td><td><code>_is_smalltalk_request()</code></td><td>"hi", "hello", "help" → instant welcome message</td></tr>
+  <tr><td>Cart view</td><td>Exact match</td><td>"show cart", "view cart" → render cart contents</td></tr>
+  <tr><td>Order tracking</td><td><code>_is_order_tracking_request()</code></td><td>"track my order", "order status" → call Zomato <code>get_order_tracking_info</code></td></tr>
+  <tr><td>Cancel order</td><td><code>_is_cancel_order_request()</code></td><td>"cancel order" → inform user to cancel via Zomato app (no MCP cancel tool exists)</td></tr>
+  <tr><td>Session reset</td><td>Exact match</td><td>"start over", "reset" → clear session</td></tr>
+  <tr><td>Restaurant selection</td><td><code>_is_restaurant_selection_request()</code></td><td>"1", "2" or restaurant name → load that restaurant's menu</td></tr>
+  <tr><td>Restaurant search</td><td><code>_is_restaurant_search_request()</code></td><td>"show me biryani restaurants" → call Zomato search directly</td></tr>
+</table>
+
+<div class="highlight">
+  <strong>Key Design Decision:</strong> About 80% of messages are handled by fast Python pattern matching <em>without</em> calling the Gemini LLM. This makes the bot much faster (instant vs. 2-3 seconds) and cheaper (no API calls for simple actions).
+</div>
+
+<h4>3c. Restaurant Search (Direct MCP Call)</h4>
+<p>When a search is detected (e.g., "show me biryani restaurants"):</p>
+<ol>
+  <li><strong>Extract keyword</strong> — <code>_extract_search_keyword("show me biryani restaurants")</code> → <code>"biryani"</code></li>
+  <li><strong>Resolve Zomato address_id</strong> — Calls <code>get_saved_addresses_for_user</code> MCP tool, then fuzzy-matches user's location against saved Zomato addresses</li>
+  <li><strong>Call MCP</strong> — <code>get_restaurants_for_keyword(keyword="biryani", address_id="...", page_size=10)</code></li>
+  <li><strong>Extract restaurant data</strong> — Walks the nested JSON to find restaurant IDs, names, ratings, delivery times, cuisines</li>
+  <li><strong>Rank by relevance</strong> — Sorts results so restaurants whose name or cuisine matches the keyword appear first (e.g., "Hyderabad Biryani House" before "Hello Idly")</li>
+  <li><strong>Format &amp; return</strong> — Numbered list with name, rating, delivery time, cuisine</li>
+</ol>
+
+<h4>3d. Menu Loading</h4>
+<p>When user selects a restaurant (e.g., replies "1"):</p>
+<ol>
+  <li>Two-step MCP menu fetch:
+    <ul>
+      <li><code>get_menu_items_listing(res_id, address_id)</code> → gets categories + variant_id mappings</li>
+      <li><code>get_restaurant_menu_by_categories(res_id, categories, address_id)</code> → gets items with prices</li>
+    </ul>
+  </li>
+  <li>Extracts: item name, price, size, <code>variant_id</code> (critical for ordering), veg/non-veg tags</li>
+  <li>Stores items in <code>session.menu_items_map</code> for cart operations</li>
+  <li>Formats as a clean menu list and returns</li>
+</ol>
+
+<h4>3e. Order Item Parsing &amp; Cart Building</h4>
+<p>When user says "2 Poori and 1 Masala Dosa":</p>
+<ol>
+  <li><code>_parse_order_items()</code> uses regex to extract: <code>[("poori", 2), ("masala dosa", 1)]</code></li>
+  <li>Fuzzy-matches each item name against the loaded menu items</li>
+  <li>Creates <code>CartItem</code> objects with the correct <code>variant_id</code> from the menu</li>
+  <li>Adds to session cart, transitions to ORDERING state</li>
+  <li>Returns a cart summary with the "checkout" prompt</li>
+</ol>
+
+<h4>3f. Checkout &amp; Order Placement</h4>
+<p>When user says "checkout" → "yes":</p>
+<ol>
+  <li>Collects delivery address (AWAITING_ADDRESS state)</li>
+  <li>Collects payment method — UPI QR or Pay Later/COD (AWAITING_PAYMENT state)</li>
+  <li>Shows order summary and asks for confirmation (CONFIRMING_ORDER state)</li>
+  <li>On "yes": calls Zomato MCP <code>create_cart(res_id, items, address_id, payment_type)</code></li>
+  <li>Then calls <code>checkout_cart(cart_id)</code> to finalize the order</li>
+  <li>Parses the response for order_id, ETA, total</li>
+  <li>Returns success message with order details</li>
+</ol>
+
+<h4>3g. Fallback to Gemini LLM</h4>
+<p>If none of the above pattern-matching handlers can process the message, it falls through to the <strong>Gemini LLM</strong>:</p>
+<ol>
+  <li>Builds a system prompt with location context, active filters, and conversation history</li>
+  <li>Converts Zomato MCP tools into OpenAI function-calling format using <code>_sanitize_schema()</code></li>
+  <li>Sends to Gemini via OpenAI-compatible API with the tools</li>
+  <li>If Gemini returns tool calls → executes them against MCP → feeds results back</li>
+  <li>Up to 4 tool-calling loops allowed (to handle multi-step queries)</li>
+  <li>Final text response is returned to the user</li>
+</ol>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 6. STATE MACHINE ─────────────────────── -->
+<h2 id="state-machine">6. Conversation State Machine</h2>
+<p>Every user session has a <code>ConversationState</code> that controls which handlers are active:</p>
+<pre><code>
+IDLE ──(search)──→ SEARCHING ──(select restaurant)──→ RESTAURANT_SELECTED
+                                                            │
+                                                      (load menu)
+                                                            │
+                                                            ▼
+                                                     BROWSING_MENU
+                                                            │
+                                                 (add items to cart)
+                                                            │
+                                                            ▼
+                                                       ORDERING
+                                                            │
+                                                      (checkout)
+                                                            │
+                                                            ▼
+                                                   AWAITING_ADDRESS
+                                                            │
+                                                   (provide address)
+                                                            │
+                                                            ▼
+                                                   AWAITING_PAYMENT
+                                                            │
+                                                  (choose UPI/COD)
+                                                            │
+                                                            ▼
+                                                  CONFIRMING_ORDER
+                                                            │
+                                                   (say "yes")
+                                                            │
+                                                            ▼
+                                                     ORDER_PLACED
+                                                            │
+                                                    (track order)
+                                                            │
+                                                            ▼
+                                                       TRACKING
+</code></pre>
+
+<table>
+  <tr><th>State</th><th>What the Bot Expects</th><th>Actions Taken</th></tr>
+  <tr><td>IDLE</td><td>Any message</td><td>Greet, search restaurants, update location</td></tr>
+  <tr><td>SEARCHING</td><td>Restaurant selection (number/name)</td><td>Load selected restaurant's menu</td></tr>
+  <tr><td>BROWSING_MENU</td><td>Item orders like "2 Poori"</td><td>Parse items, add to cart</td></tr>
+  <tr><td>ORDERING</td><td>"checkout" or more items</td><td>Ask for address when checkout</td></tr>
+  <tr><td>AWAITING_ADDRESS</td><td>Address text or GPS</td><td>Save address, ask payment method</td></tr>
+  <tr><td>AWAITING_PAYMENT</td><td>"1" (UPI) or "2" (COD)</td><td>Save payment, show order summary</td></tr>
+  <tr><td>CONFIRMING_ORDER</td><td>"yes" or "no"</td><td>Create cart + checkout on Zomato</td></tr>
+  <tr><td>ORDER_PLACED</td><td>"track my order"</td><td>Call Zomato order tracking</td></tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 7. MCP INTEGRATION ─────────────────────── -->
+<h2 id="mcp-integration">7. Zomato MCP Integration</h2>
+
+<h3>What is MCP?</h3>
+<p><strong>Model Context Protocol (MCP)</strong> is an open protocol that lets AI models call external tools in a standardized way. Zomato provides an MCP server at <code>https://mcp-server.zomato.com/mcp</code> that exposes real Zomato functionality as callable tools.</p>
+
+<h3>How the Connection Works (<code>zomato_mcp.py</code>)</h3>
+<ol>
+  <li>Uses <code>npx mcp-remote@0.1.37</code> to establish a local stdio bridge to the remote MCP server</li>
+  <li>Connects via <code>mcp.client.stdio.stdio_client</code> → creates a <code>ClientSession</code></li>
+  <li>Discovers available tools via <code>session.list_tools()</code></li>
+  <li>Has <strong>timeout protection</strong>: 12s connect timeout, 10s per tool call, 60s cooldown on failure</li>
+  <li>Singleton instance <code>global_zomato_mcp</code> shared across all requests</li>
+</ol>
+
+<h3>Available Zomato MCP Tools (11 total)</h3>
+<table>
+  <tr><th>#</th><th>Tool Name</th><th>Purpose</th><th>Used For</th></tr>
+  <tr><td>1</td><td><code>get_restaurants_for_keyword</code></td><td>Search restaurants by keyword + location</td><td>Restaurant discovery</td></tr>
+  <tr><td>2</td><td><code>get_menu_items_listing</code></td><td>Get menu categories &amp; variant_id mappings</td><td>Menu loading (step 1)</td></tr>
+  <tr><td>3</td><td><code>get_restaurant_menu_by_categories</code></td><td>Get menu items with prices</td><td>Menu loading (step 2)</td></tr>
+  <tr><td>4</td><td><code>get_saved_addresses_for_user</code></td><td>Fetch user's saved delivery addresses</td><td>Address resolution</td></tr>
+  <tr><td>5</td><td><code>create_cart</code></td><td>Create a cart with items</td><td>Order placement (step 1)</td></tr>
+  <tr><td>6</td><td><code>checkout_cart</code></td><td>Finalize and place the order</td><td>Order placement (step 2)</td></tr>
+  <tr><td>7</td><td><code>get_order_tracking_info</code></td><td>Track active order status</td><td>Order tracking</td></tr>
+  <tr><td>8</td><td><code>get_order_history</code></td><td>Get past orders</td><td>Personalization</td></tr>
+  <tr><td>9</td><td><code>get_cart_offers</code></td><td>Available discounts/coupons</td><td>Offers display</td></tr>
+  <tr><td>10</td><td><code>bind_user_number</code></td><td>Initiate phone number binding</td><td>Authentication</td></tr>
+  <tr><td>11</td><td><code>bind_user_number_verify_code</code></td><td>Verify OTP for phone binding</td><td>Authentication</td></tr>
+</table>
+
+<h3>Schema Sanitization</h3>
+<p>Zomato MCP tool schemas are complex and may contain <code>anyOf</code>, <code>oneOf</code>, and <code>additionalProperties</code> that the Gemini/OpenAI API doesn't understand. The <code>_sanitize_schema()</code> method cleans these schemas:</p>
+<ul>
+  <li>Resolves <code>anyOf</code>/<code>oneOf</code> → picks first non-null variant</li>
+  <li>Removes <code>additionalProperties</code>, <code>default</code>, <code>$schema</code></li>
+  <li>Truncates descriptions to 120 chars (saves tokens)</li>
+  <li>Removes <code>address_id</code> from required params (agent resolves it separately)</li>
+</ul>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 8. GEMINI AGENT ─────────────────────── -->
+<h2 id="gemini-agent">8. Gemini AI Agent — Core Logic</h2>
+
+<h3>Agent Initialization</h3>
+<pre><code># Uses OpenAI SDK with Gemini's compatible endpoint
+client = AsyncOpenAI(
+    api_key=GEMINI_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+# Models with automatic fallback
+models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+</code></pre>
+
+<h3>System Prompt Design</h3>
+<p>The system prompt tells Gemini it's a food-ordering assistant and provides:</p>
+<ul>
+  <li>How to use each MCP tool (with examples)</li>
+  <li>Current user location context</li>
+  <li>Active search filters (veg, rating, distance)</li>
+  <li>Rules: never make up data, always confirm before ordering, keep responses concise</li>
+</ul>
+
+<h3>Tool Calling Flow</h3>
+<div class="flow-box">
+  <div class="step">1. Build messages array: [system_prompt, ...conversation_history, user_message]</div>
+  <div class="step"><span class="arrow">→</span> 2. Call Gemini with <code>tools=openai_tools</code> (converted from MCP schemas)</div>
+  <div class="step"><span class="arrow">→</span> 3. If Gemini returns <code>tool_calls</code>:</div>
+  <div class="step">&nbsp;&nbsp;&nbsp;&nbsp;a. Execute each tool via <code>global_zomato_mcp.call_tool(name, args)</code></div>
+  <div class="step">&nbsp;&nbsp;&nbsp;&nbsp;b. Add tool results to messages</div>
+  <div class="step">&nbsp;&nbsp;&nbsp;&nbsp;c. Call Gemini again with the augmented messages</div>
+  <div class="step"><span class="arrow">→</span> 4. Repeat up to 4 loops (MAX_TOOL_LOOPS)</div>
+  <div class="step"><span class="arrow">→</span> 5. Return final text response</div>
+</div>
+
+<h3>Model Fallback &amp; Error Handling</h3>
+<ul>
+  <li><strong>Multi-model fallback:</strong> If <code>gemini-2.0-flash</code> fails (rate limit, 500 error), automatically retries with <code>gemini-1.5-flash</code></li>
+  <li><strong>14-second timeout</strong> per LLM call to stay within Render's 30s limit</li>
+  <li><strong>Tool result truncation:</strong> MCP results are capped at 700 chars to avoid token bloat</li>
+  <li><strong>History trimming:</strong> Only last 5 messages with max 500 chars each are sent to the LLM</li>
+</ul>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 9. SESSION MANAGEMENT ─────────────────────── -->
+<h2 id="session-management">9. Session Management &amp; Persistence</h2>
+
+<h3>Session Data Model (<code>UserSession</code>)</h3>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td><code>user_id</code></td><td>str</td><td>Unique user identifier</td></tr>
+  <tr><td><code>state</code></td><td>ConversationState</td><td>Current FSM state</td></tr>
+  <tr><td><code>current_location</code></td><td>str</td><td>User's city/area</td></tr>
+  <tr><td><code>search_results</code></td><td>list</td><td>Last restaurant search results</td></tr>
+  <tr><td><code>selected_restaurant_id</code></td><td>str</td><td>Currently selected restaurant ID</td></tr>
+  <tr><td><code>cart</code></td><td>List[CartItem]</td><td>Items in cart with variant_id, price, quantity</td></tr>
+  <tr><td><code>menu_items_map</code></td><td>dict</td><td>Index-mapped menu items for quick selection</td></tr>
+  <tr><td><code>address_id</code></td><td>str</td><td>Resolved Zomato address_id (cached)</td></tr>
+  <tr><td><code>zomato_cart_id</code></td><td>str</td><td>Created cart ID from Zomato</td></tr>
+  <tr><td><code>payment_type</code></td><td>str</td><td>"upi_qr" or "pay_later"</td></tr>
+  <tr><td><code>conversation_history</code></td><td>list</td><td>Last 20 messages for context</td></tr>
+  <tr><td><code>past_orders</code></td><td>list</td><td>Last 5 order summaries for personalization</td></tr>
+</table>
+
+<h3>Persistence Mechanism</h3>
+<ol>
+  <li><strong>In-memory dict:</strong> <code>_sessions: dict[str, UserSession]</code> for fast access</li>
+  <li><strong>File backup:</strong> After every chat message, serialized to <code>data/sessions.json</code></li>
+  <li><strong>Startup restore:</strong> On server start, loads from file using <code>_load_sessions()</code></li>
+  <li><strong>Reset preserves:</strong> Past orders, saved addresses, and address_id survive resets</li>
+</ol>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 10. API ENDPOINTS ─────────────────────── -->
+<h2 id="api-endpoints">10. API Endpoints</h2>
+
+<h3>Chat Endpoints (<code>/api/chat</code>)</h3>
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+  <tr><td>POST</td><td><code>/api/chat/message</code></td><td>Send a chat message, get bot response with state + cart + thinking steps</td></tr>
+  <tr><td>GET</td><td><code>/api/chat/session/{user_id}</code></td><td>Get current session state, cart, selected restaurant</td></tr>
+  <tr><td>POST</td><td><code>/api/chat/reset/{user_id}</code></td><td>Reset user session to IDLE</td></tr>
+  <tr><td>GET</td><td><code>/api/chat/order-status/{user_id}</code></td><td>Lightweight polling for live order tracking via Zomato MCP</td></tr>
+</table>
+
+<h3>Restaurant Endpoints (<code>/api/restaurants</code>)</h3>
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+  <tr><td>GET</td><td><code>/api/restaurants/</code></td><td>Search restaurants (stubbed — real data via chat MCP)</td></tr>
+  <tr><td>GET</td><td><code>/api/restaurants/{id}</code></td><td>Get restaurant details</td></tr>
+  <tr><td>GET</td><td><code>/api/restaurants/{id}/menu</code></td><td>Get restaurant menu</td></tr>
+  <tr><td>GET</td><td><code>/api/restaurants/locations</code></td><td>Available cities</td></tr>
+  <tr><td>GET</td><td><code>/api/restaurants/cuisines</code></td><td>Available cuisine types</td></tr>
+</table>
+
+<h3>Request / Response Example</h3>
+<pre><code># POST /api/chat/message
+# Request:
+{
+  "message": "show me biryani restaurants",
+  "user_id": "web_1710000000",
+  "user_name": "Guest",
+  "user_location": "Amaravati, Andhra Pradesh"
+}
+
+# Response:
+{
+  "response": "Here are the top **biryani restaurants** in Amaravati:\n\n1. **Hyderabad Biryani House** ⭐ 4.2 • 🚚 35-40 min • Biryani, North Indian\n2. ...",
+  "state": "searching",
+  "cart_items": [],
+  "restaurant": null,
+  "order": null,
+  "thinking_steps": ["⚡ Fast search mode", "🔍 Searching restaurants", "✅ Search complete (direct mode)"]
+}
+</code></pre>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 11. FRONTEND ─────────────────────── -->
+<h2 id="frontend">11. Frontend Overview</h2>
+<p>The frontend is a <strong>single-page Next.js React app</strong> with a dark-themed chat interface:</p>
+
+<h3>Key Features</h3>
+<ul>
+  <li><strong>Real-time chat</strong> — Messages sent via fetch to <code>/api/chat/message</code></li>
+  <li><strong>Smart quick replies</strong> — Contextual buttons change based on the bot's last message (e.g., restaurant numbers after a search, "Checkout" after adding items)</li>
+  <li><strong>Thinking steps animation</strong> — Shows "🔍 Searching restaurants", "📋 Loading menu" etc. as the bot processes</li>
+  <li><strong>Location sharing</strong> — GPS geolocation via browser API + reverse geocoding</li>
+  <li><strong>Sidebar quick actions</strong> — One-tap buttons for Pizza, Biryani, Track Order, etc.</li>
+  <li><strong>Cart panel</strong> — Slide-out cart showing items and totals</li>
+  <li><strong>Markdown rendering</strong> — Bot messages support bold, code, and horizontal rules</li>
+  <li><strong>Error handling</strong> — Timeout detection, retry button, error message styling</li>
+</ul>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 12. ORDER FLOW E2E ─────────────────────── -->
+<h2 id="order-flow">12. Complete Order Flow (End to End)</h2>
+
+<div class="flow-box">
+<strong>User Journey Example:</strong><br><br>
+
+<div class="step"><strong>1. User:</strong> "Amaravati, Andhra Pradesh"</div>
+<div class="step"><strong>Bot:</strong> 📍 Got it — I'll search near Amaravati. What do you want?</div>
+<div class="step"><em>→ Session: location = "Amaravati, Andhra Pradesh", state = IDLE</em></div><br>
+
+<div class="step"><strong>2. User:</strong> "show me biryani restaurants"</div>
+<div class="step"><strong>Bot:</strong> Here are the top biryani restaurants: 1. Restaurant A ⭐4.2, 2. Restaurant B ⭐3.8</div>
+<div class="step"><em>→ MCP call: get_saved_addresses_for_user → get_restaurants_for_keyword(keyword="biryani")</em></div>
+<div class="step"><em>→ Session: search_results = [...], state = SEARCHING</em></div><br>
+
+<div class="step"><strong>3. User:</strong> "1"</div>
+<div class="step"><strong>Bot:</strong> 🍽️ Menu — Restaurant A: • Biryani ₹250, • Kebab ₹180, ...</div>
+<div class="step"><em>→ MCP call: get_menu_items_listing → get_restaurant_menu_by_categories</em></div>
+<div class="step"><em>→ Session: menu_items_map = {...}, state = BROWSING_MENU</em></div><br>
+
+<div class="step"><strong>4. User:</strong> "2 Biryani and 1 Kebab"</div>
+<div class="step"><strong>Bot:</strong> 🛒 Added! Cart: Biryani x2 = ₹500, Kebab x1 = ₹180. Say "checkout" when ready.</div>
+<div class="step"><em>→ Regex parse: [("biryani", 2), ("kebab", 1)] → fuzzy match → cart items with variant_id</em></div>
+<div class="step"><em>→ Session: cart = [CartItem(biryani, 2), CartItem(kebab, 1)], state = ORDERING</em></div><br>
+
+<div class="step"><strong>5. User:</strong> "checkout"</div>
+<div class="step"><strong>Bot:</strong> 📍 Please share your delivery address.</div>
+<div class="step"><em>→ Session: state = AWAITING_ADDRESS</em></div><br>
+
+<div class="step"><strong>6. User:</strong> "Amaravati main road"</div>
+<div class="step"><strong>Bot:</strong> 💳 How would you like to pay? 1️⃣ UPI QR 2️⃣ Pay Later</div>
+<div class="step"><em>→ Session: pending_address = "Amaravati main road", state = AWAITING_PAYMENT</em></div><br>
+
+<div class="step"><strong>7. User:</strong> "2"</div>
+<div class="step"><strong>Bot:</strong> 📋 Order Summary: Address, Payment: Pay Later, Total: ₹720. Confirm?</div>
+<div class="step"><em>→ Session: payment_type = "pay_later", state = CONFIRMING_ORDER</em></div><br>
+
+<div class="step"><strong>8. User:</strong> "yes"</div>
+<div class="step"><strong>Bot:</strong> ✅ Order placed on Zomato! Order ID: 788160... ETA: 30-40 min</div>
+<div class="step"><em>→ MCP calls: create_cart(res_id, items, address_id, payment_type) → checkout_cart(cart_id)</em></div>
+<div class="step"><em>→ Session: current_order_id = "788160...", state = ORDER_PLACED</em></div><br>
+
+<div class="step"><strong>9. User:</strong> "track my order"</div>
+<div class="step"><strong>Bot:</strong> 📦 Order: 788160... 🍽️ Restaurant A 📋 Status: Preparing 💳 Paid: Yes</div>
+<div class="step"><em>→ MCP call: get_order_tracking_info → parse order_tracking.order_tracking_items</em></div>
+</div>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 13. CHALLENGES ─────────────────────── -->
+<h2 id="challenges">13. Challenges &amp; Solutions</h2>
+
+<table>
+  <tr><th>Challenge</th><th>Solution</th></tr>
+  <tr>
+    <td><strong>Zomato has no public REST API</strong></td>
+    <td>Used Zomato's MCP server (Model Context Protocol) — provides 11 real tools for search, menu, cart, checkout, and tracking</td>
+  </tr>
+  <tr>
+    <td><strong>MCP schemas incompatible with OpenAI function calling</strong></td>
+    <td>Built <code>_sanitize_schema()</code> to strip <code>anyOf</code>/<code>oneOf</code>, resolve nullables, truncate descriptions</td>
+  </tr>
+  <tr>
+    <td><strong>LLM calls too slow for simple actions</strong></td>
+    <td>Implemented fast pattern matching — ~80% of messages handled instantly without LLM calls</td>
+  </tr>
+  <tr>
+    <td><strong>Session lost on server restart</strong></td>
+    <td>Added file-based persistence to <code>data/sessions.json</code>; sessions auto-restore on startup</td>
+  </tr>
+  <tr>
+    <td><strong>Wrong location matching (Kadapa instead of Amaravati)</strong></td>
+    <td>Fuzzy address matching with meaningful vs. generic word scoring — city names get 5x weight vs. "India", "Pradesh"</td>
+  </tr>
+  <tr>
+    <td><strong>Address ID caching issues</strong></td>
+    <td>Clear cached <code>address_id</code> when user changes location</td>
+  </tr>
+  <tr>
+    <td><strong>"2 Poori" parsed as quantity=0</strong></td>
+    <td>Fixed regex: now matches <code>\d+\s+\w+</code> patterns correctly for "2 Poori", "1 Dosa"</td>
+  </tr>
+  <tr>
+    <td><strong>Order tracking showed raw JSON</strong></td>
+    <td>Parsed Zomato's nested <code>order_tracking.order_tracking_items</code> path into formatted messages</td>
+  </tr>
+  <tr>
+    <td><strong>No Zomato cancel order API</strong></td>
+    <td>Detect cancel intent, inform user to use Zomato app, reset session state</td>
+  </tr>
+  <tr>
+    <td><strong>Biryani search showing tiffin places</strong></td>
+    <td>Added cuisine extraction + keyword relevance ranking (name match > cuisine match > no match)</td>
+  </tr>
+  <tr>
+    <td><strong>Render 30-second request limit</strong></td>
+    <td>28s timeout on chat endpoint; 14s per LLM call; 10s per MCP tool; pre-computed responses where possible</td>
+  </tr>
+  <tr>
+    <td><strong>Gemini model rate limits</strong></td>
+    <td>Multi-model fallback: gemini-2.0-flash → gemini-1.5-flash; auto-disables failing models</td>
+  </tr>
+</table>
+
+<hr class="section-divider">
+
+<!-- ─────────────────────── 14. INTERVIEW Q&A ─────────────────────── -->
+<h2 id="interview-qa">14. Interview Q&amp;A — How to Explain</h2>
+
+<h3>Q: "Tell me about this project."</h3>
+<p><strong>A:</strong> "I built an AI food ordering chatbot called Swiggybot. It integrates with Zomato's real MCP server to let users search restaurants, browse menus, build a cart, and place actual orders — all through natural language conversation. The backend is FastAPI with Google Gemini AI for understanding user messages, and I have a Next.js web chat frontend plus Telegram bot support."</p>
+
+<h3>Q: "How does the backend work?"</h3>
+<p><strong>A:</strong> "The FastAPI backend has a single entry point at <code>/api/chat/message</code>. When a message arrives, the Gemini Agent first checks if it can handle the request through fast pattern matching — things like greetings, cart views, order tracking, or restaurant selection. About 80% of messages are handled this way, making the response instant. For complex requests, it falls through to the Gemini LLM, which can use Zomato MCP tools — search restaurants, load menus, create carts, and checkout. The conversation runs on a finite state machine with 10 states from IDLE to TRACKING."</p>
+
+<h3>Q: "What is MCP and why did you use it?"</h3>
+<p><strong>A:</strong> "MCP stands for Model Context Protocol — it's an open standard for AI models to call external tools. Zomato provides an MCP server that exposes 11 tools including restaurant search, menu loading, cart creation, checkout, and tracking. I use it because Zomato doesn't have a public REST API. The MCP client connects via stdio transport using a Node.js proxy (<code>mcp-remote</code>), discovers available tools at startup, and calls them with JSON arguments."</p>
+
+<h3>Q: "How do you handle state management?"</h3>
+<p><strong>A:</strong> "Each user has a <code>UserSession</code> Pydantic model that tracks their conversation state, location, cart items, selected restaurant, menu data, and order info. Sessions are stored in-memory for fast access, and persisted to a JSON file after every message so they survive server restarts. The session has a 10-state finite state machine that determines which input handlers are active — for example, in CONFIRMING_ORDER state, only 'yes' and 'no' are accepted."</p>
+
+<h3>Q: "How do you ensure fast responses?"</h3>
+<p><strong>A:</strong> "Three strategies: First, I use pattern matching before the LLM — regex and string matching handle greetings, cart management, location updates, and restaurant selection in under 10ms. Second, I cache the Zomato address_id on the session so I don't re-fetch addresses on every request. Third, I have strict timeouts — 14 seconds per LLM call, 10 seconds per MCP tool call, and 28 seconds total per request — with multi-model fallback if the primary model is slow."</p>
+
+<h3>Q: "What was the hardest technical challenge?"</h3>
+<p><strong>A:</strong> "The hardest part was making the Zomato MCP integration work end-to-end. The MCP tool schemas had <code>anyOf</code> and nullable types that broke OpenAI's function calling format, so I built a schema sanitizer. The restaurant search returned all nearby restaurants regardless of keyword, so I added keyword relevance ranking. Order tracking returned deeply nested JSON that I had to walk to find the right data. And there's no cancel order tool — I had to detect the intent and guide users to the Zomato app."</p>
+
+<h3>Q: "Why FastAPI instead of Django or Flask?"</h3>
+<p><strong>A:</strong> "FastAPI is async-first, which is critical because every request involves multiple async operations — MCP tool calls, LLM API calls, and session persistence. It also gives me automatic request validation via Pydantic, auto-generated Swagger docs at <code>/docs</code>, and native CORS middleware. Django would be overkill and Flask doesn't have native async support."</p>
+
+<h3>Q: "How would you scale this?"</h3>
+<p><strong>A:</strong> "Currently sessions are in-memory with file backup, which works for a single instance. To scale: (1) Move sessions to Redis for shared state across instances, (2) Use a message queue like Celery for long-running MCP calls, (3) Add proper database (PostgreSQL) for order history and analytics, (4) Rate limit per user to prevent abuse, (5) Connection pooling for MCP with multiple client instances."</p>
+
+<h3>Q: "How do you handle errors?"</h3>
+<p><strong>A:</strong> "Multiple layers: The MCP client has connect/tool timeouts with cooldown on failure. The LLM has multi-model fallback — if Gemini 2.0 Flash fails, it tries 1.5 Flash. The chat endpoint has a 28-second timeout returning a 504 if exceeded. Every state-handler has try/except that logs errors and returns user-friendly messages like 'I had trouble reaching Zomato, please try again.' The frontend shows error styling and a retry button."</p>
+
+<h3>Q: "Explain the order placement flow technically."</h3>
+<p><strong>A:</strong> "When the user confirms 'yes' in CONFIRMING_ORDER state: First, I build a list of cart items with their <code>variant_id</code>s (captured from the menu fetch step). Then I resolve the Zomato <code>address_id</code> by fuzzy-matching the user's location against their saved Zomato addresses. I call <code>create_cart(res_id, items, address_id, payment_type)</code> which returns a <code>cart_id</code>. Then I call <code>checkout_cart(cart_id)</code> to finalize the order. Both responses are parsed for errors and order info. On success, the state moves to ORDER_PLACED and the order ID is saved."</p>
+
+<hr class="section-divider">
+
+<p style="text-align:center; color:#999; font-size:12px; margin-top:40px;">
+  Swiggybot Technical Report — Generated for Interview Preparation<br>
+  GitHub: github.com/Krishnareddy2468/Swiggybot
+</p>
+
+</body>
+</html>
