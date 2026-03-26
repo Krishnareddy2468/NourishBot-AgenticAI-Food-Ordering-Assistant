@@ -2,13 +2,31 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const ZOMATO_PROXY_BASE = "/api/zomato";
 const CHAT_REQUEST_TIMEOUT_MS = 30000;
 
 // parse bot messages - handles bold, line breaks, code
 function renderBotText(text) {
   if (!text) return "";
-  return text
+  const qrPattern = /\[QR Code Image Saved to\s+([^\]]+)\]/i;
+  const qrMatch = text.match(qrPattern);
+  let rendered = text;
+
+  if (qrMatch?.[1]) {
+    const rawPath = qrMatch[1].trim();
+    const fileName = rawPath.split("/").pop();
+    if (fileName) {
+      const qrHtml = [
+        '<div class="qr-preview">',
+        "<div class=\"qr-preview-title\">Scan this QR to pay</div>",
+        `<img class=\"qr-preview-image\" src=\"${ZOMATO_PROXY_BASE}/qr/${encodeURIComponent(fileName)}\" alt=\"UPI QR code\" />`,
+        "</div>",
+      ].join("");
+      rendered = rendered.replace(qrPattern, qrHtml);
+    }
+  }
+
+  return rendered
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
@@ -188,6 +206,8 @@ export default function Home() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSupported, setRecordingSupported] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState("Thinking...");
   const [cartItems, setCartItems] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -203,6 +223,9 @@ export default function Home() {
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
   const lastSentMessageRef = useRef(null);  // for retry
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   // keep user id across page reloads
   const userId = useRef(
@@ -227,6 +250,20 @@ export default function Home() {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const canRecord = Boolean(navigator?.mediaDevices?.getUserMedia) && typeof window.MediaRecorder !== "undefined";
+      setRecordingSupported(canRecord);
+    }
+    return () => {
+      if (mediaStreamRef.current) {
+        for (const track of mediaStreamRef.current.getTracks()) {
+          track.stop();
+        }
+      }
+    };
+  }, []);
+
   // show "scroll to bottom" if user scrolls up
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -235,7 +272,7 @@ export default function Home() {
     setShowScrollBtn(distFromBottom > 150);
   }, []);
 
-  const sendMessage = async (text, locationOverride) => {
+  const sendMessage = useCallback(async (text, locationOverride) => {
     if (!text.trim() || isLoading) return;
     lastSentMessageRef.current = text.trim();
 
@@ -250,7 +287,7 @@ export default function Home() {
     try {
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), CHAT_REQUEST_TIMEOUT_MS);
-      const res = await fetch(`${API_URL}/api/chat/message`, {
+      const res = await fetch(`${ZOMATO_PROXY_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -317,7 +354,7 @@ export default function Home() {
           role: "bot",
           content: (isTimeoutError || isBackendTimeout)
             ? "⏱️ **Request timed out** — This took too long.\n\nTry a more specific query like `biryani in Madhapur`."
-            : `🌐 **Connection issue** — Couldn't reach the server.\n\nMake sure the backend is running on \`${API_URL}\``,
+            : "🌐 **Connection issue** — Couldn't reach Zomatobot backend.\n\nMake sure backend is running on port 8000 and web chat is enabled.",
           time: timeNow(),
           isError: true,
           thinkingSteps: [],
@@ -331,7 +368,7 @@ export default function Home() {
       // refocus input after sending
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  };
+  }, [isLoading, userLocation]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -386,6 +423,142 @@ export default function Home() {
     );
   }, [sendMessage]);
 
+  const sendVoiceMessage = useCallback(async (audioBlob) => {
+    if (!audioBlob || isLoading) return;
+
+    setMessages((prev) => [...prev, { role: "user", content: "🎤 Voice message", time: timeNow() }]);
+    setQuickReplies([]);
+    setIsLoading(true);
+    setLoadingStatus("Transcribing your voice...");
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "voice-message.webm");
+      formData.append("user_id", userId.current);
+      formData.append("user_name", "Guest");
+      if (userLocation) {
+        formData.append("user_location", userLocation);
+      }
+
+      const res = await fetch(`${ZOMATO_PROXY_BASE}/voice-upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Voice upload failed (${res.status})`);
+      }
+
+      const data = await res.json();
+
+      if (data.thinking_steps && data.thinking_steps.length > 0) {
+        for (const step of data.thinking_steps) {
+          setLoadingStatus(step);
+          await new Promise((r) => setTimeout(r, 220));
+        }
+      }
+
+      const botMsg = {
+        role: "bot",
+        content: data.response,
+        time: timeNow(),
+        thinkingSteps: data.thinking_steps || [],
+        isError: isErrorMessage(data.response),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+
+      if (data.cart_items) setCartItems(data.cart_items);
+      if (data.restaurant) setCurrentRestaurant(data.restaurant);
+      if (data.state) setBotState(data.state);
+      if (data.order?.order_id) {
+        setCurrentOrderId(data.order.order_id);
+        setLastOrderStatus(data.order.status || "confirmed");
+      }
+
+      const replies = getQuickReplies(data.response, data.state);
+      const alreadyHasGps = replies.some((r) => r.query === "__gps__");
+      if (!alreadyHasGps && needsLocation(data.response)) {
+        replies.push({ label: "📍 Share My Location", query: "__gps__" });
+      }
+      setQuickReplies(replies);
+    } catch (error) {
+      console.error("Voice upload error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          content: "🎙️ **Voice input failed** — I couldn't process that recording.\n\nPlease try again or send text.",
+          time: timeNow(),
+          isError: true,
+          thinkingSteps: [],
+        },
+      ]);
+      setQuickReplies([]);
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus("Thinking...");
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [isLoading, userLocation]);
+
+  const handleVoiceInput = useCallback(async () => {
+    if (isLoading || !recordingSupported) return;
+
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      setLoadingStatus("Preparing recording...");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (mediaStreamRef.current) {
+          for (const track of mediaStreamRef.current.getTracks()) {
+            track.stop();
+          }
+        }
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        audioChunksRef.current = [];
+        if (blob.size > 0) {
+          await sendVoiceMessage(blob);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setLoadingStatus("Listening... Tap mic again to stop");
+    } catch (error) {
+      console.error("Microphone access denied/unavailable:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          content: "🎤 **Microphone access blocked** — Please allow mic permission and try again.",
+          time: timeNow(),
+          isError: true,
+          thinkingSteps: [],
+        },
+      ]);
+      setIsRecording(false);
+    }
+  }, [isLoading, isRecording, recordingSupported, sendVoiceMessage]);
+
   const handleQuickReply = (qr) => {
     if (qr.query === "__gps__") {
       handleShareLocation();
@@ -403,7 +576,7 @@ export default function Home() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/chat/order-status/${userId.current}`);
+        const res = await fetch(`${ZOMATO_PROXY_BASE}/order-status/${userId.current}`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.status && data.status !== knownStatus) {
@@ -618,11 +791,23 @@ export default function Home() {
               disabled={isLoading}
               id="chat-input"
             />
+            <button
+              type="button"
+              className={`voice-btn ${isRecording ? "recording" : ""}`}
+              onClick={handleVoiceInput}
+              disabled={isLoading || !recordingSupported}
+              title={recordingSupported ? (isRecording ? "Stop recording" : "Start voice input") : "Voice input not supported in this browser"}
+              id="voice-btn"
+            >
+              {isRecording ? "⏹" : "🎤"}
+            </button>
             <button type="submit" className="send-btn" disabled={!input.trim() || isLoading} id="send-btn">
               ↑
             </button>
           </form>
-          <div className="input-hint">AI-powered food ordering • Also available on Telegram</div>
+          <div className="input-hint">
+            AI-powered food ordering • Voice input available {recordingSupported ? "🎤" : "(browser not supported)"}
+          </div>
         </div>
       </main>
 

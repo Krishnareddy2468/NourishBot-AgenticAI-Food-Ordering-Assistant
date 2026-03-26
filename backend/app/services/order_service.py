@@ -28,6 +28,7 @@ class OrderService:
     def __init__(self):
         self._orders: Dict[str, Order] = {}
         self._status_callbacks: Dict[str, list] = {}
+        self._active_simulations: set[str] = set()
         self._load_orders()
 
     def _load_orders(self):
@@ -139,6 +140,11 @@ class OrderService:
         Simulate order progress through stages.
         This mimics real-time Zomato order tracking.
         """
+        if order_id in self._active_simulations:
+            logger.info("Order simulation already running for %s", order_id)
+            return
+        self._active_simulations.add(order_id)
+
         status_timeline = [
             (OrderStatus.CONFIRMED, "✅ Your order has been confirmed by the restaurant!", 5),
             (OrderStatus.PREPARING, "👨‍🍳 Your food is being prepared with love!", 15),
@@ -146,33 +152,36 @@ class OrderService:
             (OrderStatus.DELIVERED, "🎉 Your order has been delivered! Enjoy your meal! 🍽️", 25),
         ]
 
-        order = self.get_order(order_id)
-        if not order:
-            return
-
-        for status, message, delay in status_timeline:
-            await asyncio.sleep(delay)
-
-            order = self.update_status(order_id, status)
+        try:
+            order = self.get_order(order_id)
             if not order:
-                break
+                return
 
-            # Special message for out_for_delivery
-            if status == OrderStatus.OUT_FOR_DELIVERY:
-                message = (
-                    f"🚴 Your order is out for delivery!\n"
-                    f"🏍️ Delivery Partner: {order.delivery_partner}\n"
-                    f"📞 Contact: {order.delivery_partner_phone}"
-                )
+            for status, message, delay in status_timeline:
+                await asyncio.sleep(delay)
 
-            if send_update_callback and message:
-                try:
-                    await send_update_callback(order.user_id, message)
-                except Exception as e:
-                    logger.error(f"Error sending status update: {e}")
+                order = self.update_status(order_id, status)
+                if not order:
+                    break
 
-            if status == OrderStatus.DELIVERED:
-                break
+                # Special message for out_for_delivery
+                if status == OrderStatus.OUT_FOR_DELIVERY:
+                    message = (
+                        f"🚴 Your order is out for delivery!\n"
+                        f"🏍️ Delivery Partner: {order.delivery_partner}\n"
+                        f"📞 Contact: {order.delivery_partner_phone}"
+                    )
+
+                if send_update_callback and message:
+                    try:
+                        await send_update_callback(order.user_id, message)
+                    except Exception as e:
+                        logger.error(f"Error sending status update: {e}")
+
+                if status == OrderStatus.DELIVERED:
+                    break
+        finally:
+            self._active_simulations.discard(order_id)
 
     def get_all_orders(self) -> List[Order]:
         """Get all orders (for admin/dashboard)"""

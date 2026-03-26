@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swiggybot Backend Walkthrough - HR Round</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --muted: #475569;
+      --brand: #dc2626;
+      --brand-dark: #991b1b;
+      --card: #ffffff;
+      --line: #e2e8f0;
+      --accent: #0ea5e9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(180deg, #fff7f7 0%, var(--bg) 25%);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    .page {
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 36px 28px 60px;
+    }
+    .hero {
+      background: radial-gradient(1200px 320px at 10% -20%, #fee2e2, transparent), #fff;
+      border: 1px solid #fecaca;
+      border-radius: 18px;
+      padding: 28px;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.15;
+      color: var(--brand-dark);
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .meta {
+      margin-top: 14px;
+      display: inline-block;
+      border: 1px solid #fecaca;
+      background: #fff5f5;
+      color: #7f1d1d;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .toc {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 24px;
+    }
+    .toc h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: #1e293b;
+    }
+    .toc ol {
+      margin: 0;
+      padding-left: 18px;
+      color: #334155;
+    }
+    .toc li { margin: 5px 0; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+      page-break-inside: avoid;
+    }
+    h2 {
+      margin: 0 0 12px;
+      color: #1e293b;
+      font-size: 24px;
+    }
+    h3 {
+      margin: 16px 0 8px;
+      color: #0f172a;
+      font-size: 18px;
+    }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 8px 20px; }
+    li { margin: 4px 0; }
+    .chip {
+      display: inline-block;
+      border: 1px solid #bae6fd;
+      background: #f0f9ff;
+      color: #0c4a6e;
+      border-radius: 999px;
+      padding: 4px 10px;
+      margin: 4px 6px 0 0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .flow {
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 13px;
+      color: #0f172a;
+      white-space: pre;
+    }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .table th,
+    .table td {
+      border: 1px solid var(--line);
+      padding: 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    .table th {
+      background: #f1f5f9;
+    }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f0f9ff;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin: 10px 0;
+      color: #0c4a6e;
+    }
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+    }
+    @media print {
+      .page { padding: 10mm; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>Swiggybot Backend + Zomatobot Walkthrough</h1>
+      <p class="subtitle">HR-round ready explanation script: architecture, technologies, learning outcomes, full ordering flow, LLM+MCP+voice+LangGraph internals, and product comparison.</p>
+      <span class="meta">Prepared for: Technical + HR Discussion</span>
+    </header>
+
+    <section class="toc">
+      <h2>Table of Contents</h2>
+      <ol>
+        <li>Application Overview</li>
+        <li>Technology Stack and What I Learned</li>
+        <li>End-to-End Ordering Flow (Start to Finish)</li>
+        <li>How LLM Works with MCP in My Backend</li>
+        <li>Voice + MCP + LangGraph Flow</li>
+        <li>Zomatobot vs My Backend (Detailed Differences)</li>
+        <li>Backend Modules - Component-by-Component Flow</li>
+        <li>Production Readiness, Reliability, and Observability</li>
+        <li>Interview Summary Script (2-3 minute and 8-10 minute versions)</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>1. Application Overview</h2>
+      <p>This project is an AI food-ordering assistant where the user can discover restaurants, browse menus, add items, choose delivery/payment, place order, and track status through conversational UI.</p>
+      <p>It supports both:</p>
+      <ul>
+        <li>Web chat (Next.js frontend + FastAPI backend)</li>
+        <li>Telegram bot channel</li>
+      </ul>
+      <p>Core capability is tool-driven LLM orchestration with Zomato MCP tools, so the assistant does not hallucinate restaurants or menu data.</p>
+      <div>
+        <span class="chip">FastAPI</span>
+        <span class="chip">Next.js</span>
+        <span class="chip">LangGraph</span>
+        <span class="chip">LangChain Tools</span>
+        <span class="chip">MCP</span>
+        <span class="chip">Gemini/OpenAI-compatible APIs</span>
+        <span class="chip">Voice transcription</span>
+        <span class="chip">Session state machine</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Technology Stack and What I Learned</h2>
+      <h3>Backend Framework: FastAPI</h3>
+      <ul>
+        <li>Created typed request/response models with Pydantic.</li>
+        <li>Built async endpoints for chat, voice upload, order status polling, session reset, and QR image serving.</li>
+        <li>Learned to separate route layer from orchestration layer for maintainability.</li>
+      </ul>
+
+      <h3>Agent Orchestration: LangGraph + LangChain Tools</h3>
+      <ul>
+        <li>Implemented ReAct-style graph with tool calling from model context.</li>
+        <li>Built deterministic guards for critical flows (address resolution, cart creation, order confirmation).</li>
+        <li>Learned that hybrid architecture (deterministic logic + LLM reasoning) is more reliable than pure prompting.</li>
+      </ul>
+
+      <h3>MCP Integration</h3>
+      <ul>
+        <li>Connected to Zomato MCP server via stdio client session.</li>
+        <li>Added retries, timeout handling, cooldowns, and recoverable reconnect logic.</li>
+        <li>Learned how MCP decouples business tools from LLM provider choice.</li>
+      </ul>
+
+      <h3>Voice Pipeline</h3>
+      <ul>
+        <li>Added browser voice recording (MediaRecorder) in frontend.</li>
+        <li>Added backend voice upload endpoint and transcription service.</li>
+        <li>Implemented provider-compatible audio transcription paths (Gemini and OpenAI-compatible).</li>
+      </ul>
+
+      <h3>Frontend: Next.js</h3>
+      <ul>
+        <li>Built proxy routes to avoid CORS and keep backend URLs server-side.</li>
+        <li>Integrated context-aware quick replies, status polling, and inline QR rendering in chat.</li>
+        <li>Learned Next.js 16 dynamic route param changes (params must be awaited in route handlers).</li>
+      </ul>
+
+      <h3>System Design Learnings</h3>
+      <ul>
+        <li>Session-driven conversation state is essential for multi-turn ordering.</li>
+        <li>Tool output normalization and fallback search prevents false "no result" failures.</li>
+        <li>Telemetry logs are critical for debugging real-world voice/order issues.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. End-to-End Ordering Flow (Start to Finish)</h2>
+      <h3>High-Level User Journey</h3>
+      <ol>
+        <li>User opens chat and asks for cuisine/restaurant.</li>
+        <li>Assistant ensures delivery location/address context exists.</li>
+        <li>Assistant fetches restaurants via MCP tool.</li>
+        <li>User selects restaurant, assistant fetches menu.</li>
+        <li>User adds items (text or voice), assistant resolves quantities + variants.</li>
+        <li>Assistant shows cart and payment choices.</li>
+        <li>Assistant confirms order, creates cart, checks out, renders QR if UPI.</li>
+        <li>User pays and asks to track order.</li>
+        <li>Assistant tracks current order and provides status updates.</li>
+      </ol>
+
+      <div class="flow">Web/Telegram Input
+   -> FastAPI /api/chat/message or /api/chat/voice-upload
+   -> LangGraphFoodAgent.process_message
+   -> Deterministic checks (address, state, parsing, tracking command)
+   -> MCP tool call(s) through ZomatoMCP client
+   -> Structured response + session updates
+   -> Frontend renders bot text, quick replies, cart, QR, order polling</div>
+
+      <h3>Addressing "Order for another person"</h3>
+      <p>During active checkout, delivery context can now be updated without destroying cart/menu state. This allows ordering to a different address/person while preserving the current flow.</p>
+    </section>
+
+    <section>
+      <h2>4. How LLM Works with MCP in My Backend</h2>
+      <h3>Core Principle</h3>
+      <p>The LLM is used for reasoning and language understanding, but external data/actions always come from MCP tools. This avoids hallucination and keeps actions auditable.</p>
+
+      <h3>Execution Model</h3>
+      <ul>
+        <li>System prompt enforces guardrails: no fabricated data, short actionable responses, confirm before order placement.</li>
+        <li>LangGraph builds tool-enabled agent graph with discovered MCP tools.</li>
+        <li>For each message, deterministic handlers run first for sensitive flows (tracking, address updates, checkout states).</li>
+        <li>If deterministic path is not enough, graph invocation executes tool-augmented reasoning.</li>
+      </ul>
+
+      <h3>Reliability Controls</h3>
+      <ul>
+        <li>Multi-model fallback list (if one model fails due to limits/unavailability).</li>
+        <li>Provider error classification with user-friendly fallback text.</li>
+        <li>MCP timeout, reconnect, and recoverable retry behavior.</li>
+        <li>Address ID refresh when tool returns invalid address.</li>
+      </ul>
+
+      <div class="callout">Interview line: "I used LLM for intent + language, but business correctness is guaranteed by deterministic checks and MCP tool outputs."</div>
+    </section>
+
+    <section>
+      <h2>5. Voice + MCP + LangGraph Flow</h2>
+      <h3>Voice Input Path</h3>
+      <ol>
+        <li>Frontend records audio via MediaRecorder.</li>
+        <li>Frontend posts multipart data to Next.js proxy route.</li>
+        <li>Proxy forwards to backend /api/chat/voice-upload.</li>
+        <li>VoiceService transcribes audio to text.</li>
+        <li>Transcribed text enters same agent flow as text chat.</li>
+        <li>Response returns with thinking steps + state/cart updates.</li>
+      </ol>
+
+      <h3>Voice Failure Handling</h3>
+      <ul>
+        <li>Graceful user-facing message on failures.</li>
+        <li>Telemetry events for timeout/rejection/upload failure.</li>
+        <li>Fallback path supports both Gemini-native and OpenAI-compatible transcription APIs.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Zomatobot vs My Backend (Detailed Differences)</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Zomatobot (/Zomatobot)</th>
+            <th>My Backend (/backend)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Primary Channel</td>
+            <td>Telegram-first implementation</td>
+            <td>Omnichannel: Web + Telegram, unified backend APIs</td>
+          </tr>
+          <tr>
+            <td>Agent Style</td>
+            <td>LangChain agent executor with tool calling</td>
+            <td>LangGraph + deterministic flow guards + tool calling</td>
+          </tr>
+          <tr>
+            <td>State Management</td>
+            <td>User agent object + DB helpers</td>
+            <td>Pydantic session service with explicit conversation states</td>
+          </tr>
+          <tr>
+            <td>Voice</td>
+            <td>No first-class web voice input pipeline</td>
+            <td>Browser recording + voice upload + transcription + same cart flow</td>
+          </tr>
+          <tr>
+            <td>Web Integration</td>
+            <td>Not core focus</td>
+            <td>Next.js proxy APIs, QR rendering, live polling, quick replies</td>
+          </tr>
+          <tr>
+            <td>MCP Resilience</td>
+            <td>Basic session usage</td>
+            <td>Timeouts, retries, reconnect lock, cooldown, raw content handling</td>
+          </tr>
+          <tr>
+            <td>Order Tracking</td>
+            <td>General tool output narration</td>
+            <td>Current-order pinning + active-order listing + status normalization</td>
+          </tr>
+          <tr>
+            <td>Observability</td>
+            <td>Print/debug oriented</td>
+            <td>Structured telemetry warnings for voice/order failures</td>
+          </tr>
+          <tr>
+            <td>Response Hygiene</td>
+            <td>May leak internal assumptions in some paths</td>
+            <td>Prompt guardrails to avoid debug/internal phrasing</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7. Backend Modules - Component-by-Component Flow</h2>
+      <h3>main.py (App Bootstrap)</h3>
+      <ul>
+        <li>Loads env, starts FastAPI, enables CORS.</li>
+        <li>Boots Telegram bot in lifespan task.</li>
+        <li>Conditionally enables web chat routes.</li>
+      </ul>
+
+      <h3>routes/chat.py (HTTP Contract)</h3>
+      <ul>
+        <li>Text endpoint: /api/chat/message</li>
+        <li>Voice endpoints: /api/chat/voice-message and /api/chat/voice-upload</li>
+        <li>Session endpoint: /api/chat/session/{user_id}</li>
+        <li>Tracking endpoint: /api/chat/order-status/{user_id}</li>
+        <li>QR endpoint: /api/chat/qr/{file_name}</li>
+      </ul>
+
+      <h3>services/langgraph_agent.py (Brain)</h3>
+      <ul>
+        <li>Deterministic intent handlers for tracking, address selection, payment/confirmation.</li>
+        <li>Menu parsing, item matching, variant handling, cart building.</li>
+        <li>Tool schema adaptation and agent graph invocation.</li>
+        <li>Search fallback logic and rating-based filtering.</li>
+      </ul>
+
+      <h3>services/zomato_mcp.py (Tool Transport)</h3>
+      <ul>
+        <li>MCP session connect/list/call operations.</li>
+        <li>Retry/reconnect handling for transient transport failures.</li>
+        <li>Timeout governance for tool calls.</li>
+      </ul>
+
+      <h3>services/voice_service.py (Speech-to-Text)</h3>
+      <ul>
+        <li>Gemini-native transcription path.</li>
+        <li>OpenAI-compatible audio path as fallback.</li>
+        <li>MIME normalization and transcript extraction.</li>
+      </ul>
+
+      <h3>services/session_service.py (Conversation Memory)</h3>
+      <ul>
+        <li>Persists sessions in JSON for restart continuity.</li>
+        <li>Maintains state machine, cart, selected restaurant, current order ID.</li>
+        <li>Supports safe delivery-context updates for "order for another person" scenarios.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>8. Production Readiness, Reliability, and Observability</h2>
+      <h3>Reliability Features Added</h3>
+      <ul>
+        <li>Frontend-to-backend proxy architecture for stable integration.</li>
+        <li>Voice timeout and error-safe handling.</li>
+        <li>Order tracking consistency when multiple active orders exist.</li>
+        <li>Inline QR rendering in chat.</li>
+      </ul>
+
+      <h3>Telemetry Events (Examples)</h3>
+      <ul>
+        <li>voice_message_timeout</li>
+        <li>voice_message_rejected</li>
+        <li>voice_upload_failed</li>
+        <li>order_create_cart_failed</li>
+        <li>order_checkout_failed</li>
+        <li>order_status_poll_failed</li>
+      </ul>
+
+      <p>These logs are intentionally lightweight to support debugging without introducing heavy observability tooling overhead.</p>
+    </section>
+
+    <section>
+      <h2>9. Interview Summary Script</h2>
+      <h3>Quick 2-3 Minute Version</h3>
+      <p>"I built an AI food-ordering backend that combines deterministic workflow checks with LLM reasoning and Zomato MCP tools. The user can search restaurants, browse menu, add items through text or voice, complete checkout with UPI QR/COD, and track orders in real time. Compared to the base Zomatobot, my backend adds stronger state management, robust MCP retry/timeouts, web channel support, voice pipeline, QR rendering in chat, and cleaner tracking behavior for current order vs all active orders. I learned that for production reliability, pure prompting is not enough — you need deterministic controls around address resolution, variant handling, and order confirmation."</p>
+
+      <h3>Full 8-10 Minute Version Structure</h3>
+      <ol>
+        <li>Problem statement and goals</li>
+        <li>Architecture overview</li>
+        <li>Technology choices and trade-offs</li>
+        <li>Live ordering flow walkthrough</li>
+        <li>LLM+MCP internals</li>
+        <li>Voice integration details</li>
+        <li>Zomatobot vs my backend comparison</li>
+        <li>Bugs solved during implementation</li>
+        <li>Key learnings and next improvements</li>
+      </ol>
+
+      <div class="callout">Tip for HR recording: narrate section-by-section directly from this PDF and keep one demo tab open for flow confirmation (search -> menu -> cart -> payment -> track).</div>
+    </section>
+
+    <section>
+      <h2>10. Detailed Ordering Flow (Search to Payment)</h2>
+      <h3>Demo Script You Can Read in Video</h3>
+      <ol>
+        <li>User says: "Find nearest pizza restaurants".</li>
+        <li>Assistant checks if location/address is available in session.</li>
+        <li>If location is missing, assistant asks for city/area or saved address selection.</li>
+        <li>Assistant resolves <strong>address_id</strong> using MCP saved-address tool.</li>
+        <li>Assistant calls restaurant discovery tool with keyword and address_id.</li>
+        <li>Assistant returns ranked restaurants with rating + delivery ETA.</li>
+        <li>User selects restaurant by number (for example: 1).</li>
+        <li>Assistant calls menu tools and maps item numbers to menu metadata.</li>
+        <li>User adds items by text or voice (for example: "2 Margherita and 1 Corn and Cheese").</li>
+        <li>Assistant parses quantities, matches item names, resolves variant IDs.</li>
+        <li>Assistant updates cart and shows subtotal + payment options.</li>
+        <li>User selects payment type: UPI QR or COD.</li>
+        <li>Assistant shows final order summary and asks for confirmation.</li>
+        <li>User replies yes.</li>
+        <li>Assistant creates Zomato cart, checks out, and returns QR in chat for UPI.</li>
+        <li>User completes payment and asks: "track my order".</li>
+        <li>Assistant tracks current order ID and returns normalized, clean status updates.</li>
+      </ol>
+
+      <h3>Backend Path for Same Flow</h3>
+      <div class="flow">Frontend voice/text
+ -> /api/zomato/chat or /api/zomato/voice-upload (Next.js proxy)
+ -> FastAPI /api/chat/message or /api/chat/voice-upload
+ -> LangGraphFoodAgent.process_message
+ -> SessionService state read/update
+ -> ZomatoMCP.call_tool(...)
+ -> Response composer (cart/state/restaurant/order)
+ -> Frontend renderer (message, quick replies, cart, QR, polling)</div>
+
+      <h3>Tool/API Mapping by Stage</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Primary Calls</th>
+            <th>Output to User</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Address context</td>
+            <td>get_saved_addresses_for_user</td>
+            <td>Saved address list or location confirmation</td>
+          </tr>
+          <tr>
+            <td>Restaurant search</td>
+            <td>get_restaurants_for_keyword</td>
+            <td>Top restaurants with rating and ETA</td>
+          </tr>
+          <tr>
+            <td>Menu load</td>
+            <td>get_menu_items_listing, get_restaurant_menu_by_categories</td>
+            <td>Numbered menu items for quick ordering</td>
+          </tr>
+          <tr>
+            <td>Cart create</td>
+            <td>create_cart</td>
+            <td>Cart summary + payment mode prompt</td>
+          </tr>
+          <tr>
+            <td>Checkout</td>
+            <td>checkout_cart</td>
+            <td>UPI QR image or COD confirmation</td>
+          </tr>
+          <tr>
+            <td>Tracking</td>
+            <td>get_order_tracking_info</td>
+            <td>Current order status, rider details if available</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>11. Features Implemented (Complete List)</h2>
+      <h3>User Features</h3>
+      <ul>
+        <li>Natural-language restaurant search by cuisine/intent.</li>
+        <li>Rating-aware search (for example: "4 stars and above").</li>
+        <li>Menu browsing with numbered selection.</li>
+        <li>Text and voice item addition.</li>
+        <li>Cart management and dynamic subtotaling.</li>
+        <li>UPI QR and COD payment support.</li>
+        <li>Inline QR rendering in web chat.</li>
+        <li>Current-order tracking and separate "show all active orders" command.</li>
+        <li>Order for another person by updating delivery context without resetting cart.</li>
+      </ul>
+
+      <h3>Engineering Features</h3>
+      <ul>
+        <li>Deterministic + LLM hybrid control flow for reliability.</li>
+        <li>Session persistence to disk across backend restarts.</li>
+        <li>MCP timeout/retry/reconnect resilience.</li>
+        <li>Voice fallback support for multiple providers.</li>
+        <li>Frontend API proxy architecture for clean integration.</li>
+        <li>Light telemetry logs for voice/order failure events.</li>
+        <li>Response hygiene rules to avoid debug-style user text.</li>
+      </ul>
+
+      <h3>What This Demonstrates in HR Round</h3>
+      <ul>
+        <li>Strong ownership of end-to-end product flow (UI, API, agent, infra integration).</li>
+        <li>Ability to debug production-like edge cases quickly.</li>
+        <li>Good system design judgment: deterministic controls around critical transactions.</li>
+        <li>Practical use of modern AI stack beyond toy chatbot demos.</li>
+      </ul>
+    </section>
+
+    <p class="footer">Generated document: Swiggybot HR Walkthrough | Date: March 26, 2026</p>
+  </main>
+</body>
+</html>

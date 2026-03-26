@@ -8,11 +8,14 @@ from app.services.voice_service import voice_service
 import asyncio
 import json
 import logging
+from pathlib import Path
+from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 CHAT_REQUEST_TIMEOUT_SECONDS = 28
+QR_DIR = Path(__file__).resolve().parents[3] / "data" / "qrcodes"
 
 
 @router.post("/message", response_model=ChatResponse)
@@ -101,7 +104,12 @@ async def send_voice_message(chat: VoiceChatMessage):
             thinking_steps=thinking_steps,
         )
     except asyncio.TimeoutError:
+        logger.warning("telemetry event=voice_message_timeout user_id=%s", chat.user_id)
         raise HTTPException(status_code=504, detail="Voice request timed out. Please retry.")
+    except RuntimeError as e:
+        logger.error("Voice request rejected: %s", e)
+        logger.warning("telemetry event=voice_message_rejected user_id=%s error=%s", chat.user_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         session_service.save()
 
@@ -116,7 +124,10 @@ async def send_voice_upload(
     """Voice chat endpoint for raw uploaded audio."""
     try:
         audio_bytes = await audio.read()
-        transcript = await voice_service.transcribe_ogg(audio_bytes)
+        transcript = await voice_service.transcribe_audio(
+            audio_bytes,
+            mime_type=(audio.content_type or "audio/ogg"),
+        )
         response, thinking_steps = await asyncio.wait_for(
             langgraph_food_agent.process_message(
                 user_id=user_id,
@@ -137,6 +148,9 @@ async def send_voice_upload(
         )
     except Exception as e:
         logger.error("Voice upload processing failed: %s", e)
+        logger.warning("telemetry event=voice_upload_failed user_id=%s error=%s", user_id, e)
+        if isinstance(e, RuntimeError):
+            raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         session_service.save()
@@ -180,6 +194,31 @@ async def get_order_status(user_id: str):
         return {"order_id": None, "status": None, "message": None}
 
     try:
+        def _normalize_status(order: dict) -> str:
+            status = str(order.get("order_status") or order.get("status") or "placed")
+            paid_flag = order.get("is_order_paid")
+            paid = paid_flag is True or str(paid_flag).strip().lower() == "true"
+            if paid and "payment is incomplete" in status.lower():
+                return "Order placed and payment confirmed"
+            return status
+
+        def _pick_order(orders: list[dict]) -> dict | None:
+            if not orders:
+                return None
+            current_id = str(session.current_order_id or "").strip()
+            if current_id:
+                for order in orders:
+                    oid = str(order.get("order_id") or order.get("id") or "").strip()
+                    if oid and oid == current_id:
+                        return order
+            selected_restaurant = (session.selected_restaurant_name or "").strip().lower()
+            if selected_restaurant:
+                for order in orders:
+                    rname = str(order.get("restaurant_name") or "").strip().lower()
+                    if rname and rname == selected_restaurant:
+                        return order
+            return orders[0]
+
         result = await global_zomato_mcp.call_tool("get_order_tracking_info", {})
         for chunk in result or []:
             if isinstance(chunk, str):
@@ -209,12 +248,18 @@ async def get_order_status(user_id: str):
                         orders = data
 
                     if orders and isinstance(orders, list):
-                        order = orders[0]
+                        order = _pick_order([o for o in orders if isinstance(o, dict)])
+                        if not order:
+                            continue
                         rider = order.get("rider") or {}
+                        normalized_status = _normalize_status(order)
+                        message_text = order.get("message") or order.get("order_status") or normalized_status
+                        if "payment is incomplete" in str(message_text).lower() and normalized_status == "Order placed and payment confirmed":
+                            message_text = normalized_status
                         return {
                             "order_id": order.get("order_id") or order.get("id") or session.current_order_id,
-                            "status": order.get("order_status") or order.get("status") or "placed",
-                            "message": order.get("message") or order.get("order_status") or "Order placed",
+                            "status": normalized_status,
+                            "message": message_text,
                             "restaurant_name": order.get("restaurant_name", ""),
                             "delivery_partner": (rider.get("name") or rider.get("rider_name")) if isinstance(rider, dict) else None,
                         }
@@ -222,9 +267,26 @@ async def get_order_status(user_id: str):
                     pass
     except Exception as e:
         logger.error("Order status polling failed: %s", e)
+        logger.warning("telemetry event=order_status_poll_failed user_id=%s error=%s", user_id, e)
 
     return {
         "order_id": session.current_order_id,
         "status": "placed",
         "message": "Order placed on Zomato",
     }
+
+
+@router.get("/qr/{file_name}")
+async def get_qr_image(file_name: str):
+    """Serve generated checkout QR image for web chat."""
+    safe_name = Path(file_name).name
+    if safe_name != file_name or not safe_name.lower().endswith(".png"):
+        raise HTTPException(status_code=400, detail="Invalid QR file name")
+
+    file_path = (QR_DIR / safe_name).resolve()
+    if not str(file_path).startswith(str(QR_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid QR file path")
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="QR image not found")
+
+    return FileResponse(path=file_path, media_type="image/png")

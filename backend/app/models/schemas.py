@@ -1,7 +1,7 @@
 """
 Pydantic models for the restaurant order bot
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from enum import Enum
 
@@ -67,18 +67,18 @@ class UserSession(BaseModel):
     user_name: Optional[str] = None
     state: ConversationState = ConversationState.IDLE
     current_location: Optional[str] = None
-    search_results: list = []
+    search_results: list = Field(default_factory=list)
     selected_restaurant_id: Optional[str] = None
     selected_restaurant_name: Optional[str] = None
-    cart: List[CartItem] = []
+    cart: List[CartItem] = Field(default_factory=list)
     pending_address: Optional[str] = None
     current_order_id: Optional[str] = None
-    conversation_history: list = []
+    conversation_history: list = Field(default_factory=list)
     last_bot_message: Optional[str] = None
-    menu_items_map: dict = {}  # maps number -> menu item for quick selection
+    menu_items_map: dict = Field(default_factory=dict)  # maps number -> menu item for quick selection
     # ── Zomato address resolution ──────────────────────────────────────────────
     address_id: Optional[str] = None        # Zomato address_id for MCP calls
-    saved_addresses: List[dict] = []        # from get_saved_addresses_for_user
+    saved_addresses: List[dict] = Field(default_factory=list)        # from get_saved_addresses_for_user
     # ── Zomato cart/order ─────────────────────────────────────────────────────
     zomato_cart_id: Optional[str] = None    # from create_cart response
     payment_type: Optional[str] = None      # 'upi_qr' or 'pay_later'
@@ -86,7 +86,7 @@ class UserSession(BaseModel):
     preferred_cuisine: Optional[str] = None  # e.g. "biryani", "pizza"
     budget: Optional[int] = None             # e.g. 300 (rupees)
     veg_preference: Optional[bool] = None   # True=veg, False=non-veg, None=any
-    past_orders: List[dict] = []            # lightweight order summaries for personalisation
+    past_orders: List[dict] = Field(default_factory=list)            # lightweight order summaries for personalisation
 
 
 class SearchFilters(BaseModel):

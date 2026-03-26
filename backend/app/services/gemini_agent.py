@@ -695,6 +695,13 @@ class GeminiAgent:
             return False
         if any(ch.isdigit() for ch in text):
             return False
+        non_location_replies = {
+            "yes", "yeah", "yep", "y", "ok", "okay", "sure", "confirm", "go ahead",
+            "no", "nope", "nah", "n", "cancel", "stop",
+            "hi", "hello", "hey", "thanks", "thank you",
+        }
+        if text in non_location_replies:
+            return False
 
         # If it contains action words, it's not a pure location update
         action_words = (
@@ -1845,8 +1852,6 @@ class GeminiAgent:
                     raise Exception(mcp_error_msg)
                 if extracted:
                     session_service.set_search_results(user_id, extracted)
-                    session_service.set_selected_restaurant(user_id, extracted[0]["id"])
-                    session.selected_restaurant_name = extracted[0].get("name", "")
                     bot_reply = self._format_restaurant_list(
                         extracted, keyword, session.current_location, effective_veg, effective_budget
                     )
@@ -1969,7 +1974,6 @@ class GeminiAgent:
                                     extracted = self._extract_restaurants_from_tool_result(result)
                                     if extracted:
                                         session_service.set_search_results(user_id, extracted)
-                                        session_service.set_selected_restaurant(user_id, extracted[0]["id"])
                                         thinking_steps.append(f"📌 Stored {len(extracted)} restaurants for quick follow-up")
                             except Exception as tool_err:
                                 logger.error("Tool %s failed: %s", name, tool_err)

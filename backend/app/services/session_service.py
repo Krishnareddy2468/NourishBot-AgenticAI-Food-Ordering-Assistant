@@ -30,12 +30,57 @@ class SessionService:
                     for session_data in data:
                         try:
                             session = UserSession(**session_data)
+                            self._sanitize_session(session)
                             self._sessions[session.user_id] = session
                         except Exception as e:
                             logger.warning("Skipping invalid session: %s", e)
                 logger.info("Loaded %d sessions from file", len(self._sessions))
         except Exception as e:
             logger.error("Error loading sessions: %s", e)
+
+    def _looks_like_invalid_location(self, location: str | None) -> bool:
+        text = (location or "").strip().lower()
+        if not text:
+            return False
+        if text.startswith("lat="):
+            return False
+        comma_parts = [part.strip() for part in text.split(",") if part.strip()]
+        if "," in text and len(comma_parts) >= 2:
+            if all(part not in {"is the address", "the address", "address"} for part in comma_parts):
+                return False
+        food_markers = {
+            "biryani", "pizza", "burger", "fries", "fried", "chicken", "butter",
+            "garlic", "tandoori", "wrap", "sandwich", "popcorn", "dum", "dumb",
+            "meal", "momo", "noodles", "pasta", "shawarma", "roll", "bucket",
+            "eat", "hungry", "food",
+        }
+        order_markers = {
+            "order", "one", "two", "three", "quantity", "person", "for one",
+            "address", "location", "restaurant", "restaurants", "menu",
+        }
+        words = {w for w in text.replace("-", " ").split() if w}
+        return bool(words & food_markers) and bool(words & order_markers or " and " in text)
+
+    def _sanitize_session(self, session: UserSession):
+        if not self._looks_like_invalid_location(session.current_location):
+            return
+        logger.warning(
+            "Clearing suspicious saved location for user %s: %s",
+            session.user_id,
+            session.current_location,
+        )
+        session.current_location = None
+        session.address_id = None
+        session.search_results = []
+        session.selected_restaurant_id = None
+        session.selected_restaurant_name = None
+        session.menu_items_map = {}
+        if session.state in {
+            ConversationState.SEARCHING,
+            ConversationState.BROWSING_MENU,
+            ConversationState.ORDERING,
+        }:
+            session.state = ConversationState.IDLE
 
     def _save_sessions(self):
         """Save sessions to file"""
@@ -58,6 +103,7 @@ class SessionService:
         else:
             if user_name:
                 self._sessions[user_id].user_name = user_name
+        self._sanitize_session(self._sessions[user_id])
         return self._sessions[user_id]
 
     def update_state(self, user_id: str, state: ConversationState):
@@ -70,11 +116,29 @@ class SessionService:
         """Store search results in session"""
         session = self.get_session(user_id)
         session.search_results = results
+        session.selected_restaurant_id = None
+        session.selected_restaurant_name = None
+        session.menu_items_map = {}
+        if results:
+            session.state = ConversationState.SEARCHING
 
     def set_selected_restaurant(self, user_id: str, restaurant_id: str):
         """Set the selected restaurant"""
         session = self.get_session(user_id)
         session.selected_restaurant_id = restaurant_id
+
+    def reset_browsing_context(self, user_id: str):
+        """Clear restaurant/menu/cart state while keeping user identity and location."""
+        session = self.get_session(user_id)
+        session.search_results = []
+        session.selected_restaurant_id = None
+        session.selected_restaurant_name = None
+        session.menu_items_map = {}
+        session.cart = []
+        session.zomato_cart_id = None
+        session.payment_type = None
+        if session.state != ConversationState.IDLE:
+            session.state = ConversationState.IDLE
 
     def add_to_cart(self, user_id: str, item: CartItem):
         """Add an item to the cart"""
@@ -169,13 +233,38 @@ class SessionService:
         session = self.get_session(user_id)
         session.address_id = address_id
 
+    def apply_location_change(self, user_id: str, location: str):
+        """Update location and clear state that depends on the previous area/address."""
+        session = self.get_session(user_id)
+        session.current_location = location
+        session.address_id = None
+        session.search_results = []
+        session.selected_restaurant_id = None
+        session.selected_restaurant_name = None
+        session.menu_items_map = {}
+        session.cart = []
+        session.zomato_cart_id = None
+        session.payment_type = None
+        if session.state != ConversationState.IDLE:
+            session.state = ConversationState.IDLE
+        logger.info("Applied location change for user %s -> %s", user_id, location)
+
+    def set_delivery_context(self, user_id: str, location: str, address_id: str | None = None):
+        """Update delivery location/address while preserving active order flow and cart."""
+        session = self.get_session(user_id)
+        session.current_location = location
+        session.address_id = address_id
+        logger.info("Updated delivery context for user %s -> %s", user_id, location)
+
     def reset_session(self, user_id: str):
         """Reset session to initial state (keep user info and past orders)"""
         session = self.get_session(user_id)
         past = session.past_orders  # preserve across resets
         saved = session.saved_addresses  # preserve fetched addresses
-        addr_id = session.address_id    # preserve resolved address_id
+        user_name = session.user_name
         session.state = ConversationState.IDLE
+        session.user_name = user_name
+        session.current_location = None
         session.search_results = []
         session.selected_restaurant_id = None
         session.selected_restaurant_name = None
@@ -190,7 +279,7 @@ class SessionService:
         session.veg_preference = None
         session.past_orders = past
         session.saved_addresses = saved
-        session.address_id = addr_id
+        session.address_id = None
         session.zomato_cart_id = None
         session.payment_type = None
         logger.info(f"Session reset for user: {user_id}")

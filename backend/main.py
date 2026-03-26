@@ -5,12 +5,13 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # need to load env vars before importing our modules since they read API keys on init
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.chat import router as chat_router
-from app.routes.restaurants import router as restaurant_router
+from app.config import app_config
 from app.services.telegram_bot import telegram_bot
 
 logging.basicConfig(
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI Restaurant Order Bot",
-    description="AI-powered restaurant order automation - Telegram & Web Chat",
+    description="AI-powered restaurant order automation - Telegram-first backend",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -48,8 +49,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat_router)
-app.include_router(restaurant_router)
+if app_config.enable_web_chat:
+    from app.routes.chat import router as chat_router
+    from app.routes.restaurants import router as restaurant_router
+
+    app.include_router(chat_router)
+    app.include_router(restaurant_router)
 
 
 @app.get("/")
@@ -58,18 +63,38 @@ async def root():
         "service": "AI Restaurant Order Bot",
         "status": "running",
         "version": "1.0.0",
-        "telegram_bot": "connected" if telegram_bot._running else "not_configured",
+        "telegram_bot": {
+            "running": telegram_bot._running,
+            "configured": bool(telegram_bot.token),
+            "last_error": telegram_bot._last_error,
+        },
+        "web_chat_enabled": app_config.enable_web_chat,
         "endpoints": {
-            "chat": "/api/chat/message",
-            "restaurants": "/api/restaurants/",
             "docs": "/docs",
+            **(
+                {
+                    "chat": "/api/chat/message",
+                    "restaurants": "/api/restaurants/",
+                }
+                if app_config.enable_web_chat
+                else {}
+            ),
         },
     }
 
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    telegram_status = "connected" if telegram_bot._running else "degraded"
+    return {
+        "status": "healthy" if telegram_bot._running or not telegram_bot.token else "degraded",
+        "telegram": {
+            "status": telegram_status,
+            "configured": bool(telegram_bot.token),
+            "last_error": telegram_bot._last_error,
+        },
+        "web_chat_enabled": app_config.enable_web_chat,
+    }
 
 
 if __name__ == "__main__":

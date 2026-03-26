@@ -19,3 +19,7 @@ Thumbs.db
 
 # Data (sessions are ephemeral)
 data/sessions.json
+data/qrcodes/
+
+# Local project folders to keep out of git
+Zomatobot/
