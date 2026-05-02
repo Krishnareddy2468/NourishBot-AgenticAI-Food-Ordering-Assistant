@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dzukku — n8n Complete Node-by-Node Configuration</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --orange: #FF6B35;
+    --blue: #004E89;
+    --cyan: #00B4D8;
+    --green: #2DC653;
+    --yellow: #FFB627;
+    --red: #EF476F;
+    --purple: #7B2FBE;
+    --dark: #1A1A2E;
+    --darker: #0F0F1A;
+    --card: rgba(255,255,255,0.03);
+    --border: rgba(255,255,255,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--darker);
+    color: #D0D0D0;
+    line-height: 1.7;
+    padding: 0;
+  }
+
+  .page-break { page-break-after: always; }
+
+  /* COVER */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #0F0F1A 0%, #1A1A2E 40%, #0F3460 100%);
+    text-align: center;
+    padding: 60px 40px;
+    position: relative;
+  }
+
+  .cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 25% 35%, rgba(255,107,53,0.06) 0%, transparent 50%),
+                radial-gradient(circle at 75% 65%, rgba(0,180,216,0.04) 0%, transparent 50%);
+  }
+
+  .cover > * { position: relative; z-index: 1; }
+  .cover h1 { font-size: 64px; font-weight: 900; background: linear-gradient(135deg,#FF6B35,#F7931E); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .cover h2 { font-size: 28px; color: white; margin-top: 20px; font-weight: 700; }
+  .cover h3 { font-size: 18px; color: var(--cyan); margin-top: 8px; font-weight: 400; }
+  .cover-badge { background: var(--orange); color: white; padding: 8px 24px; border-radius: 50px; font-weight: 600; font-size: 14px; margin-top: 30px; display: inline-block; }
+  .cover-info { color: #666; font-size: 13px; margin-top: 30px; }
+
+  /* LAYOUT */
+  .content { max-width: 1100px; margin: 0 auto; padding: 60px 40px; }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+  }
+
+  .section-num {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 20px; color: white; flex-shrink: 0;
+  }
+
+  .section-head h2 { font-size: 28px; font-weight: 800; color: white; }
+
+  .divider { height: 2px; background: linear-gradient(90deg, var(--orange), var(--cyan)); border-radius: 10px; margin: 60px 0; }
+
+  /* NODE CARD */
+  .node {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 30px;
+    overflow: hidden;
+  }
+
+  .node-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .node-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  .node-top h3 { font-size: 18px; font-weight: 700; color: white; flex: 1; }
+
+  .node-tag {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tag-existing { background: rgba(45,198,83,0.15); color: var(--green); }
+  .tag-update { background: rgba(255,107,53,0.15); color: var(--orange); }
+  .tag-new { background: rgba(0,180,216,0.15); color: var(--cyan); }
+
+  .node-body { padding: 24px; }
+
+  .node-type {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .node-type span {
+    background: rgba(255,255,255,0.06);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cyan);
+  }
+
+  /* CONFIG TABLE */
+  table.cfg {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  table.cfg th {
+    text-align: left;
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.04);
+    color: var(--cyan);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  table.cfg td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  table.cfg td:first-child {
+    font-weight: 600;
+    color: white;
+    width: 220px;
+    white-space: nowrap;
+  }
+
+  table.cfg code {
+    background: rgba(255,107,53,0.1);
+    color: var(--orange);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+
+  /* CODE */
+  .code {
+    background: #0D1117;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #E6EDF3;
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+
+  .code .kw { color: #FF7B72; }
+  .code .str { color: #A5D6FF; }
+  .code .fn { color: #D2A8FF; }
+  .code .cm { color: #8B949E; }
+  .code .num { color: #79C0FF; }
+
+  /* CONNECTION */
+  .connection {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+    padding: 14px 20px;
+    background: rgba(45,198,83,0.05);
+    border: 1px solid rgba(45,198,83,0.15);
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .connection .arrow {
+    color: var(--green);
+    font-weight: 700;
+    font-size: 16px;
+  }
+
+  .conn-from { color: var(--orange); font-weight: 600; }
+  .conn-to { color: var(--cyan); font-weight: 600; }
+  .conn-label { color: #888; font-size: 12px; }
+
+  /* FLOW DIAGRAM */
+  .flow {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px;
+    margin: 24px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--cyan);
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  /* WARNING */
+  .warn {
+    background: rgba(255,182,39,0.08);
+    border-left: 4px solid var(--yellow);
+    padding: 14px 20px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    font-size: 14px;
+    color: var(--yellow);
+  }
+
+  .info {
+    background: rgba(0,180,216,0.08);
+    border-left: 4px solid var(--cyan);
+    padding: 14px 20px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    font-size: 14px;
+    color: var(--cyan);
+  }
+
+  .success {
+    background: rgba(45,198,83,0.08);
+    border-left: 4px solid var(--green);
+    padding: 14px 20px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    font-size: 14px;
+    color: var(--green);
+  }
+
+  /* BADGE ROW */
+  .node-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 13px;
+    color: white;
+    margin-right: 4px;
+  }
+
+  h4 {
+    color: white;
+    font-size: 16px;
+    margin: 24px 0 12px;
+    font-weight: 700;
+  }
+
+  p { margin-bottom: 12px; }
+
+  @media print {
+    body { background: white; color: #222; }
+    .cover { background: white; }
+    .cover h1 { -webkit-text-fill-color: var(--orange); }
+    .cover h2, .section-head h2, .node-top h3, table.cfg td:first-child, h4 { color: #111; }
+    .node { border: 1px solid #ddd; }
+    .code { background: #f5f5f5; color: #222; }
+    .flow { background: #f5f5f5; color: var(--blue); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== COVER ========== -->
+<div class="cover">
+  <h1>🍽️ DZUKKU</h1>
+  <h2>n8n Complete Node-by-Node Configuration</h2>
+  <h3>Every node • Every field • Every connection</h3>
+  <div class="cover-badge">v2.0 — April 2026</div>
+  <div class="cover-info">
+    Total Nodes: 18 (11 existing + 7 new)<br>
+    Features: Location Services • MCP Platform Router • Nearby Restaurants
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ========== FLOW OVERVIEW ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--orange), var(--yellow));">0</div>
+    <h2>Complete Flow Overview</h2>
+  </div>
+
+  <div class="flow">
+                                    COMPLETE DZUKKU n8n FLOW
+                                    ========================
+
+NODE 1                NODE 2                  NODE 3                NODE 4
+┌──────────────┐    ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐
+│   Telegram   │───→│  Check Text     │─T─→│  Load Session    │───→│  Session State      │
+│   Trigger    │    │  Exists         │    │  State           │    │  Router             │
+└──────────────┘    └────────┬────────┘    └──────────────────┘    └──────────┬──────────┘
+                             │ F                                              │
+                    ┌────────▼────────┐                              ┌────────▼────────┐
+                    │  Non-Text Reply │                              │ state="" / "new" │──→ NODE 5a
+                    └────────┬────────┘                              │ state="awaiting_ │──→ NODE 5b
+                    ┌────────▼────────┐                              │      platform"   │
+                    │  Send Non-Text  │                              │ state="awaiting_ │──→ NODE 6
+                    │  Reply          │                              │      location"   │     (skip AI)
+                    └─────────────────┘                              │ default          │──→ NODE 6
+                                                                    └──────────────────┘
+
+NODE 5a                                NODE 5b
+┌────────────────────┐               ┌──────────────────────┐
+│ Send Platform      │               │ Handle Platform      │
+│ Choice (Telegram)  │               │ Selection (Code)     │
+│ Dzukku/Swiggy/     │               └──────────┬───────────┘
+│ Zomato buttons     │                          │
+└────────┬───────────┘               ┌──────────▼───────────┐
+         │                           │ Platform Switch       │
+    Save state =                     │ "dzukku" → NODE 6    │
+    "awaiting_platform"              │ "swiggy" → NODE 5c   │
+                                     │ "zomato" → NODE 5d   │
+                                     └──────────────────────┘
+
+NODE 5c                              NODE 5d
+┌────────────────────┐              ┌────────────────────┐
+│ Redirect Swiggy    │              │ Redirect Zomato    │
+│ (Telegram msg)     │              │ (Telegram msg)     │
+└────────────────────┘              └────────────────────┘
+
+NODE 6                  NODE 7                NODE 8
+┌──────────────────┐    ┌──────────────┐    ┌──────────────────┐
+│  Normalize Input │───→│   AI Agent   │───→│  Save Session    │
+│  (Set node)      │    │  + Gemini    │    │  State           │
+└──────────────────┘    │  + Memory    │    └───────┬──────────┘
+                        │  + Menu Tool │            │
+                        │  + Parser    │    ┌───────▼──────────┐
+                        └──────────────┘    │     Switch       │ NODE 9
+                                            │  (4 routes)      │
+                                            └──┬───┬───┬───┬───┘
+                                               │   │   │   │
+                          Route 0 ─────────────┘   │   │   └──── Fallback
+                          [REQUEST_LOCATION]        │   │         │
+                          │                         │   │         │
+                    ┌─────▼──────────┐             │   │   ┌─────▼──────────┐
+NODE 10             │ Save state =   │             │   │   │ Prepare Final  │ NODE 14
+                    │ awaiting_loc   │             │   │   │ Reply          │
+                    └─────┬──────────┘             │   │   └─────┬──────────┘
+                    ┌─────▼──────────┐             │   │   ┌─────▼──────────┐
+NODE 11             │ Send Location  │             │   │   │ Send Telegram  │ NODE 15
+                    │ Button         │             │   │   │ Reply          │
+                    └────────────────┘             │   │   └────────────────┘
+                                                   │   │
+                          Route 1 ─────────────────┘   └──── Route 2
+                          [FIND_RESTAURANTS]               state="completed"
+                          │                                    │
+                    ┌─────▼──────────┐              ┌──────────▼─────────┐
+NODE 12             │ Google Places  │              │      Orders        │ NODE 16
+                    │ API (HTTP)     │              │  (Google Sheet)    │
+                    └─────┬──────────┘              └──────────┬─────────┘
+                    ┌─────▼──────────┐                         │
+NODE 13             │ Format         │              ┌──────────▼─────────┐
+                    │ Restaurants    │              │ Prepare Final Reply│
+                    │ (Code)         │              └──────────┬─────────┘
+                    └─────┬──────────┘              ┌──────────▼─────────┐
+                    ┌─────▼──────────┐              │ Send Telegram Reply│
+NODE 14b            │ Send Restaurant│              └────────────────────┘
+                    │ List (Telegram)│
+                    └────────────────┘
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== NODE 1: TELEGRAM TRIGGER ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: var(--blue);">1</div>
+    <h2>Existing Nodes (Keep As-Is or Update)</h2>
+  </div>
+
+  <!-- NODE 1 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,136,204,0.15);">📱</div>
+      <h3><span class="node-num" style="background: var(--blue);">1</span> Telegram Trigger</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram Trigger</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Credential</td><td>Telegram account (your bot token)</td></tr>
+        <tr><td>Updates</td><td><code>message</code></td></tr>
+      </table>
+      <div class="connection">
+        <span class="conn-from">Telegram Trigger</span>
+        <span class="arrow">→</span>
+        <span class="conn-to">Check Text Exists</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 2 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">🔀</div>
+      <h3><span class="node-num" style="background: var(--green);">2</span> Check Text Exists</h3>
+      <span class="node-tag tag-update">Updated</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>If</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Condition 1</td><td><code>{{ $json.message.text }}</code> → <b>is not empty</b></td></tr>
+        <tr><td>Combinator</td><td>OR</td></tr>
+        <tr><td>Condition 2</td><td><code>{{ $json.message.location.latitude }}</code> → <b>is not empty</b></td></tr>
+        <tr><td>Convert types</td><td>✅ ON</td></tr>
+      </table>
+      <div class="warn">⚠️ Changed from original. Added OR condition for location.latitude so location messages pass through to the True branch instead of False.</div>
+      <div class="connection">
+        <span class="conn-from">True branch</span> <span class="arrow">→</span> <span class="conn-to">Load Session State</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">False branch</span> <span class="arrow">→</span> <span class="conn-to">Non-Text Reply</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 3 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">📊</div>
+      <h3><span class="node-num" style="background: var(--green);">3</span> Load Session State</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Read</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Operation</td><td>Read rows</td></tr>
+        <tr><td>Document</td><td>Your Dzukku session Google Sheet</td></tr>
+        <tr><td>Sheet</td><td>Sessions</td></tr>
+        <tr><td>Filter</td><td>chat_id = <code>{{ $json.message.chat.id }}</code></td></tr>
+      </table>
+      <div class="connection">
+        <span class="conn-from">Load Session State</span> <span class="arrow">→</span> <span class="conn-to">Session State Router</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 4 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(123,47,190,0.15);">🔀</div>
+      <h3><span class="node-num" style="background: var(--purple);">4</span> Session State Router</h3>
+      <span class="node-tag tag-update">Updated — Add New Rules</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Switch — mode: Rules</span></div>
+
+      <h4>Current Rules (keep as-is)</h4>
+      <table class="cfg">
+        <tr><th>Rule</th><th>Condition</th><th>Route to</th></tr>
+        <tr><td>Existing rules</td><td>Your current session routing</td><td>→ Normalize Input</td></tr>
+      </table>
+
+      <h4>Add These New Rules (at the TOP, before existing rules)</h4>
+      <table class="cfg">
+        <tr><th>Rule #</th><th>Condition</th><th>Route to</th></tr>
+        <tr><td>Rule 1 (NEW)</td><td><code>{{ $json.state }}</code> is empty OR equals <code>new</code></td><td>→ <b>Send Platform Choice</b> (Node 5a)</td></tr>
+        <tr><td>Rule 2 (NEW)</td><td><code>{{ $json.state }}</code> equals <code>awaiting_platform</code></td><td>→ <b>Handle Platform Selection</b> (Node 5b)</td></tr>
+        <tr><td>Rule 3 (NEW)</td><td><code>{{ $json.state }}</code> equals <code>awaiting_location</code></td><td>→ <b>Normalize Input</b> (Node 6) — skips greeting</td></tr>
+        <tr><td>Fallback</td><td>Everything else</td><td>→ <b>Normalize Input</b> (Node 6) — existing flow</td></tr>
+      </table>
+
+      <div class="warn">⚠️ The "awaiting_location" rule ensures that when a location message arrives, it goes straight to Normalize Input → AI Agent, avoiding the dual-response problem.</div>
+
+      <div class="connection">
+        <span class="conn-from">Rule 1 (state empty/new)</span> <span class="arrow">→</span> <span class="conn-to">Send Platform Choice (5a)</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Rule 2 (awaiting_platform)</span> <span class="arrow">→</span> <span class="conn-to">Handle Platform Selection (5b)</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Rule 3 (awaiting_location)</span> <span class="arrow">→</span> <span class="conn-to">Normalize Input (6)</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Fallback (default)</span> <span class="arrow">→</span> <span class="conn-to">Normalize Input (6)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== MCP NODES ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--cyan), var(--blue));">2</div>
+    <h2>NEW: MCP Platform Router Nodes</h2>
+  </div>
+
+  <!-- NODE 5a -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,180,216,0.15);">📨</div>
+      <h3><span class="node-num" style="background: var(--cyan);">5a</span> Send Platform Choice</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Credential</td><td>Telegram account</td></tr>
+        <tr><td>Resource</td><td>Message</td></tr>
+        <tr><td>Operation</td><td>Send Message</td></tr>
+        <tr><td>Chat ID</td><td><code>{{ $("Telegram Trigger").item.json.message.chat.id }}</code></td></tr>
+        <tr><td>Text</td><td>👋 Hey! Where would you like to order from today?</td></tr>
+        <tr><td>Reply Markup</td><td>Reply Keyboard</td></tr>
+      </table>
+
+      <h4>Reply Keyboard Configuration</h4>
+      <table class="cfg">
+        <tr><th>Row</th><th>Button Text</th></tr>
+        <tr><td>Row 1, Button 1</td><td>🍽️ Dzukku</td></tr>
+        <tr><td>Row 2, Button 1</td><td>🛵 Swiggy</td></tr>
+        <tr><td>Row 3, Button 1</td><td>🔴 Zomato</td></tr>
+      </table>
+
+      <h4>Reply Keyboard Options</h4>
+      <table class="cfg">
+        <tr><td>Resize Keyboard</td><td>✅ Added</td></tr>
+        <tr><td>One Time Keyboard</td><td>✅ Added</td></tr>
+      </table>
+
+      <div class="connection">
+        <span class="conn-from">Send Platform Choice</span> <span class="arrow">→</span> <span class="conn-to">Save Platform State (5a-save)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 5a-save -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,180,216,0.15);">💾</div>
+      <h3><span class="node-num" style="background: var(--cyan);">5a-s</span> Save Platform State</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Update Row</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Operation</td><td>Append or Update</td></tr>
+        <tr><td>Document</td><td>Your Dzukku session Google Sheet</td></tr>
+        <tr><td>Sheet</td><td>Sessions</td></tr>
+        <tr><td>Matching Column</td><td>chat_id</td></tr>
+        <tr><td>chat_id</td><td><code>{{ $("Telegram Trigger").item.json.message.chat.id }}</code></td></tr>
+        <tr><td>state</td><td><code>awaiting_platform</code></td></tr>
+      </table>
+      <div class="info">ℹ️ This is the END of this branch. When user replies with their choice, a new execution starts and hits the "awaiting_platform" route.</div>
+    </div>
+  </div>
+
+  <!-- NODE 5b -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(123,47,190,0.15);">⚙️</div>
+      <h3><span class="node-num" style="background: var(--purple);">5b</span> Handle Platform Selection</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Code (JavaScript)</span></div>
+      <div class="code"><span class="kw">const</span> text = $(<span class="str">"Telegram Trigger"</span>).item.json.message.text.toLowerCase();
+
+<span class="kw">let</span> platform = <span class="str">'unknown'</span>;
+<span class="kw">if</span> (text.includes(<span class="str">'dzukku'</span>)) platform = <span class="str">'dzukku'</span>;
+<span class="kw">else if</span> (text.includes(<span class="str">'swiggy'</span>)) platform = <span class="str">'swiggy'</span>;
+<span class="kw">else if</span> (text.includes(<span class="str">'zomato'</span>)) platform = <span class="str">'zomato'</span>;
+
+<span class="kw">return</span> [{
+  json: {
+    ...$input.first().json,
+    selectedPlatform: platform,
+    chat_id: $(<span class="str">"Telegram Trigger"</span>).item.json.message.chat.id
+  }
+}];</div>
+
+      <div class="connection">
+        <span class="conn-from">Handle Platform Selection</span> <span class="arrow">→</span> <span class="conn-to">Platform Switch (5b-sw)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 5b-sw -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(123,47,190,0.15);">🔀</div>
+      <h3><span class="node-num" style="background: var(--purple);">5b-sw</span> Platform Switch</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Switch — mode: Rules</span></div>
+      <table class="cfg">
+        <tr><th>Route</th><th>Condition</th><th>Connects to</th></tr>
+        <tr><td>Route 0</td><td><code>{{ $json.selectedPlatform }}</code> equals <code>dzukku</code></td><td>→ <b>Save Dzukku State</b> (5b-save) → <b>Normalize Input</b> (6)</td></tr>
+        <tr><td>Route 1</td><td><code>{{ $json.selectedPlatform }}</code> equals <code>swiggy</code></td><td>→ <b>Redirect Swiggy</b> (5c)</td></tr>
+        <tr><td>Route 2</td><td><code>{{ $json.selectedPlatform }}</code> equals <code>zomato</code></td><td>→ <b>Redirect Zomato</b> (5d)</td></tr>
+        <tr><td>Fallback</td><td>Default</td><td>→ <b>Send Platform Choice</b> (5a) — ask again</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- NODE 5b-save -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">💾</div>
+      <h3><span class="node-num" style="background: var(--green);">5b-s</span> Save Dzukku State</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Update Row</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Operation</td><td>Append or Update</td></tr>
+        <tr><td>Document</td><td>Your Dzukku session Google Sheet</td></tr>
+        <tr><td>Sheet</td><td>Sessions</td></tr>
+        <tr><td>Matching Column</td><td>chat_id</td></tr>
+        <tr><td>chat_id</td><td><code>{{ $json.chat_id }}</code></td></tr>
+        <tr><td>state</td><td><code>greeting</code></td></tr>
+      </table>
+      <div class="connection">
+        <span class="conn-from">Save Dzukku State</span> <span class="arrow">→</span> <span class="conn-to">Normalize Input (6)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 5c -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(239,71,111,0.15);">🛵</div>
+      <h3><span class="node-num" style="background: var(--red);">5c</span> Redirect Swiggy</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Chat ID</td><td><code>{{ $json.chat_id }}</code></td></tr>
+        <tr><td>Text</td><td>Got it! 🛵 Head over to Swiggy:<br>👉 https://www.swiggy.com<br><br>Come back anytime to order from Dzukku! 🍽️❤️</td></tr>
+      </table>
+      <div class="info">ℹ️ End of branch. No further connections.</div>
+    </div>
+  </div>
+
+  <!-- NODE 5d -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(239,71,111,0.15);">🔴</div>
+      <h3><span class="node-num" style="background: var(--red);">5d</span> Redirect Zomato</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Chat ID</td><td><code>{{ $json.chat_id }}</code></td></tr>
+        <tr><td>Text</td><td>Got it! 🔴 Head over to Zomato:<br>👉 https://www.zomato.com<br><br>We'd love to serve you at Dzukku anytime! ❤️</td></tr>
+      </table>
+      <div class="info">ℹ️ End of branch. No further connections.</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== CORE FLOW NODES ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--orange), var(--red));">3</div>
+    <h2>Core Flow Nodes</h2>
+  </div>
+
+  <!-- NODE 6 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(255,107,53,0.15);">✏️</div>
+      <h3><span class="node-num" style="background: var(--orange);">6</span> Normalize Input</h3>
+      <span class="node-tag tag-update">Updated — 2 New Fields</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Set — Manual Mapping</span></div>
+
+      <table class="cfg">
+        <tr><th>Field</th><th>Type</th><th>Value</th></tr>
+        <tr>
+          <td>chat_id</td>
+          <td>Number</td>
+          <td><code>{{ $("Telegram Trigger").item.json.message.chat.id }}</code></td>
+        </tr>
+        <tr>
+          <td>user_text ⚡</td>
+          <td>String</td>
+          <td><code>{{ $("Telegram Trigger").item.json.message.location ? "User shared location: lat " + $("Telegram Trigger").item.json.message.location.latitude + ", lng " + $("Telegram Trigger").item.json.message.location.longitude + ". Find nearby restaurants." : $("Telegram Trigger").item.json.message.text || "" }}</code></td>
+        </tr>
+        <tr>
+          <td>user_name</td>
+          <td>String</td>
+          <td><code>{{ $("Telegram Trigger").item.json.message.from.first_name || "" }}</code></td>
+        </tr>
+        <tr>
+          <td>session_state</td>
+          <td>String</td>
+          <td><code>{{ $json.state || "none" }}</code></td>
+        </tr>
+        <tr>
+          <td>session_item</td>
+          <td>String</td>
+          <td><code>{{ $json.item_name || "" }}</code></td>
+        </tr>
+        <tr>
+          <td style="color: var(--cyan);">user_lat 🆕</td>
+          <td>String</td>
+          <td><code>{{ $("Telegram Trigger").item.json.message.location ? $("Telegram Trigger").item.json.message.location.latitude : "" }}</code></td>
+        </tr>
+        <tr>
+          <td style="color: var(--cyan);">user_lng 🆕</td>
+          <td>String</td>
+          <td><code>{{ $("Telegram Trigger").item.json.message.location ? $("Telegram Trigger").item.json.message.location.longitude : "" }}</code></td>
+        </tr>
+      </table>
+
+      <div class="warn">⚠️ user_text now auto-detects location vs text. If location exists, it converts lat/lng to a text prompt for the AI Agent.</div>
+
+      <div class="connection">
+        <span class="conn-from">Normalize Input</span> <span class="arrow">→</span> <span class="conn-to">AI Agent (7)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 7 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(255,107,53,0.15);">🤖</div>
+      <h3><span class="node-num" style="background: var(--orange);">7</span> AI Agent</h3>
+      <span class="node-tag tag-update">Updated — New Prompt</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>AI Agent</span></div>
+
+      <h4>Sub-nodes (attached to AI Agent)</h4>
+      <table class="cfg">
+        <tr><th>Slot</th><th>Node</th><th>Status</th></tr>
+        <tr><td>Model</td><td>Google Gemini Chat Model</td><td>No change</td></tr>
+        <tr><td>Memory</td><td>Conversation Memory</td><td>No change</td></tr>
+        <tr><td>Tool</td><td>Get Menu Tool (Google Sheet read)</td><td>No change</td></tr>
+        <tr><td>Output Parser</td><td>Structured Output Parser</td><td>No change</td></tr>
+      </table>
+
+      <h4>System Prompt (replace entire prompt)</h4>
+      <div class="code"><span class="cm">You are Dzukku — the official AI assistant for Dzukku Restaurant.
+You behave like a warm, witty, and professional restaurant host
+who makes every customer feel like a VIP guest.</span>
+
+========================
+IDENTITY & TONE
+========================
+- Persona: Friendly restaurant host — never robotic, never generic.
+- Tone: Warm, conversational, slightly witty.
+- Brevity: 2–4 lines per response. No walls of text.
+- Language mirroring: Match user's language style (Telugu+English, Hindi+English).
+- Emotional awareness: Read the room. Rushed? Be efficient. Chatty? Be playful.
+
+========================
+CONVERSATION FLOW
+========================
+
+<span class="num">1.</span> GREETING (first interaction only):
+   "Hey there! 👋 Welcome to Dzukku 🍽️ — where every bite hits different ❤️
+   What can I get you today?"
+   Options: 📋 Menu | ⭐ Specials | 🛒 Order | 📅 Reserve | 📍 Find Restaurants
+
+<span class="num">2.</span> MENU BROWSING:
+   - Fetch from menu tool. Group: 🥬 Veg → 🍗 Non-Veg
+   - Flag specials ⭐, mark unavailable items
+   - End: "Anything catching your eye? 😄"
+
+<span class="num">3.</span> ORDERING:
+   Collect: name, phone, items + quantities (ask naturally)
+   On confirm:
+   - Auto-generate Order ID: ORD0001, ORD0002...
+   - Show clean bill table
+   - Set state to: completed
+   - Close: "Thank you for choosing Dzukku 🙏 Enjoy your meal! ❤️"
+
+<span class="num">4.</span> ITEM UNAVAILABLE:
+   "Oops, [item] is off the menu 😔 But try [alt 1] or [alt 2]?"
+
+<span class="num">5.</span> RESERVATIONS:
+   Collect: name, phone, date, time, guests
+   Auto-generate: RSV0001... and Table T1, T2...
+
+<span class="num">6.</span> LOCATION & RESTAURANTS:
+   - User asks to find restaurants/nearby/delivery:
+     → If NO location: reply ONLY with <span class="str">[REQUEST_LOCATION]</span>
+     → If user shared location (lat/lng): reply ONLY with <span class="str">[FIND_RESTAURANTS]</span>
+   - When results arrive, present nicely. NEVER fabricate names.
+
+<span class="num">7.</span> OFF-TOPIC:
+   "I'm a food-only expert 😄 Try me on Menu, Orders, or Reservations!"
+
+========================
+HARD RULES
+========================
+- NEVER ask for Order/Reservation ID — auto-generate
+- NEVER send more than 4 lines (except bill/menu)
+- NEVER confirm without checking menu tool
+- NEVER make up items, prices, or restaurants
+- ALWAYS end with a next step
+- ONLY handle restaurant queries
+- [REQUEST_LOCATION] and [FIND_RESTAURANTS] = ONLY that tag, nothing else</div>
+
+      <div class="connection">
+        <span class="conn-from">AI Agent</span> <span class="arrow">→</span> <span class="conn-to">Save Session State (8)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 8 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">💾</div>
+      <h3><span class="node-num" style="background: var(--green);">8</span> Save Session State</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Append or Update</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Operation</td><td>Append or Update</td></tr>
+        <tr><td>Document</td><td>Your Dzukku session Google Sheet</td></tr>
+        <tr><td>Sheet</td><td>Sessions</td></tr>
+        <tr><td>Matching Column</td><td>chat_id</td></tr>
+        <tr><td>Fields</td><td>state, item_name, quantity, cart_json, total_price, etc. (existing)</td></tr>
+      </table>
+      <div class="connection">
+        <span class="conn-from">Save Session State</span> <span class="arrow">→</span> <span class="conn-to">Switch (9)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 9 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(255,107,53,0.15);">🔀</div>
+      <h3><span class="node-num" style="background: var(--orange);">9</span> Switch</h3>
+      <span class="node-tag tag-update">Updated — 4 Routes</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Switch — mode: Rules</span></div>
+
+      <table class="cfg">
+        <tr><th>Route</th><th>Value</th><th>Operator</th><th>Compare</th><th>Connects to</th></tr>
+        <tr>
+          <td style="color: var(--cyan);">Route 0</td>
+          <td><code>{{ $json.output }}</code></td>
+          <td>contains</td>
+          <td><code>[REQUEST_LOCATION]</code></td>
+          <td>→ Save Awaiting Location (10)</td>
+        </tr>
+        <tr>
+          <td style="color: var(--green);">Route 1</td>
+          <td><code>{{ $json.output }}</code></td>
+          <td>contains</td>
+          <td><code>[FIND_RESTAURANTS]</code></td>
+          <td>→ Google Places API (12)</td>
+        </tr>
+        <tr>
+          <td style="color: var(--yellow);">Route 2</td>
+          <td><code>{{ $json.state }}</code></td>
+          <td>equals</td>
+          <td><code>completed</code></td>
+          <td>→ Orders (16)</td>
+        </tr>
+        <tr>
+          <td style="color: #888;">Fallback</td>
+          <td colspan="3">Fallback Output = <b>Extra Output</b> (set in dropdown)</td>
+          <td>→ Prepare Final Reply (14)</td>
+        </tr>
+      </table>
+
+      <div class="warn">⚠️ Make sure Fallback Output is set to "Extra Output" (not "None"). This is in the Parameters tab at the bottom.</div>
+
+      <div class="connection">
+        <span class="conn-from">Route 0</span> <span class="arrow">→</span> <span class="conn-to">Save Awaiting Location (10)</span>
+        <span class="conn-label">[REQUEST_LOCATION]</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Route 1</span> <span class="arrow">→</span> <span class="conn-to">Google Places API (12)</span>
+        <span class="conn-label">[FIND_RESTAURANTS]</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Route 2</span> <span class="arrow">→</span> <span class="conn-to">Orders (16)</span>
+        <span class="conn-label">state=completed</span>
+      </div>
+      <div class="connection">
+        <span class="conn-from">Fallback</span> <span class="arrow">→</span> <span class="conn-to">Prepare Final Reply (14)</span>
+        <span class="conn-label">normal replies</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== LOCATION NODES ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--green), var(--cyan));">4</div>
+    <h2>Location Service Nodes</h2>
+  </div>
+
+  <!-- NODE 10 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">💾</div>
+      <h3><span class="node-num" style="background: var(--green);">10</span> Save Awaiting Location</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Append or Update</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Operation</td><td>Append or Update</td></tr>
+        <tr><td>Document</td><td>Your Dzukku session Google Sheet</td></tr>
+        <tr><td>Sheet</td><td>Sessions</td></tr>
+        <tr><td>Matching Column</td><td>chat_id</td></tr>
+        <tr><td>chat_id</td><td><code>{{ $('Normalize Input').item.json.chat_id }}</code></td></tr>
+        <tr><td>state</td><td><code>awaiting_location</code></td></tr>
+      </table>
+      <div class="success">✅ This fixes the dual-response issue! When location arrives, state=awaiting_location routes directly to Normalize Input, bypassing greeting.</div>
+      <div class="connection">
+        <span class="conn-from">Save Awaiting Location</span> <span class="arrow">→</span> <span class="conn-to">Send Location Button (11)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 11 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,136,204,0.15);">📍</div>
+      <h3><span class="node-num" style="background: var(--blue);">11</span> Send Location Button</h3>
+      <span class="node-tag tag-new">New Node (Your "Send a text message")</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Credential</td><td>Telegram account</td></tr>
+        <tr><td>Resource</td><td>Message</td></tr>
+        <tr><td>Operation</td><td>Send Message</td></tr>
+        <tr><td>Chat ID</td><td><code>{{ $('Normalize Input').item.json.chat_id }}</code></td></tr>
+        <tr><td>Text</td><td>📍 Share your location so I can find restaurants near you!</td></tr>
+        <tr><td>Reply Markup</td><td>Reply Keyboard</td></tr>
+      </table>
+
+      <h4>Reply Keyboard</h4>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Row 1 → Button 1 → Text</td><td>📍 Share My Location</td></tr>
+        <tr><td>Button Additional Fields</td><td>+ Add Field → Request Location = true</td></tr>
+      </table>
+
+      <h4>Reply Keyboard Options (bottom of node)</h4>
+      <table class="cfg">
+        <tr><td>+ Add option → Resize Keyboard</td><td>✅ Added (true by default)</td></tr>
+        <tr><td>+ Add option → One Time Keyboard</td><td>✅ Added (true by default)</td></tr>
+      </table>
+
+      <div class="info">ℹ️ End of branch. Location button appears in Telegram. User taps → sends GPS → new execution starts → state=awaiting_location → routes to Normalize Input.</div>
+    </div>
+  </div>
+
+  <!-- NODE 12 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(255,182,39,0.15);">🌐</div>
+      <h3><span class="node-num" style="background: var(--yellow);">12</span> Google Places API</h3>
+      <span class="node-tag tag-new">New Node (Your "HTTP Request")</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>HTTP Request</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Method</td><td>GET</td></tr>
+        <tr><td>URL</td><td><code>https://maps.googleapis.com/maps/api/place/nearbysearch/json</code></td></tr>
+        <tr><td>Authentication</td><td>None</td></tr>
+        <tr><td>Send Query Parameters</td><td>✅ ON</td></tr>
+      </table>
+
+      <h4>Query Parameters (click "Add Parameter" for each)</h4>
+      <table class="cfg">
+        <tr><th>Parameter Name</th><th>Value</th></tr>
+        <tr><td>location</td><td><code>{{ $('Normalize Input').item.json.user_lat }},{{ $('Normalize Input').item.json.user_lng }}</code></td></tr>
+        <tr><td>radius</td><td><code>5000</code></td></tr>
+        <tr><td>type</td><td><code>restaurant</code></td></tr>
+        <tr><td>opennow</td><td><code>true</code></td></tr>
+        <tr><td>key</td><td><code>YOUR_GOOGLE_MAPS_API_KEY</code></td></tr>
+      </table>
+
+      <div class="warn">⚠️ Replace YOUR_GOOGLE_MAPS_API_KEY with your actual key from Google Cloud Console → Credentials.</div>
+
+      <div class="connection">
+        <span class="conn-from">Google Places API</span> <span class="arrow">→</span> <span class="conn-to">Format Restaurants (13)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 13 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(123,47,190,0.15);">📝</div>
+      <h3><span class="node-num" style="background: var(--purple);">13</span> Format Restaurants</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Code (JavaScript)</span></div>
+      <div class="code"><span class="kw">const</span> places = $input.first().json.results || [];
+<span class="kw">const</span> userLat = <span class="fn">parseFloat</span>($(<span class="str">'Normalize Input'</span>).item.json.user_lat);
+<span class="kw">const</span> userLng = <span class="fn">parseFloat</span>($(<span class="str">'Normalize Input'</span>).item.json.user_lng);
+<span class="kw">const</span> chatId = $(<span class="str">'Normalize Input'</span>).item.json.chat_id;
+
+<span class="kw">function</span> <span class="fn">haversine</span>(lat1, lon1, lat2, lon2) {
+  <span class="kw">const</span> R = <span class="num">6371</span>;
+  <span class="kw">const</span> dLat = (lat2 - lat1) * Math.PI / <span class="num">180</span>;
+  <span class="kw">const</span> dLon = (lon2 - lon1) * Math.PI / <span class="num">180</span>;
+  <span class="kw">const</span> a = Math.sin(dLat/<span class="num">2</span>)**<span class="num">2</span> +
+    Math.cos(lat1 * Math.PI/<span class="num">180</span>) * Math.cos(lat2 * Math.PI/<span class="num">180</span>) *
+    Math.sin(dLon/<span class="num">2</span>)**<span class="num">2</span>;
+  <span class="kw">return</span> R * <span class="num">2</span> * Math.atan2(Math.sqrt(a), Math.sqrt(<span class="num">1</span>-a));
+}
+
+<span class="kw">const</span> top5 = places.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">5</span>).<span class="fn">map</span>((p, i) => {
+  <span class="kw">const</span> dist = <span class="fn">haversine</span>(
+    userLat, userLng,
+    p.geometry.location.lat, p.geometry.location.lng
+  );
+  <span class="kw">const</span> rating = p.rating ? <span class="str">`⭐ ${p.rating}`</span> : <span class="str">''</span>;
+  <span class="kw">const</span> open = p.opening_hours?.open_now ? <span class="str">'🟢 Open'</span> : <span class="str">'🔴 Closed'</span>;
+  <span class="kw">return</span> <span class="str">`${i+1}. *${p.name}*\n   📍 ${dist.toFixed(1)} km | ${rating} | ${open}\n   ${p.vicinity}`</span>;
+});
+
+<span class="kw">const</span> msg = places.length
+  ? <span class="str">`🍽️ *Nearby Restaurants*\n\n${top5.join('\n\n')}\n\n_Reply with a number to pick one!_`</span>
+  : <span class="str">`😕 No restaurants found nearby. Try sharing a different location.`</span>;
+
+<span class="kw">return</span> [{
+  json: {
+    chatId: chatId,
+    formattedMessage: msg
+  }
+}];</div>
+
+      <div class="connection">
+        <span class="conn-from">Format Restaurants</span> <span class="arrow">→</span> <span class="conn-to">Send Restaurant List (14b)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 14b -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,136,204,0.15);">📨</div>
+      <h3><span class="node-num" style="background: var(--blue);">14b</span> Send Restaurant List</h3>
+      <span class="node-tag tag-new">New Node</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <table class="cfg">
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Credential</td><td>Telegram account</td></tr>
+        <tr><td>Resource</td><td>Message</td></tr>
+        <tr><td>Operation</td><td>Send Message</td></tr>
+        <tr><td>Chat ID</td><td><code>{{ $json.chatId }}</code></td></tr>
+        <tr><td>Text</td><td><code>{{ $json.formattedMessage }}</code></td></tr>
+        <tr><td>Parse Mode</td><td>Markdown</td></tr>
+      </table>
+
+      <h4>How to set Parse Mode</h4>
+      <table class="cfg">
+        <tr><td>Click "+ Add Field"</td><td>→ Select "Parse Mode"</td></tr>
+        <tr><td>Set to</td><td><b>Markdown</b></td></tr>
+      </table>
+
+      <div class="info">ℹ️ End of branch. Restaurant list shows in Telegram with bold names, distances, and ratings.</div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== EXISTING FINAL NODES ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--yellow), var(--orange));">5</div>
+    <h2>Existing Final Nodes (No Changes)</h2>
+  </div>
+
+  <!-- NODE 14 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(255,182,39,0.15);">✏️</div>
+      <h3><span class="node-num" style="background: var(--yellow);">14</span> Prepare Final Reply</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Set — Manual Mapping</span></div>
+      <p>Formats the AI Agent output for Telegram. Keep as-is.</p>
+      <div class="connection">
+        <span class="conn-from">Prepare Final Reply</span> <span class="arrow">→</span> <span class="conn-to">Send Telegram Reply (15)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NODE 15 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(0,136,204,0.15);">📨</div>
+      <h3><span class="node-num" style="background: var(--blue);">15</span> Send Telegram Reply</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Telegram — Send Message</span></div>
+      <p>Sends final response to user. Keep as-is.</p>
+    </div>
+  </div>
+
+  <!-- NODE 16 -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(45,198,83,0.15);">📦</div>
+      <h3><span class="node-num" style="background: var(--green);">16</span> Orders</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <div class="node-type">Node Type: <span>Google Sheets — Append or Update</span></div>
+      <p>Saves completed orders. Keep as-is. Connected from Switch Route 2 and then to Prepare Final Reply.</p>
+      <div class="connection">
+        <span class="conn-from">Orders</span> <span class="arrow">→</span> <span class="conn-to">Prepare Final Reply (14)</span> <span class="arrow">→</span> <span class="conn-to">Send Telegram Reply (15)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- NON-TEXT -->
+  <div class="node">
+    <div class="node-top">
+      <div class="node-icon" style="background: rgba(136,136,136,0.15);">🚫</div>
+      <h3>Non-Text Reply → Send Non-Text Reply</h3>
+      <span class="node-tag tag-existing">No Change</span>
+    </div>
+    <div class="node-body">
+      <p>Handles non-text, non-location messages (photos, stickers, etc.). Keep as-is.</p>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== CONNECTION SUMMARY ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--red), var(--purple));">6</div>
+    <h2>Complete Connection Map</h2>
+  </div>
+
+  <p style="margin-bottom: 20px;">Every connection in the workflow, listed in order. Use this as your wiring checklist.</p>
+
+  <table class="cfg" style="background: var(--card); border-radius: 16px; overflow: hidden;">
+    <tr><th>#</th><th>From Node</th><th>Output</th><th>To Node</th></tr>
+    <tr><td>1</td><td><b>Telegram Trigger</b></td><td>Main</td><td>Check Text Exists</td></tr>
+    <tr><td>2</td><td><b>Check Text Exists</b></td><td>True</td><td>Load Session State</td></tr>
+    <tr><td>3</td><td><b>Check Text Exists</b></td><td>False</td><td>Non-Text Reply</td></tr>
+    <tr><td>4</td><td><b>Non-Text Reply</b></td><td>Main</td><td>Send Non-Text Reply</td></tr>
+    <tr><td>5</td><td><b>Load Session State</b></td><td>Main</td><td>Session State Router</td></tr>
+    <tr><td style="color: var(--cyan);">6</td><td style="color: var(--cyan);"><b>Session State Router</b></td><td style="color: var(--cyan);">state="" / "new"</td><td style="color: var(--cyan);">Send Platform Choice (5a) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">7</td><td style="color: var(--cyan);"><b>Send Platform Choice</b></td><td style="color: var(--cyan);">Main</td><td style="color: var(--cyan);">Save Platform State (5a-s) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">8</td><td style="color: var(--cyan);"><b>Session State Router</b></td><td style="color: var(--cyan);">awaiting_platform</td><td style="color: var(--cyan);">Handle Platform Selection (5b) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">9</td><td style="color: var(--cyan);"><b>Handle Platform Selection</b></td><td style="color: var(--cyan);">Main</td><td style="color: var(--cyan);">Platform Switch (5b-sw) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">10</td><td style="color: var(--cyan);"><b>Platform Switch</b></td><td style="color: var(--cyan);">dzukku</td><td style="color: var(--cyan);">Save Dzukku State (5b-s) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">11</td><td style="color: var(--cyan);"><b>Save Dzukku State</b></td><td style="color: var(--cyan);">Main</td><td style="color: var(--cyan);">Normalize Input (6)</td></tr>
+    <tr><td style="color: var(--cyan);">12</td><td style="color: var(--cyan);"><b>Platform Switch</b></td><td style="color: var(--cyan);">swiggy</td><td style="color: var(--cyan);">Redirect Swiggy (5c) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">13</td><td style="color: var(--cyan);"><b>Platform Switch</b></td><td style="color: var(--cyan);">zomato</td><td style="color: var(--cyan);">Redirect Zomato (5d) 🆕</td></tr>
+    <tr><td style="color: var(--cyan);">14</td><td style="color: var(--cyan);"><b>Platform Switch</b></td><td style="color: var(--cyan);">fallback</td><td style="color: var(--cyan);">Send Platform Choice (5a) — ask again</td></tr>
+    <tr><td>15</td><td><b>Session State Router</b></td><td>awaiting_location</td><td>Normalize Input (6)</td></tr>
+    <tr><td>16</td><td><b>Session State Router</b></td><td>Fallback/default</td><td>Normalize Input (6)</td></tr>
+    <tr><td>17</td><td><b>Normalize Input</b></td><td>Main</td><td>AI Agent (7)</td></tr>
+    <tr><td>18</td><td><b>AI Agent</b></td><td>Main</td><td>Save Session State (8)</td></tr>
+    <tr><td>19</td><td><b>Save Session State</b></td><td>Main</td><td>Switch (9)</td></tr>
+    <tr><td style="color: var(--green);">20</td><td style="color: var(--green);"><b>Switch</b></td><td style="color: var(--green);">Route 0 [REQUEST_LOCATION]</td><td style="color: var(--green);">Save Awaiting Location (10) 🆕</td></tr>
+    <tr><td style="color: var(--green);">21</td><td style="color: var(--green);"><b>Save Awaiting Location</b></td><td style="color: var(--green);">Main</td><td style="color: var(--green);">Send Location Button (11)</td></tr>
+    <tr><td style="color: var(--green);">22</td><td style="color: var(--green);"><b>Switch</b></td><td style="color: var(--green);">Route 1 [FIND_RESTAURANTS]</td><td style="color: var(--green);">Google Places API (12)</td></tr>
+    <tr><td style="color: var(--green);">23</td><td style="color: var(--green);"><b>Google Places API</b></td><td style="color: var(--green);">Main</td><td style="color: var(--green);">Format Restaurants (13) 🆕</td></tr>
+    <tr><td style="color: var(--green);">24</td><td style="color: var(--green);"><b>Format Restaurants</b></td><td style="color: var(--green);">Main</td><td style="color: var(--green);">Send Restaurant List (14b) 🆕</td></tr>
+    <tr><td>25</td><td><b>Switch</b></td><td>Route 2 (completed)</td><td>Orders (16)</td></tr>
+    <tr><td>26</td><td><b>Orders</b></td><td>Main</td><td>Prepare Final Reply (14)</td></tr>
+    <tr><td>27</td><td><b>Switch</b></td><td>Fallback</td><td>Prepare Final Reply (14)</td></tr>
+    <tr><td>28</td><td><b>Prepare Final Reply</b></td><td>Main</td><td>Send Telegram Reply (15)</td></tr>
+  </table>
+
+  <div class="success" style="margin-top: 30px;">
+    ✅ <b>Total: 28 connections</b> across 18 nodes (11 existing + 7 new)<br>
+    🆕 New connections shown in color. Existing connections unchanged.
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== WHAT TO DO NOW ========== -->
+<div class="content">
+  <div class="section-head">
+    <div class="section-num" style="background: linear-gradient(135deg, var(--green), var(--yellow));">7</div>
+    <h2>Step-by-Step Build Order</h2>
+  </div>
+
+  <p style="margin-bottom: 20px;">Build in this exact order to avoid breaking existing flow:</p>
+
+  <div class="node-config" style="background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 28px;">
+    <table class="cfg">
+      <tr><th>Step</th><th>Action</th><th>Risk</th></tr>
+      <tr><td style="color: var(--green);">Step 1</td><td>Add <b>Format Restaurants</b> (Code node) after your HTTP Request</td><td>None — new node</td></tr>
+      <tr><td style="color: var(--green);">Step 2</td><td>Add <b>Send Restaurant List</b> (Telegram) after Format Restaurants</td><td>None — new node</td></tr>
+      <tr><td style="color: var(--green);">Step 3</td><td>Wire: HTTP Request → Format Restaurants → Send Restaurant List</td><td>None — new connections</td></tr>
+      <tr><td style="color: var(--yellow);">Step 4</td><td>Add <b>Save Awaiting Location</b> (Google Sheet) between Switch Route 0 and Send Location Button</td><td>Low — insert between existing</td></tr>
+      <tr><td style="color: var(--yellow);">Step 5</td><td>Test location flow end-to-end (from phone)</td><td>—</td></tr>
+      <tr><td style="color: var(--orange);">Step 6</td><td>Add MCP nodes: Send Platform Choice, Save Platform State</td><td>Medium — new routes</td></tr>
+      <tr><td style="color: var(--orange);">Step 7</td><td>Add Handle Platform Selection + Platform Switch</td><td>Medium — new routes</td></tr>
+      <tr><td style="color: var(--orange);">Step 8</td><td>Add Redirect Swiggy + Redirect Zomato</td><td>Low — new nodes</td></tr>
+      <tr><td style="color: var(--orange);">Step 9</td><td>Update Session State Router with new rules</td><td>Medium — changes routing</td></tr>
+      <tr><td style="color: var(--red);">Step 10</td><td>Test full flow: new user → platform choice → Dzukku → order → location</td><td>—</td></tr>
+    </table>
+  </div>
+
+  <div class="warn" style="margin-top: 20px;">
+    ⚠️ <b>Important:</b> Before Step 6-9 (MCP), make sure Steps 1-5 (Location) are working perfectly. Don't build both at the same time.
+  </div>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="content" style="text-align: center; padding: 60px 40px;">
+  <div style="font-size: 48px;">🍽️</div>
+  <div style="font-size: 28px; font-weight: 800; color: white; margin-top: 16px;">Dzukku n8n Configuration Complete</div>
+  <div style="color: var(--orange); margin-top: 8px;">18 nodes • 28 connections • 4 routes</div>
+  <div style="color: #666; font-size: 13px; margin-top: 24px;">
+    To export as PDF: Open in browser → Cmd + P → Save as PDF<br>
+    Confidential — Dzukku Engineering — April 2026
+  </div>
+</div>
+
+</body>
+</html>

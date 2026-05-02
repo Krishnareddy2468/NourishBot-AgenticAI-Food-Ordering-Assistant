@@ -1,0 +1,11 @@
+Item No,Item Name,Description,Type,Price,Availability,Category
+M101,Paneer Butter Masala,Creamy tomato gravy paneer,Veg,120,Yes,Main Course
+M102,Veg Biryani,Mixed vegetable rice dish,Veg,200,Yes,Main Course
+M103,Masala Dosa,South Indian crispy dosa,Veg,50,Yes,Main Course
+M104,Chicken Biryani,Spicy chicken rice,Non-Veg,250,Yes,Main Course
+M105,Butter Chicken,Creamy chicken curry,Non-Veg,150,Yes,Main Course
+M106,Fish Fry,Deep fried spicy fish,Non-Veg,300,Yes,Main Course
+M107,Dal Tadka,Yellow dal with spices,Veg,50,Yes,Main Course
+M108,Egg Curry,Boiled egg masala curry,Non-Veg,30,Yes,Main Course
+M109,Veg Noodles,Stir-fried noodles,Veg,90,Yes,Main Course
+M110,Chicken Noodles,Chicken stir-fried noodles,Non-Veg,100,Yes,Main Course

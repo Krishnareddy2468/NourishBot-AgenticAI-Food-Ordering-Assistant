@@ -1,0 +1,57 @@
+# Dzukku Bot — docker-compose
+# ============================
+# Two service profiles:
+#
+#   docker compose --profile cloud up -d
+#       Cloud-friendly default. MCP_ENABLED=false. Telegram users who pick
+#       Zomato/Swiggy get redirect links to the apps. Each user orders on
+#       their own Zomato/Swiggy account. No vendor whitelist needed.
+#
+#   docker compose --profile mcp up -d
+#       Local/demo / single-tenant deployment. MCP_ENABLED=true. The
+#       container mounts ~/.mcp-auth (the OAuth token cache) read-only so
+#       mcp-remote can talk to Zomato/Swiggy as the bot owner. Every
+#       Telegram user's order goes to YOUR Zomato/Swiggy account.
+#
+# Before either profile, copy .env.example to .env and fill in:
+#   TELEGRAM_TOKEN, GEMINI_API_KEY  (required)
+# For the mcp profile only, run ONCE on this host:
+#   npx -y mcp-remote https://mcp-server.zomato.com/mcp
+#   npx -y mcp-remote https://mcp.swiggy.com/food
+# That populates ~/.mcp-auth which the mcp profile mounts.
+
+services:
+  bot:
+    build: .
+    image: dzukku-bot:latest
+    profiles: ["cloud"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MCP_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - bot_logs:/app/logs
+
+  bot-mcp:
+    build: .
+    image: dzukku-bot:latest
+    profiles: ["mcp"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MCP_ENABLED: "true"
+      MCP_AUTH_DIR: "/run/mcp-auth"
+    ports:
+      - "8000:8000"
+    volumes:
+      - bot_logs:/app/logs
+      # Mount the bot owner's local mcp-remote token cache, read-only.
+      # On Linux/macOS this lives at ~/.mcp-auth. On a managed cloud
+      # deployment, swap this for a platform secret or a separately
+      # mounted secret volume populated from `scripts/export_mcp_auth.sh`.
+      - ${MCP_AUTH_HOST_DIR:-${HOME}/.mcp-auth}:/run/mcp-auth:ro
+
+volumes:
+  bot_logs:

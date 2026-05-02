@@ -1,0 +1,27 @@
+{
+  "restaurant": {
+    "name": "Dzukku",
+    "location": "Your Address Here",
+    "phone": "+91XXXXXXXXXX",
+    "hours": "11:00 AM - 11:00 PM, Mon-Sun",
+    "cuisine": "South Indian / Naga Cuisine"
+  },
+  "menu": [
+    {
+      "category": "Starters",
+      "items": [
+        { "name": "Chicken Smoked", "price": 280, "description": "Smoked chicken with Naga spices", "veg": false },
+        { "name": "Veg Momos", "price": 120, "description": "Steamed dumplings with chutney", "veg": true }
+      ]
+    },
+    {
+      "category": "Main Course",
+      "items": [
+        { "name": "Dzukku Special Thali", "price": 350, "description": "Full meal with rice, dal, 3 curries", "veg": false }
+      ]
+    }
+  ],
+  "specials": "Wednesday special: Buy 1 Get 1 on Momos",
+  "delivery": "Available via Swiggy and Zomato",
+  "reservations": "Call +91XXXXXXXXXX or WhatsApp us"
+}
