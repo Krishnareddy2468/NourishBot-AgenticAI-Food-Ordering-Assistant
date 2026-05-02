@@ -1,0 +1,41 @@
+# VCS / IDE
+.git
+.gitignore
+.qodo
+.vscode
+.idea
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+.pytest_cache
+.mypy_cache
+.ruff_cache
+env
+venv
+.venv
+
+# Local secrets / runtime
+.env
+*.local
+storage/
+logs/
+*.log
+*.sqlite
+*.db
+config/credentials.json
+
+# Local mcp-remote token cache (must be mounted as a secret, never baked in)
+.mcp-auth
+mcp-auth-export.tar.gz
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Docs / scratch
+docs/
+*.md
+!requirements.txt

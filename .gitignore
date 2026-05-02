@@ -1,0 +1,68 @@
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Editors / IDE ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.qodo/
+*.swp
+*.swo
+*~
+
+# ── Factory AI ───────────────────────────────────────────────────────────────
+.factory/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+*.local
+*.whl
+
+# ── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+config/credentials.json
+DzukkuBot/config/credentials.json
+*.pem
+*.key
+
+# ── Node / Frontend ─────────────────────────────────────────────────────────
+node_modules/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Database / Storage ───────────────────────────────────────────────────────
+*.db
+*.sqlite3
+storage/uploads/
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Coverage / Test ──────────────────────────────────────────────────────────
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+
+# ── Misc ────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
