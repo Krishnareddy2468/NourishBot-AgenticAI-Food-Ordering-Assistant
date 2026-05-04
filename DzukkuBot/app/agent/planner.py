@@ -212,6 +212,26 @@ Kitchen load  : {ctx.kitchen_load} orders in prep
 Respond with ONLY the JSON object, no markdown, no explanation."""
 
 
+def _build_minimal_prompt(message: str, ctx: ContextSnapshot) -> str:
+    """Stripped-down prompt used as retry when the full prompt causes parse errors."""
+    cart_text = ctx.cart_summary or "(empty)"
+    known = []
+    if ctx.customer_name:  known.append(f"name={ctx.customer_name}")
+    if ctx.customer_phone: known.append(f"phone={ctx.customer_phone}")
+    return f"""You are a restaurant order assistant planner. Output ONLY a JSON object.
+
+Customer message: {message}
+Cart: {cart_text}
+Known: {', '.join(known) or 'nothing'}
+Restaurant: {"OPEN" if ctx.is_open else "CLOSED"}
+
+Output this exact JSON (fill in values):
+{{"goal":"ORDER_ONLINE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"get_menu","args":{{}}}}],"user_intent_summary":"","requires_confirmation":false}}
+
+Valid goals: ORDER_ONLINE DINE_IN TAKEAWAY RESERVATION TRACK_ORDER CANCEL_ORDER SUPPORT MENU_BROWSE
+Return ONLY the JSON, nothing else."""
+
+
 def _state_hint(state: BotState, ctx: ContextSnapshot) -> str:
     """Inject state-specific rule as an extra hint line."""
     hints = {
@@ -260,37 +280,43 @@ class Planner:
     @classmethod
     async def plan(cls, message: str, ctx: ContextSnapshot) -> PlannerOutput:
         """Call Gemini in JSON mode and return a validated PlannerOutput."""
-        prompt = _build_planner_prompt(message, ctx)
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: cls._get_model().generate_content(prompt),
+        import asyncio
+        loop = asyncio.get_running_loop()
+
+        for attempt in range(2):
+            prompt = (
+                _build_planner_prompt(message, ctx)
+                if attempt == 0
+                else _build_minimal_prompt(message, ctx)
             )
-            raw = response.text.strip()
-            # Strip markdown code fences if model adds them
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            raw = raw.strip()
-            # Attempt to parse; if truncated, try closing any open object
             try:
+                response = await loop.run_in_executor(
+                    None,
+                    lambda p=prompt: cls._get_model().generate_content(p),
+                )
+                raw = (response.text or "").strip()
+                # Strip markdown code fences if model adds them
+                if raw.startswith("```"):
+                    raw = raw.split("```")[1]
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                raw = raw.strip()
                 data = json.loads(raw)
-            except json.JSONDecodeError:
-                # If response was truncated, close the JSON object and retry
-                closed = raw.rstrip().rstrip(",") + "}"
-                data = json.loads(closed)
-            out = PlannerOutput.from_dict(data)
-            logger.info(
-                "Planner[chat=%s] goal=%s actions=%d intent=%r",
-                ctx.chat_id, out.goal, len(out.proposed_actions), out.user_intent_summary,
-            )
-            return out
-        except json.JSONDecodeError as e:
-            logger.warning("Planner JSON parse error (chat=%s): %s", ctx.chat_id, e)
-            return PlannerOutput.fallback(f"json_parse_error: {e}")
-        except Exception as e:
-            logger.error("Planner call failed (chat=%s): %s", ctx.chat_id, e, exc_info=True)
-            return PlannerOutput.fallback(str(e))
+                out = PlannerOutput.from_dict(data)
+                logger.info(
+                    "Planner[chat=%s] goal=%s actions=%d intent=%r",
+                    ctx.chat_id, out.goal, len(out.proposed_actions), out.user_intent_summary,
+                )
+                return out
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    "Planner JSON parse error attempt=%d (chat=%s): %s | raw=%r",
+                    attempt + 1, ctx.chat_id, e, (raw or "")[:120],
+                )
+                if attempt == 1:
+                    return PlannerOutput.fallback(f"json_parse_error: {e}")
+            except Exception as e:
+                logger.error("Planner call failed (chat=%s): %s", ctx.chat_id, e, exc_info=True)
+                return PlannerOutput.fallback(str(e))
+
+        return PlannerOutput.fallback("all_attempts_failed")

@@ -212,11 +212,18 @@ async def _think_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             "Please try again — I need the live menu/cart DB before I can order safely."
         )
 
-    await update.effective_message.reply_text(
-        reply,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=main_keyboard(),
-    )
+    try:
+        await update.effective_message.reply_text(
+            reply,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_keyboard(),
+        )
+    except Exception:
+        # Fall back to plain text when markdown is malformed
+        await update.effective_message.reply_text(
+            reply,
+            reply_markup=main_keyboard(),
+        )
 
 
 # ── /start ────────────────────────────────────────────────────────────────────
@@ -354,11 +361,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply = None
 
             if reply:
-                await query.message.reply_text(
-                    reply,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=main_keyboard(),
-                )
+                try:
+                    await query.message.reply_text(
+                        reply,
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=main_keyboard(),
+                    )
+                except Exception:
+                    await query.message.reply_text(reply, reply_markup=main_keyboard())
                 return
             # else fall through to redirect-link fallback
 
