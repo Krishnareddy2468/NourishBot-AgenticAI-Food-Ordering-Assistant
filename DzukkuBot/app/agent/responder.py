@@ -23,8 +23,7 @@ import google.generativeai as genai
 from app.agent.context_builder import ContextSnapshot
 from app.agent.verifier import VerifiedSummary
 from app.agent.persona import (
-    detect_language, is_off_topic, OFF_TOPIC_REPLY,
-    tone_for_context, slot_question, get_cta, KitchenSignal,
+    detect_language, tone_for_context, KitchenSignal,
 )
 from app.core.config import settings
 
@@ -42,7 +41,7 @@ class Responder:
                 model_name=settings.GEMINI_PRIMARY,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=400,
+                    max_output_tokens=600,
                 ),
             )
         return cls._model
@@ -54,19 +53,17 @@ class Responder:
         ctx: ContextSnapshot,
         original_message: str = "",
     ) -> str:
-        # ── Food-first boundary (§3.5) ────────────────────────────────────────
-        if is_off_topic(original_message):
-            return OFF_TOPIC_REPLY
-
         # ── Detect / update language from this message ────────────────────────
         detected_lang = detect_language(original_message, ctx.last_turns)
         if detected_lang != "en":
             ctx.language = detected_lang  # override for this turn's reply
 
+        # Let the LLM handle everything — off-topic, missing slots, etc.
+        # The prompt gives it all the context it needs to compose a natural reply.
         prompt = _build_responder_prompt(summary, ctx, original_message)
         try:
             import asyncio
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: cls._get_model().generate_content(prompt),
@@ -100,11 +97,6 @@ def _build_responder_prompt(
 
     tone = tone_for_context(ctx.time_of_day, ctx.current_state.value)
 
-    # Language-aware CTA suggestions
-    cta_confirm    = get_cta("confirm", lang)
-    cta_order_more = get_cta("order_more", lang)
-    cta_help       = get_cta("help", lang)
-
     # Live-state annotations to inject
     live_state_notes = []
     if summary.kitchen_signal in (KitchenSignal.VERY_BUSY, KitchenSignal.FULL):
@@ -137,33 +129,21 @@ Name       : Dzukku
 Tone       : {tone}
 Language   : {lang} — mirror the customer's exact register (EN / TE+EN code-mix / HI+EN code-mix)
 Address as : {name}
-Boundary   : Food, orders, reservations ONLY. Deflect anything else with humour.
 {upsell_note}
 
-=== HARD RULES ===
+=== RULES ===
 1. NEVER invent items, prices, order refs, or ETAs — only use facts below.
-2. ALWAYS end with a CTA or question (examples: "{cta_confirm}" / "{cta_order_more}" / "{cta_help}").
-3. 2–4 lines normally; full list only for menu/order summaries.
-4. Ask for only ONE missing slot at a time.
-5. If kitchen_signal is VERY_BUSY or FULL → include the eta_note verbatim.
-6. If alternatives present → suggest them naturally, not as a list dump.
-7. If radius_exceeded → apologise, offer pickup/dine-in — never just say "no".
+2. ALWAYS end with a CTA or question.
+3. Keep it concise — 2-4 lines for chat; longer only for menu or order summaries.
+4. For off-topic messages (not about food/orders/reservations), deflect with warmth and humor.
+5. If pending_slots has contact details missing, ask for them naturally in one question.
+6. If kitchen_signal is VERY_BUSY or FULL, mention the eta_note.
 {live_block}
 
 === VERIFIED FACTS ===
 {facts}
 
-=== RESPONSE GUIDELINES BY SCENARIO ===
-• order_ref set           → Confirm order: ref, items, total, ETA, type. End upbeat.
-• errors non-empty        → Explain gently. Offer the fix. Include alternatives if present.
-• pending_slots non-empty → Show any current cart briefly, then ask for the FIRST missing slot only. Do NOT ask for order confirmation yet.
-• cart non-empty, no order → Show cart summary. Ask "{cta_confirm}" only when pending_slots is empty.
-• reservation_ref set     → Confirm date, time, guests, ref.
-• tracking set            → Status update conversationally.
-• menu_items non-empty    → Scannable list (name · type · price). Max 8 items shown inline.
-• blocking set            → Explain blocker, suggest next step.
-
-=== CUSTOMER'S ORIGINAL MESSAGE ===
+=== CUSTOMER'S MESSAGE ===
 {original_message}
 
 Write ONLY the reply — no labels, no preamble, no JSON."""
@@ -200,7 +180,7 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
         )
 
     if summary.pending_slots:
-        return slot_question(summary.pending_slots[0], ctx.language)
+        return slots_question(summary.pending_slots, ctx.language)
 
     if summary.alternatives:
         alt_names = " / ".join(a["name"] for a in summary.alternatives[:3])
@@ -214,3 +194,7 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
 
     return get_cta("help", ctx.language) or \
            f"Got it, {name}! What would you like — menu, order, or table? 😊"
+
+
+def _needs_contact_details(slots: list[str]) -> bool:
+    return bool({"customer_name", "customer_phone", "delivery_address"} & set(slots or []))
