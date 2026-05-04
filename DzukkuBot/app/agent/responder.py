@@ -41,7 +41,7 @@ class Responder:
                 model_name=settings.GEMINI_PRIMARY,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=600,
+                    max_output_tokens=1024,
                 ),
             )
         return cls._model
@@ -64,14 +64,39 @@ class Responder:
         try:
             import asyncio
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: cls._get_model().generate_content(prompt),
-            )
-            text = (response.text or "").strip()
-            if not text:
-                return _fallback_response(summary, ctx)
-            return text
+
+            for attempt in range(2):
+                response = await loop.run_in_executor(
+                    None,
+                    lambda p=prompt: cls._get_model().generate_content(p),
+                )
+                text = (response.text or "").strip()
+
+                # Detect truncation: Gemini returns finish_reason=MAX_TOKENS
+                # when output is cut off. If so, retry with a shorter prompt.
+                finish = ""
+                try:
+                    finish = response.candidates[0].finish_reason.name
+                except Exception:
+                    pass
+                if finish == "MAX_TOKENS" or (text and not text.rstrip()[-1:] in ".!?😊🍽️❤️😉😄🔥🎉📅"):
+                    logger.warning(
+                        "Responder truncated (chat=%s) finish=%s text=%r",
+                        ctx.chat_id, finish, text[-40:],
+                    )
+                    if attempt == 0:
+                        # Retry with minimal prompt
+                        prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
+                        continue
+                    # 2nd attempt still truncated — return what we have + CTA
+                    if text:
+                        return text.rstrip(",:;- ") + ". Want me to help with anything else? 😊"
+
+                if text:
+                    return text
+                break
+
+            return _fallback_response(summary, ctx)
         except Exception as e:
             logger.error("Responder failed (chat=%s): %s", ctx.chat_id, e, exc_info=True)
             return _fallback_response(summary, ctx)
@@ -149,6 +174,40 @@ Address as : {name}
 Write ONLY the reply — no labels, no preamble, no JSON."""
 
 
+def _build_minimal_responder_prompt(
+    summary: VerifiedSummary,
+    ctx: ContextSnapshot,
+    original_message: str,
+) -> str:
+    """Stripped-down prompt used as retry when the full prompt causes truncation."""
+    facts = summary.to_prompt_dict()
+    name = ctx.customer_name.split()[0] if ctx.customer_name else (ctx.user_name or "there")
+
+    # Build a concise fact summary instead of full JSON dump
+    fact_lines = []
+    if facts.get("order_ref"):
+        fact_lines.append(f"Order ref: {facts['order_ref']}, total: ₹{facts.get('order_total_inr','?')}, type: {facts.get('order_type','?')}")
+    if facts.get("cart"):
+        fact_lines.append(f"Cart: {', '.join(c.get('item_name','?') for c in facts['cart'])}, total: ₹{facts.get('cart_total_inr','?')}")
+    if facts.get("menu_items"):
+        fact_lines.append(f"Menu items ({len(facts['menu_items'])}): " + ", ".join(f"{m.get('name','?')} ₹{m.get('price','?')}" for m in facts['menu_items'][:8]))
+    if facts.get("pending_slots"):
+        fact_lines.append(f"Missing: {', '.join(facts['pending_slots'])}")
+    if facts.get("errors"):
+        fact_lines.append(f"Errors: {'; '.join(facts['errors'])}")
+    if facts.get("reservation_ref"):
+        fact_lines.append(f"Reservation: {facts['reservation_ref']} on {facts.get('reservation_date','?')} at {facts.get('reservation_time','?')} for {facts.get('reservation_guests','?')} guests")
+    if not fact_lines:
+        fact_lines.append("No specific facts — general assistance needed.")
+
+    return f"""You are Dzukku, a warm restaurant assistant. Reply in 2-3 lines max. End with a question.
+
+Customer: {name} | Message: {original_message}
+Facts: {" | ".join(fact_lines)}
+
+Reply:"""
+
+
 # ── Fallback (no LLM) ─────────────────────────────────────────────────────────
 
 def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
@@ -180,7 +239,13 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
         )
 
     if summary.pending_slots:
-        return slots_question(summary.pending_slots, ctx.language)
+        # Ask for the first missing slot in a natural way
+        slot = summary.pending_slots[0]
+        labels = {"customer_name": "name", "customer_phone": "phone number",
+                  "delivery_address": "delivery address", "order_type": "order type",
+                  "date": "preferred date", "time": "preferred time", "guests": "number of guests"}
+        label = labels.get(slot, slot)
+        return f"Could you share your {label}, {name}? 😊"
 
     if summary.alternatives:
         alt_names = " / ".join(a["name"] for a in summary.alternatives[:3])
@@ -192,9 +257,4 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
             f"— but you're welcome to pick up or book a table with us!"
         )
 
-    return get_cta("help", ctx.language) or \
-           f"Got it, {name}! What would you like — menu, order, or table? 😊"
-
-
-def _needs_contact_details(slots: list[str]) -> bool:
-    return bool({"customer_name", "customer_phone", "delivery_address"} & set(slots or []))
+    return f"Got it, {name}! What would you like — menu, order, or table? 😊"
