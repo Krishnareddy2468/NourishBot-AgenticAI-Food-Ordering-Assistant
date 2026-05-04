@@ -1,5 +1,5 @@
 """
-Kitchen routes — KDS item-level status updates.
+Kitchen routes — KDS order listing and item-level status updates.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,41 +8,60 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
-from app.db.models import OrderItem
-from app.auth.deps import require_kitchen
+from app.db.models import Order, OrderItem
+from app.auth.deps import extract_token
 
-router = APIRouter(prefix="/api/v1/orders", tags=["kitchen"])
-
-
-class ItemStatusUpdate(BaseModel):
-    status: str  # IN_PROGRESS | DONE | CANCELLED
+router = APIRouter(prefix="/api/v1/kitchen", tags=["kitchen"])
 
 
-@router.patch("/{order_id}/items/{item_id}/status")
-async def update_order_item_status(
-    order_id: int,
-    item_id: int,
-    body: ItemStatusUpdate,
-    user=Depends(require_kitchen),
-):
+@router.get("/orders")
+async def get_kitchen_orders(user=Depends(extract_token)):
+    """Return all active orders for the KDS (ACCEPTED or PREPARING status)."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(OrderItem).where(
-                OrderItem.order_id == order_id,
-                OrderItem.id == item_id,
-            )
+            select(Order)
+            .where(Order.status.in_(["ACCEPTED", "PREPARING", "CREATED"]))
+            .order_by(Order.created_at)
         )
-        item = result.scalar_one_or_none()
-        if not item:
-            raise HTTPException(404, "Order item not found")
+        orders = result.scalars().all()
 
-        item.status = body.status
-        await session.commit()
+        out = []
+        for order in orders:
+            items_result = await session.execute(
+                select(OrderItem).where(OrderItem.order_id == order.id)
+            )
+            items = items_result.scalars().all()
 
-        # Publish real-time event
-        from app.realtime.events import order_item_status_changed
-        from app.realtime.ws_manager import ws_manager
-        event = order_item_status_changed(order_id, item_id, body.status)
-        await ws_manager.broadcast(1, event.to_dict())
+            if order.customer_id:
+                from app.db.models import Customer
+                cust_result = await session.execute(
+                    select(Customer).where(Customer.id == order.customer_id)
+                )
+                customer = cust_result.scalar_one_or_none()
+                customer_name = customer.name if customer else "Guest"
+            else:
+                customer_name = "Guest"
 
-        return {"ok": True, "order_id": order_id, "item_id": item_id, "status": body.status}
+            out.append({
+                "id": order.id,
+                "order_ref": order.order_ref,
+                "orderRef": order.order_ref,
+                "status": order.status,
+                "order_type": order.order_type,
+                "customer": customer_name,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "items": [
+                    {
+                        "id": i.id,
+                        "name": i.item_name_snapshot,
+                        "item_name_snapshot": i.item_name_snapshot,
+                        "qty": i.qty,
+                        "unit_price_cents": i.unit_price_cents,
+                        "status": i.status or "PENDING",
+                        "modifiers_json": i.modifiers_json,
+                        "category": "",
+                    }
+                    for i in items
+                ],
+            })
+        return out
