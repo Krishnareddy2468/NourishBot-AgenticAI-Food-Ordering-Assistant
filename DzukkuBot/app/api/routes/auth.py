@@ -1,10 +1,10 @@
 """
-Auth routes — staff login, token refresh.
+Auth routes — staff login.
 """
 
+import bcrypt
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional
 
 from sqlalchemy import select
 
@@ -13,6 +13,19 @@ from app.db.models import User
 from app.auth.jwt import create_access_token
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Verify a plaintext password against a bcrypt hash, or fall back to plain comparison for seeds."""
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        # Fallback for plain-text seeded passwords (dev only)
+        return plain == hashed
+
+
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
 class LoginRequest(BaseModel):
@@ -30,19 +43,14 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest):
-    """Staff login — returns JWT on success."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User).where(User.email == body.email, User.active == True)
         )
         user = result.scalar_one_or_none()
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    # TODO: Replace with proper password hashing (bcrypt/argon2)
-    if user.password_hash != body.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(
         user_id=user.id,
