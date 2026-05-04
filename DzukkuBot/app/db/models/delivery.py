@@ -4,7 +4,7 @@ Delivery models: Driver, Delivery, DeliveryLocationEvent.
 
 from sqlalchemy import Column, BigInteger, Text, Boolean, ForeignKey, Numeric, Integer
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy import DateTime
 from sqlalchemy.orm import relationship
 
@@ -21,7 +21,7 @@ class Driver(Base, RestaurantMixin):
     user_id = Column(BigInteger, ForeignKey("users.id"), unique=True)
     vehicle_type = Column(Text)  # BIKE | CAR
     vehicle_no = Column(Text)
-    active = Column(Boolean, default=True)
+    active = Column(Boolean, nullable=False, server_default=text("true"))
 
     # relationships
     user = relationship("User")
@@ -43,6 +43,8 @@ class Delivery(Base, RestaurantMixin):
     assigned_at = Column(DateTime(timezone=True))
     picked_up_at = Column(DateTime(timezone=True))
     delivered_at = Column(DateTime(timezone=True))
+    proof_url = Column(Text)                    # photo/signature URL
+    proof_type = Column(Text)                    # PHOTO | SIGNATURE | NONE
 
     # relationships
     order = relationship("Order", back_populates="delivery")

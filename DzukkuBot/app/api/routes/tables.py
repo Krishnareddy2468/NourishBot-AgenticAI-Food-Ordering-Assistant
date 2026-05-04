@@ -15,9 +15,21 @@ from app.db.models import (
     DiningTable, TableSession, TableSessionOrder,
     Order, OrderItem, MenuItem, Invoice,
 )
-from app.auth.deps import require_waiter, extract_token
+from app.auth.deps import require_waiter, require_manager, extract_token
 
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
+
+
+class CreateTableRequest(BaseModel):
+    name: str
+    capacity: int
+    active: bool = True
+
+
+class UpdateTableRequest(BaseModel):
+    name: Optional[str] = None
+    capacity: Optional[int] = None
+    active: Optional[bool] = None
 
 
 # ── Tables ────────────────────────────────────────────────────────────────────
@@ -26,7 +38,7 @@ router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 async def list_tables(user=Depends(extract_token)):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(DiningTable).where(DiningTable.restaurant_id == 1).order_by(DiningTable.id)
+            select(DiningTable).where(DiningTable.restaurant_id == user.get("restaurant_id", 1)).order_by(DiningTable.id)
         )
         tables = result.scalars().all()
         return [
@@ -42,6 +54,63 @@ async def list_tables(user=Depends(extract_token)):
         ]
 
 
+@router.post("", status_code=201)
+async def create_table(body: CreateTableRequest, user=Depends(require_manager)):
+    rid = user.get("restaurant_id", 1)
+    async with AsyncSessionLocal() as session:
+        table = DiningTable(
+            restaurant_id=rid,
+            name=body.name,
+            capacity=body.capacity,
+            active=body.active,
+        )
+        session.add(table)
+        await session.commit()
+        await session.refresh(table)
+        return {
+            "id": table.id,
+            "table_number": table.name,
+            "name": table.name,
+            "capacity": table.capacity,
+            "status": "AVAILABLE" if table.active else "INACTIVE",
+            "active": table.active,
+        }
+
+
+@router.patch("/{table_id}")
+async def update_table(table_id: int, body: UpdateTableRequest, user=Depends(require_manager)):
+    rid = user.get("restaurant_id", 1)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DiningTable).where(DiningTable.id == table_id, DiningTable.restaurant_id == rid)
+        )
+        table = result.scalar_one_or_none()
+        if not table:
+            raise HTTPException(404, "Table not found")
+        if body.name is not None:
+            table.name = body.name
+        if body.capacity is not None:
+            table.capacity = body.capacity
+        if body.active is not None:
+            table.active = body.active
+        await session.commit()
+        return {"ok": True, "id": table_id}
+
+
+@router.delete("/{table_id}", status_code=204)
+async def delete_table(table_id: int, user=Depends(require_manager)):
+    rid = user.get("restaurant_id", 1)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DiningTable).where(DiningTable.id == table_id, DiningTable.restaurant_id == rid)
+        )
+        table = result.scalar_one_or_none()
+        if not table:
+            raise HTTPException(404, "Table not found")
+        await session.delete(table)
+        await session.commit()
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
 class OpenSessionRequest(BaseModel):
@@ -53,7 +122,7 @@ class OpenSessionRequest(BaseModel):
 @router.get("/sessions")
 async def list_sessions(status: Optional[str] = None, user=Depends(extract_token)):
     async with AsyncSessionLocal() as session:
-        query = select(TableSession).where(TableSession.restaurant_id == 1)
+        query = select(TableSession).where(TableSession.restaurant_id == user.get("restaurant_id", 1))
         if status:
             query = query.where(TableSession.status == status)
         result = await session.execute(query.order_by(TableSession.id.desc()))
@@ -75,8 +144,9 @@ async def list_sessions(status: Optional[str] = None, user=Depends(extract_token
 @router.post("/sessions", status_code=201)
 async def open_table_session(body: OpenSessionRequest, user=Depends(extract_token)):
     async with AsyncSessionLocal() as session:
+        rid = user.get("restaurant_id", 1)
         ts = TableSession(
-            restaurant_id=1,
+            restaurant_id=rid,
             table_id=body.table_id,
             waiter_user_id=body.waiter_user_id,
             guests=body.guests,
@@ -89,7 +159,7 @@ async def open_table_session(body: OpenSessionRequest, user=Depends(extract_toke
 
         from app.realtime.events import table_session_opened
         from app.realtime.ws_manager import ws_manager
-        await ws_manager.broadcast(1, table_session_opened(ts.id, body.table_id).to_dict())
+        await ws_manager.broadcast(rid, table_session_opened(ts.id, body.table_id).to_dict())
 
         return {
             "id": ts.id,
@@ -120,6 +190,49 @@ async def update_session(session_id: int, body: SessionStatusUpdate, user=Depend
         return {"ok": True, "session_id": session_id, "status": body.status}
 
 
+@router.get("/sessions/{session_id}/orders")
+async def get_session_orders(session_id: int, user=Depends(extract_token)):
+    """Return all orders + items for a table session (for waiter KDS readiness view)."""
+    async with AsyncSessionLocal() as db:
+        tso_result = await db.execute(
+            select(TableSessionOrder).where(TableSessionOrder.table_session_id == session_id)
+        )
+        links = tso_result.scalars().all()
+        orders_out = []
+        for link in links:
+            order_result = await db.execute(
+                select(Order).where(Order.id == link.order_id)
+            )
+            order = order_result.scalar_one_or_none()
+            if not order:
+                continue
+            items_result = await db.execute(
+                select(OrderItem).where(OrderItem.order_id == order.id)
+            )
+            items = items_result.scalars().all()
+            all_done = all(i.status == "DONE" for i in items) if items else False
+            orders_out.append({
+                "id": order.id,
+                "order_ref": order.order_ref,
+                "status": order.status,
+                "total_cents": order.total_cents,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "all_items_done": all_done,
+                "items": [
+                    {
+                        "id": i.id,
+                        "item_id": i.item_id,
+                        "name": i.item_name_snapshot,
+                        "qty": i.qty,
+                        "unit_price_cents": i.unit_price_cents,
+                        "status": i.status,
+                    }
+                    for i in items
+                ],
+            })
+        return orders_out
+
+
 @router.post("/sessions/{session_id}/orders", status_code=201)
 async def add_table_order(session_id: int, body: dict, user=Depends(extract_token)):
     items_data = body.get("items", [])
@@ -133,8 +246,9 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
 
         order_ref = f"DZK-{uuid.uuid4().hex[:6].upper()}"
         total = 0
+        rid = user.get("restaurant_id", 1)
         order = Order(
-            restaurant_id=1,
+            restaurant_id=rid,
             order_ref=order_ref,
             order_type="DINE_IN",
             status="CREATED",
@@ -155,7 +269,7 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
                 unit_cents = mi.price_cents
                 total += unit_cents * qty
                 oi = OrderItem(
-                    restaurant_id=1,
+                    restaurant_id=rid,
                     order_id=order.id,
                     item_id=item_id,
                     item_name_snapshot=mi.name,
@@ -168,7 +282,7 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
         order.total_cents = total
 
         tso = TableSessionOrder(
-            restaurant_id=1,
+            restaurant_id=rid,
             table_session_id=session_id,
             order_id=order.id,
         )
@@ -179,6 +293,10 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
 
 @router.post("/sessions/{session_id}/fire")
 async def fire_to_kitchen(session_id: int, user=Depends(extract_token)):
+    from app.realtime.events import order_sent_to_kitchen, order_status_changed
+    from app.realtime.ws_manager import ws_manager
+
+    rid = user.get("restaurant_id", 1)
     async with AsyncSessionLocal() as session:
         tso_result = await session.execute(
             select(TableSessionOrder).where(TableSessionOrder.table_session_id == session_id)
@@ -192,8 +310,16 @@ async def fire_to_kitchen(session_id: int, user=Depends(extract_token)):
             order = order_result.scalar_one_or_none()
             if order and order.status == "CREATED":
                 order.status = "ACCEPTED"
-                fired.append(order.order_ref)
+                fired.append({"order_id": order.id, "order_ref": order.order_ref})
         await session.commit()
+
+        # Broadcast events for each fired order
+        for entry in fired:
+            evt = order_sent_to_kitchen(entry["order_id"], entry["order_ref"], rid)
+            await ws_manager.broadcast(rid, evt.to_dict())
+            status_evt = order_status_changed(entry["order_id"], entry["order_ref"], "ACCEPTED", rid)
+            await ws_manager.broadcast(rid, status_evt.to_dict())
+
         return {"fired_orders": fired}
 
 
@@ -221,7 +347,7 @@ async def generate_invoice(session_id: int, user=Depends(extract_token)):
                 subtotal += order.total_cents
 
         invoice = Invoice(
-            restaurant_id=1,
+            restaurant_id=ts.restaurant_id,
             invoice_no=f"INV-{uuid.uuid4().hex[:6].upper()}",
             entity_type="TABLE_SESSION",
             entity_id=session_id,
@@ -237,7 +363,7 @@ async def generate_invoice(session_id: int, user=Depends(extract_token)):
 
         from app.realtime.events import table_session_closed
         from app.realtime.ws_manager import ws_manager
-        await ws_manager.broadcast(1, table_session_closed(session_id, ts.table_id).to_dict())
+        await ws_manager.broadcast(ts.restaurant_id, table_session_closed(session_id, ts.table_id).to_dict())
 
         return {
             "invoice_no": invoice.invoice_no,

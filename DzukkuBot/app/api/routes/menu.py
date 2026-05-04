@@ -81,7 +81,7 @@ async def list_menu_items():
 async def create_menu_item(body: MenuItemCreate, user=Depends(require_manager)):
     async with AsyncSessionLocal() as session:
         item = MenuItem(
-            restaurant_id=1,
+            restaurant_id=user.get("restaurant_id", 1),
             name=body.name,
             description=body.description,
             type=body.type,
@@ -140,7 +140,7 @@ async def upload_menu_image(item_id: int, file: UploadFile = File(...), user=Dep
 
     async with AsyncSessionLocal() as session:
         image = MenuItemImage(
-            restaurant_id=1,
+            restaurant_id=user.get("restaurant_id", 1),
             item_id=item_id,
             url=url,
         )

@@ -13,7 +13,7 @@ from typing import Any, Optional
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import AsyncSessionLocal
+from app.db.session import get_session_factory
 from app.db.models import (
     Session as SessionModel,
     Customer,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 async def _get_channel(chat_id: int) -> Optional[Channel]:
     """Find or create a channel for the given Telegram chat_id."""
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Channel).where(
                 Channel.type == "TELEGRAM",
@@ -56,7 +56,7 @@ async def _get_channel(chat_id: int) -> Optional[Channel]:
 
 async def get_session(chat_id: int) -> dict:
     """Return session state as a dict (same shape as old SQLite version)."""
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         # Find channel
         ch_result = await session.execute(
             select(Channel).where(
@@ -117,22 +117,38 @@ async def get_session(chat_id: int) -> dict:
                         "type": mi.type if mi else "",
                     })
 
-        history = sess.history_json if isinstance(sess.history_json, list) else []
+        customer_name = ""
+        customer_phone = ""
+        if channel.customer_id:
+            cust_result = await session.execute(
+                select(Customer).where(Customer.id == channel.customer_id)
+            )
+            customer = cust_result.scalar_one_or_none()
+            if customer:
+                customer_name = customer.name or ""
+                customer_phone = customer.phone or ""
+
+        if isinstance(sess.history_json, list):
+            history = sess.history_json
+        elif isinstance(sess.history_json, dict):
+            history = list(sess.history_json.get("turns") or [])
+        else:
+            history = []
         return {
             "chat_id": chat_id,
             "state": sess.state,
             "user_name": "",
             "cart": cart_data,
-            "customer_name": "",
-            "customer_phone": "",
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
             "history": history,
-            "ordering_platform": "",
+            "ordering_platform": sess.ordering_platform or "",
         }
 
 
 async def save_session(chat_id: int, updates: dict) -> None:
     """Update session fields from a dict of updates."""
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         # Find or create channel
         ch_result = await session.execute(
             select(Channel).where(
@@ -171,10 +187,7 @@ async def save_session(chat_id: int, updates: dict) -> None:
         if "user_name" in updates:
             pass  # user_name not on session model in vNext; kept for compat
         if "ordering_platform" in updates:
-            # Store ordering_platform in history_json metadata for now
-            history = sess.history_json if isinstance(sess.history_json, list) else []
-            # Add a metadata entry
-            pass  # ordering_platform managed at channel/session level differently
+            sess.ordering_platform = updates["ordering_platform"]
         if "history" in updates:
             sess.history_json = updates["history"]
         if "cart" in updates:
@@ -186,10 +199,39 @@ async def save_session(chat_id: int, updates: dict) -> None:
 
 async def reset_session(chat_id: int, user_name: str = "") -> None:
     """Reset session to fresh state."""
-    await save_session(chat_id, {
-        "state": "greeting",
-        "history": [],
-    })
+    async with get_session_factory()() as session:
+        ch_result = await session.execute(
+            select(Channel).where(
+                Channel.type == "TELEGRAM",
+                Channel.external_id == str(chat_id),
+            )
+        )
+        channel = ch_result.scalar_one_or_none()
+        if not channel:
+            channel = Channel(
+                restaurant_id=1,
+                type="TELEGRAM",
+                external_id=str(chat_id),
+            )
+            session.add(channel)
+            await session.flush()
+
+        s_result = await session.execute(
+            select(SessionModel).where(SessionModel.channel_id == channel.id)
+        )
+        sess = s_result.scalar_one_or_none()
+        if not sess:
+            sess = SessionModel(
+                restaurant_id=1,
+                channel_id=channel.id,
+            )
+            session.add(sess)
+
+        sess.state = "greeting"
+        sess.cart_id = None
+        sess.ordering_platform = ""
+        sess.history_json = {"meta": {}, "turns": []}
+        await session.commit()
 
 
 # ── Menu helpers ──────────────────────────────────────────────────────────────
@@ -199,7 +241,7 @@ async def get_menu_items(
     filter_category: str = "",
 ) -> list[dict]:
     """Return menu items as list of dicts (compatible with old interface)."""
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         query = select(MenuItem).where(MenuItem.available == True)
         if filter_type and filter_type != "All":
             query = query.where(MenuItem.type == filter_type)
@@ -265,7 +307,7 @@ async def save_order(
     idem_key = idempotency_key or f"{customer_phone}-{order_ref}"
     total_cents = int(total_price * 100)
 
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         # Find or create customer
         cust_result = await session.execute(
             select(Customer).where(
@@ -335,7 +377,7 @@ async def save_reservation(
     """Create a reservation. Returns reservation_ref (RSV-XXXXXX)."""
     res_ref = f"RSV-{uuid.uuid4().hex[:6].upper()}"
 
-    async with AsyncSessionLocal() as session:
+    async with get_session_factory()() as session:
         # Find or create customer
         cust_result = await session.execute(
             select(Customer).where(

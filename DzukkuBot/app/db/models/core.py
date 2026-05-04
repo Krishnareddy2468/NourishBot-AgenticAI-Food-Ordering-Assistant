@@ -4,7 +4,7 @@ Core models: Restaurant, User, Customer, Channel, Session.
 
 from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Integer, UniqueConstraint, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base, RestaurantMixin
@@ -19,7 +19,7 @@ class Restaurant(Base):
     name = Column(Text, nullable=False)
     phone = Column(Text)
     address = Column(Text)
-    timezone = Column(Text, default="Asia/Kolkata")
+    timezone = Column(Text, server_default=text("'Asia/Kolkata'"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
@@ -41,7 +41,7 @@ class User(Base, RestaurantMixin):
     email = Column(Text, unique=True)
     password_hash = Column(Text, nullable=False)
     role = Column(Text, nullable=False)  # ADMIN | MANAGER | CASHIER | WAITER | KITCHEN | DRIVER
-    active = Column(Boolean, default=True)
+    active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
@@ -61,8 +61,8 @@ class Customer(Base, RestaurantMixin):
     name = Column(Text)
     phone = Column(Text, nullable=False)
     email = Column(Text)
-    language_pref = Column(Text, default="en")  # en | hi | te | code-mix
-    marketing_opt_in = Column(Boolean, default=False)
+    language_pref = Column(Text, server_default=text("'en'"))  # en | hi | te | code-mix
+    marketing_opt_in = Column(Boolean, nullable=False, server_default=text("false"))
     first_seen = Column(DateTime(timezone=True), server_default=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -102,6 +102,7 @@ class Session(Base, RestaurantMixin):
     channel_id = Column(BigInteger, ForeignKey("channels.id"), nullable=False, index=True)
     state = Column(Text, nullable=False, default="IDLE")
     cart_id = Column(BigInteger, ForeignKey("carts.id"), index=True)
+    ordering_platform = Column(Text, default="")  # Dzukku | Zomato | Swiggy
     history_json = Column(JSONB, default=[])  # last N turns
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

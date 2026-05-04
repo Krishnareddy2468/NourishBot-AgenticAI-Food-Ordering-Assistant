@@ -198,12 +198,44 @@ export async function fetchTables() {
   return parseResponse(res)
 }
 
+export async function createTable(payload) {
+  const res = await fetch(`${API_BASE}/api/v1/tables`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function updateTable(tableId, payload) {
+  const res = await fetch(`${API_BASE}/api/v1/tables/${tableId}`, {
+    method: 'PATCH',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function deleteTable(tableId) {
+  const res = await fetch(`${API_BASE}/api/v1/tables/${tableId}`, {
+    method: 'DELETE',
+    headers: buildHeaders(),
+  })
+  if (res.status === 204) return { ok: true }
+  return parseResponse(res)
+}
+
 export async function openTableSession(tableId, guests) {
   const res = await fetch(`${API_BASE}/api/v1/tables/sessions`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ table_id: tableId, guests }),
   })
+  return parseResponse(res)
+}
+
+export async function fetchSessionOrders(sessionId) {
+  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/orders`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
@@ -255,11 +287,41 @@ export async function fetchKitchenOrders() {
 
 // ── Deliveries ───────────────────────────────────────────────────────────────
 
+export async function fetchDeliveries(status) {
+  const url = new URL(`${API_BASE}/api/v1/deliveries`)
+  if (status) url.searchParams.set('status', status)
+  const res = await fetch(url.toString(), { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export async function fetchDrivers() {
+  const res = await fetch(`${API_BASE}/api/v1/deliveries/drivers`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
 export async function assignDriver(orderId, driverId) {
   const res = await fetch(`${API_BASE}/api/v1/deliveries/assign`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ order_id: orderId, driver_id: driverId }),
+  })
+  return parseResponse(res)
+}
+
+export async function updateDeliveryStatus(deliveryId, status) {
+  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/status`, {
+    method: 'PATCH',
+    headers: buildHeaders(),
+    body: JSON.stringify({ status }),
+  })
+  return parseResponse(res)
+}
+
+export async function submitProofOfDelivery(deliveryId, proofUrl, proofType) {
+  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/proof`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify({ proof_url: proofUrl, proof_type: proofType }),
   })
   return parseResponse(res)
 }
@@ -278,10 +340,65 @@ export async function trackDelivery(deliveryId) {
   return parseResponse(res)
 }
 
+export async function trackDeliveryByOrder(orderRef) {
+  const res = await fetch(`${API_BASE}/api/v1/deliveries/orders/${orderRef}/track`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
 // ── Settlement ───────────────────────────────────────────────────────────────
 
 export async function fetchBackendSettlement(orderId) {
   const res = await fetch(`${API_BASE}/api/v1/settlements/orders/${orderId}`, { headers: buildHeaders() })
   const data = await parseResponse(res)
   return data.fee_breakdown
+}
+
+// ── Reservations ─────────────────────────────────────────────────────────────
+
+export async function fetchReservations(status) {
+  const url = new URL(`${API_BASE}/api/v1/reservations`)
+  if (status) url.searchParams.set('status', status)
+  const res = await fetch(url.toString(), { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export async function updateReservationStatus(reservationId, status) {
+  const res = await fetch(`${API_BASE}/api/v1/reservations/${reservationId}`, {
+    method: 'PATCH',
+    headers: buildHeaders(),
+    body: JSON.stringify({ status }),
+  })
+  return parseResponse(res)
+}
+
+// ── Staff ─────────────────────────────────────────────────────────────────────
+
+export async function fetchStaff() {
+  const res = await fetch(`${API_BASE}/api/v1/staff`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export async function createStaff(payload) {
+  const res = await fetch(`${API_BASE}/api/v1/staff`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function toggleStaffActive(staffId, active) {
+  const res = await fetch(`${API_BASE}/api/v1/staff/${staffId}/active`, {
+    method: 'PATCH',
+    headers: buildHeaders(),
+    body: JSON.stringify({ active }),
+  })
+  return parseResponse(res)
+}
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+export async function fetchInvoices() {
+  const res = await fetch(`${API_BASE}/api/v1/invoices`, { headers: buildHeaders() })
+  return parseResponse(res)
 }

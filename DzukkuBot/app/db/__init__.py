@@ -5,7 +5,7 @@ All core tables include `restaurant_id` (multi-tenant ready, default 1).
 """
 
 from app.db.base import Base
-from app.db.session import get_async_session, async_engine, AsyncSessionLocal
+from app.db.session import get_async_session, async_engine, AsyncSessionLocal, get_session_factory
 from app.db.models import (
     Restaurant,
     User,

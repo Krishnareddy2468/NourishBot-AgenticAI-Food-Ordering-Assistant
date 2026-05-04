@@ -4,7 +4,7 @@ Menu models: MenuCategory, MenuItem, MenuItemImage, ModifierGroup, Modifier, Men
 
 from sqlalchemy import Column, BigInteger, String, Text, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy import DateTime
 from sqlalchemy.orm import relationship
 
@@ -39,7 +39,7 @@ class MenuItem(Base, RestaurantMixin):
     type = Column(Text)  # VEG | NON_VEG | EGG | VEGAN
     price_cents = Column(Integer, nullable=False)  # smallest currency unit
     special_price_cents = Column(Integer)
-    available = Column(Boolean, default=True)
+    available = Column(Boolean, nullable=False, server_default=text("true"))
     stock_qty = Column(Integer)  # null = unlimited
     prep_time_sec = Column(Integer, default=900)
     tags = Column(ARRAY(Text))
@@ -95,8 +95,8 @@ class Modifier(Base, RestaurantMixin):
     restaurant_id = Column(BigInteger, nullable=False, index=True, server_default="1")
     group_id = Column(BigInteger, ForeignKey("modifier_groups.id"), nullable=False, index=True)
     name = Column(Text, nullable=False)
-    price_cents = Column(Integer, default=0)
-    available = Column(Boolean, default=True)
+    price_cents = Column(Integer, nullable=False, server_default=text("0"))
+    available = Column(Boolean, nullable=False, server_default=text("true"))
 
     # relationships
     group = relationship("ModifierGroup", back_populates="modifiers")

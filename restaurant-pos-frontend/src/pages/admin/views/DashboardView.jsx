@@ -22,12 +22,6 @@ function StatCard({ label, value, sub, trend, color }) {
 
 export default function DashboardView({ orders }) {
   const stats = useMemo(() => {
-    const today = orders.filter(o => {
-      if (!o.dateTime) return false
-      const d = new Date(o.created_at || Date.now())
-      const now = new Date()
-      return d.toDateString() === now.toDateString()
-    })
     const revenue = orders.reduce((s, o) => s + (o.price || 0), 0)
     const pending = orders.filter(o => o.status === 'Pending').length
     const delivered = orders.filter(o => o.status === 'Delivered').length

@@ -24,11 +24,6 @@ from app.db.crud import (
     save_reservation,
     save_session,
 )
-from app.core.excel_sink import (
-    append_order as excel_append_order,
-    append_reservation as excel_append_reservation,
-)
-from app.core.sheets import sync_order_to_sheet, sync_reservation_to_sheet
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +117,7 @@ def _build_tools() -> list:
     @tool
     def get_menu(filter_type: str = "All", filter_category: str = "") -> list[dict]:
         """
-        Fetch the Dzukku Restaurant menu (loaded from data/Project_Dzukku.xlsx → Master_Menu).
+        Fetch the Dzukku Restaurant menu from the PostgreSQL database.
         Each item has: item_no, item_name, description, type ("Veg" or "Non-Veg"), category,
         price (INR), available ("Yes"/"No"), and optional special_price.
 
@@ -231,8 +226,7 @@ def _build_tools() -> list:
           2. customer_name and customer_phone are known (call update_customer_info first).
           3. The customer has explicitly confirmed they want to place this order.
 
-        Persists the order to PostgreSQL, appends to data/Project_Dzukku.xlsx (Orders sheet),
-        and best-effort syncs to Google Sheets. The order's `platform` field is tagged
+        Persists the order to PostgreSQL. The order's `platform` field is tagged
         with the user's chosen platform from the welcome prompt (Telegram by default).
         """
         sess  = _session()
@@ -250,28 +244,6 @@ def _build_tools() -> list:
         platform_tag    = platform_choice if platform_choice in ("Zomato", "Swiggy") else "Telegram"
 
         order_ref = _sync_await(save_order(name, phone, cart, total, platform=platform_tag))
-
-        # Excel sink (data/Project_Dzukku.xlsx → Orders sheet)
-        try:
-            excel_append_order(
-                order_ref      = order_ref,
-                customer_name  = name,
-                customer_phone = phone,
-                items          = cart,
-                total_price    = total,
-                platform       = platform_tag,
-                status         = "Pending",
-            )
-        except Exception as e:
-            logger.warning("Excel append failed: %s", e)
-
-        # Google Sheets sync (feature-flagged, best-effort)
-        if settings.SHEETS_ENABLED:
-            try:
-                pretty = ", ".join(f"{c['qty']}x {c['item_name']}" for c in cart)
-                sync_order_to_sheet(name, phone, pretty, total)
-            except Exception as e:
-                logger.warning("Sheets sync failed: %s", e)
 
         _persist({
             "cart":           [],
@@ -301,8 +273,7 @@ def _build_tools() -> list:
     ) -> dict:
         """
         Create a table reservation. Call after collecting all required fields and the
-        customer has confirmed. Persists to PostgreSQL, Excel (Reservation sheet), and
-        Google Sheets (best-effort).
+        customer has confirmed. Persists to PostgreSQL.
 
         Args:
             date: e.g. "2026-05-10"
@@ -312,26 +283,6 @@ def _build_tools() -> list:
         """
         guests_i = int(guests)
         res_ref  = _sync_await(save_reservation(customer_name, customer_phone, date, time, guests_i, special_request or ""))
-
-        try:
-            excel_append_reservation(
-                reservation_ref = res_ref,
-                customer_name   = customer_name,
-                customer_phone  = customer_phone,
-                date            = date,
-                time            = time,
-                guests          = guests_i,
-                special_request = special_request or "",
-            )
-        except Exception as e:
-            logger.warning("Excel reservation append failed: %s", e)
-
-        # Google Sheets sync (feature-flagged, best-effort)
-        if settings.SHEETS_ENABLED:
-            try:
-                sync_reservation_to_sheet(customer_name, customer_phone, date, time, guests_i, special_request or "")
-            except Exception as e:
-                logger.warning("Sheets reservation sync failed: %s", e)
 
         _persist({
             "state":          "res_confirmed",

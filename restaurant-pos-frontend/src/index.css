@@ -10,12 +10,17 @@
   --brand-purple: #7B2FBE;
 
   /* Dark Mode Background Palette */
-  --bg-base: #0A0A0F;
-  --bg-surface: #12121A;
-  --bg-elevated: #1A1A28;
-  --bg-overlay: #22223A;
-  --bg-glass: rgba(255,255,255,0.04);
-  --bg-glass-hover: rgba(255,255,255,0.07);
+  --bg-base: #0D0D14;
+  --bg-surface: #14141F;
+  --bg-elevated: #1E1E30;
+  --bg-overlay: #272740;
+  --bg-glass: rgba(255,255,255,0.06);
+  --bg-glass-hover: rgba(255,255,255,0.10);
+
+  /* Aliases used in page-level components */
+  --bg-primary: #0D0D14;
+  --bg-secondary: #14141F;
+  --bg-card: #1E1E30;
 
   /* Text */
   --text-primary: #F0F0FF;
@@ -23,9 +28,9 @@
   --text-muted: rgba(240,240,255,0.38);
 
   /* Borders */
-  --border: rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.15);
-  --border-accent: rgba(255,107,53,0.35);
+  --border: rgba(255,255,255,0.14);
+  --border-hover: rgba(255,255,255,0.28);
+  --border-accent: rgba(255,107,53,0.45);
 
   /* Status Colors */
   --status-pending: #F59E0B;
@@ -1789,6 +1794,9 @@ select.order-status-select:focus { border-color: var(--brand-primary); }
   .kds-v2-columns { grid-template-columns: 1fr; }
   .role-cards { flex-direction: column; }
 }
+
+/* ── Table card hover actions ─────────────────────────────────────────────── */
+div:hover > .table-actions { opacity: 1 !important; }
 
 /* ── Dashboard View ─────────────────────────────────────────────────────── */
 .dashboard-view { padding: 16px; display: flex; flex-direction: column; gap: 20px; }

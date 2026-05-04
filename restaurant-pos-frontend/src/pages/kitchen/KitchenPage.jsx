@@ -5,9 +5,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
-import { ChefHat, CheckCircle2, Clock, Loader2, AlertTriangle, Flame } from 'lucide-react'
-import { fetchKitchenOrders, updateOrderItemStatus, mapUiStateToBackend, updateBackendOrderState } from '../../services/platformApi'
+import { ChefHat, CheckCircle2, Clock, Loader2, Flame, ArrowLeftRight, LogOut, XCircle } from 'lucide-react'
+import { fetchKitchenOrders, updateOrderItemStatus, updateBackendOrderState } from '../../services/platformApi'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { useAuth } from '../../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 
 const ITEM_STATUS = {
   PENDING: { label: 'Pending', color: '#F59E0B', icon: Clock },
@@ -19,6 +21,8 @@ const ITEM_STATUS = {
 const STATION_FILTERS = ['All', 'Main Course', 'Starters', 'Beverages', 'Desserts']
 
 export default function KitchenPage() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [stationFilter, setStationFilter] = useState('All')
@@ -40,7 +44,7 @@ export default function KitchenPage() {
   // Realtime updates
   useEffect(() => {
     const handler = (evt) => {
-      if (evt.event_type?.startsWith('order') || evt.event_type?.startsWith('order_item')) {
+      if (evt.event_type?.startsWith('order')) {
         loadOrders()
       }
     }
@@ -67,9 +71,9 @@ export default function KitchenPage() {
     }
   }
 
-  // Filter orders that have kitchen-relevant items
+  // Backend returns raw status values: ACCEPTED, PREPARING, CREATED
   const kitchenOrders = orders.filter(o =>
-    o.status === 'Accepted' || o.status === 'Preparing'
+    o.status === 'ACCEPTED' || o.status === 'PREPARING' || o.status === 'CREATED'
   )
 
   // Get all items across orders with their statuses
@@ -77,9 +81,9 @@ export default function KitchenPage() {
     (order.items || []).map(item => ({
       ...item,
       orderId: order.id,
-      orderRef: order.orderRef || order.id,
+      orderRef: order.orderRef || order.order_ref || order.id,
       customer: order.customer,
-      orderType: order.orderType,
+      orderType: order.orderType || order.order_type,
       itemStatus: item.status || 'PENDING',
     }))
   )
@@ -101,6 +105,14 @@ export default function KitchenPage() {
     <div className="kitchen-page">
       <div className="kitchen-header">
         <h2><ChefHat size={20} /> Kitchen Display</h2>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
+            <ArrowLeftRight size={14} /> Switch Role
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={logout}>
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
         <div className="kitchen-station-tabs">
           {STATION_FILTERS.map(s => (
             <button
@@ -172,7 +184,9 @@ export default function KitchenPage() {
                 <div key={order.id} className="kitchen-order-row">
                   <span>#{order.orderRef || order.id}</span>
                   <span>{order.customer}</span>
-                  <span>{order.item}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {(order.items || []).map(i => `${i.qty}x ${i.name || i.item_name_snapshot}`).join(', ')}
+                  </span>
                   <button
                     className="btn btn-sm"
                     disabled={!allDone}
@@ -191,10 +205,4 @@ export default function KitchenPage() {
   )
 }
 
-function XCircle(props) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
-    </svg>
-  )
-}
+

@@ -8,7 +8,6 @@
  *   /kitchen/*  — Kitchen KDS v2
  */
 
-import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -16,6 +15,7 @@ import LoginPage from './pages/auth/LoginPage'
 import AdminPage from './pages/admin/AdminPage'
 import WaiterPage from './pages/waiter/WaiterPage'
 import KitchenPage from './pages/kitchen/KitchenPage'
+import TrackingPage from './pages/tracking/TrackingPage'
 import RoleSelector from './components/shared/RoleSelector'
 import './index.css'
 
@@ -30,11 +30,9 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 function AppRoutes() {
   const { isLoggedIn } = useAuth()
-  const [selectedRole, setSelectedRole] = useState(null)
   const navigate = useNavigate()
 
   function handleRoleSelect(role) {
-    setSelectedRole(role)
     const path = role === 'ADMIN' ? '/admin' : role === 'WAITER' ? '/waiter' : '/kitchen'
     navigate(path, { replace: true })
   }
@@ -43,17 +41,14 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={isLoggedIn ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route path="/" element={
-        isLoggedIn ? (
-          selectedRole ? (
-            <Navigate to={selectedRole === 'ADMIN' ? '/admin' : selectedRole === 'WAITER' ? '/waiter' : '/kitchen'} replace />
-          ) : (
-            <RoleSelector onSelect={handleRoleSelect} />
-          )
-        ) : <Navigate to="/login" replace />
+        isLoggedIn
+          ? <RoleSelector onSelect={handleRoleSelect} />
+          : <Navigate to="/login" replace />
       } />
       <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
       <Route path="/waiter/*" element={<ProtectedRoute allowedRoles={['WAITER', 'ADMIN']}><WaiterPage /></ProtectedRoute>} />
       <Route path="/kitchen/*" element={<ProtectedRoute allowedRoles={['KITCHEN', 'ADMIN']}><KitchenPage /></ProtectedRoute>} />
+      <Route path="/track/:orderRef" element={<TrackingPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

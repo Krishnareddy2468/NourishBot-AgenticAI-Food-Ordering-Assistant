@@ -49,7 +49,7 @@ def order_status_changed(order_id: int, order_ref: str, new_status: str, restaur
 
 
 def order_item_status_changed(order_id: int, item_id: int, new_status: str, restaurant_id: int = 1) -> Event:
-    return Event("order_item.status_changed", {"order_id": order_id, "item_id": item_id, "new_status": new_status}, restaurant_id)
+    return Event("order.item_status_updated", {"order_id": order_id, "item_id": item_id, "new_status": new_status}, restaurant_id)
 
 
 def delivery_status_changed(delivery_id: int, order_id: int, new_status: str, restaurant_id: int = 1) -> Event:
@@ -74,3 +74,7 @@ def payment_status_changed(payment_id: int, order_id: int, new_status: str, rest
 
 def menu_item_availability_changed(item_id: int, available: bool, restaurant_id: int = 1) -> Event:
     return Event("menu_item.availability_changed", {"item_id": item_id, "available": available}, restaurant_id)
+
+
+def order_sent_to_kitchen(order_id: int, order_ref: str, restaurant_id: int = 1) -> Event:
+    return Event("order.sent_to_kitchen", {"order_id": order_id, "order_ref": order_ref}, restaurant_id)

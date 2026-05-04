@@ -6,7 +6,7 @@ Configure via STORAGE_PROVIDER env var.
 """
 
 import logging
-import shutil
+import os
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -158,6 +158,3 @@ async def _delete_azure(url: str) -> None:
     conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
     container = ContainerClient.from_connection_string(conn_str, container_name=settings.STORAGE_BUCKET)
     container.get_blob_client(key).delete_blob()
-
-
-import os  # noqa: E402 — needed for Azure conn str
