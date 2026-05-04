@@ -107,15 +107,76 @@ async def update_order_state(order_id: int, body: OrderStateUpdate, user=Depends
         if not order:
             raise HTTPException(404, "Order not found")
 
+        # Capture before commit to avoid async expiry issues
+        restaurant_id = order.restaurant_id
+        order_ref = order.order_ref
+        customer_id = order.customer_id
+
         order.status = body.order_state
         await session.commit()
+        await session.refresh(order)
 
         from app.realtime.events import order_status_changed
         from app.realtime.ws_manager import ws_manager
-        evt = order_status_changed(order_id, order.order_ref, body.order_state)
-        await ws_manager.broadcast(order.restaurant_id, evt.to_dict())
+        evt = order_status_changed(order_id, order_ref, body.order_state)
+        await ws_manager.broadcast(restaurant_id, evt.to_dict())
 
-        return {"ok": True, "order_id": order_id, "status": body.order_state}
+        # Notify customer on status change
+        try:
+            from app.realtime.notifications import notify_order_status
+            await notify_order_status(order_ref, body.order_state, order.order_type if hasattr(order, 'order_type') else "DELIVERY")
+        except Exception:
+            pass
+
+        items_result = await session.execute(
+            select(OrderItem).where(OrderItem.order_id == order.id)
+        )
+        items = items_result.scalars().all()
+        if customer_id:
+            from app.db.models import Customer
+            cust_result = await session.execute(
+                select(Customer).where(Customer.id == customer_id)
+            )
+            order.customer = cust_result.scalar_one_or_none()
+        else:
+            order.customer = None
+        return _serialize_order(order, items)
+
+
+@router.post("/{order_id}/mark-paid")
+async def mark_order_paid(order_id: int, user=Depends(extract_token)):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Order).where(Order.id == order_id))
+        order = result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(404, "Order not found")
+
+        restaurant_id = order.restaurant_id
+        order_ref = order.order_ref
+        customer_id = order.customer_id
+
+        order.status = "PAID"
+        await session.commit()
+        await session.refresh(order)
+
+        from app.realtime.events import order_status_changed
+        from app.realtime.ws_manager import ws_manager
+        evt = order_status_changed(order_id, order_ref, "PAID")
+        await ws_manager.broadcast(restaurant_id, evt.to_dict())
+
+        items_result = await session.execute(
+            select(OrderItem).where(OrderItem.order_id == order.id)
+        )
+        items = items_result.scalars().all()
+        if customer_id:
+            from app.db.models import Customer
+            cust_result = await session.execute(
+                select(Customer).where(Customer.id == customer_id)
+            )
+            order.customer = cust_result.scalar_one_or_none()
+        else:
+            order.customer = None
+        return _serialize_order(order, items)
 
 
 class ItemStatusUpdate(BaseModel):
@@ -146,6 +207,9 @@ async def update_order_item_status(
         from app.realtime.events import order_item_status_changed
         from app.realtime.ws_manager import ws_manager
         event = order_item_status_changed(order_id, item_id, body.status)
-        await ws_manager.broadcast(1, event.to_dict())
+        from app.db.models import Order as OrderModel
+        order_res = await session.execute(select(OrderModel).where(OrderModel.id == order_id))
+        order_obj = order_res.scalar_one_or_none()
+        await ws_manager.broadcast(order_obj.restaurant_id if order_obj else 1, event.to_dict())
 
         return {"ok": True, "order_id": order_id, "item_id": item_id, "status": body.status}

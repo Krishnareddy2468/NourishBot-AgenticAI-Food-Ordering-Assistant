@@ -3,7 +3,7 @@ Dine-in models: DiningTable, TableSession, TableSessionOrder.
 """
 
 from sqlalchemy import Column, BigInteger, Text, Integer, Boolean, ForeignKey, UniqueConstraint
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy import DateTime
 from sqlalchemy.orm import relationship
 
@@ -19,7 +19,7 @@ class DiningTable(Base, RestaurantMixin):
     restaurant_id = Column(BigInteger, nullable=False, index=True, server_default="1")
     name = Column(Text, nullable=False)
     capacity = Column(Integer, nullable=False)
-    active = Column(Boolean, default=True)
+    active = Column(Boolean, nullable=False, server_default=text("true"))
 
     # relationships
     sessions = relationship("TableSession", back_populates="table", lazy="selectin")

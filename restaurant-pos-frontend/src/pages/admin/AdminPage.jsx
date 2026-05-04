@@ -6,23 +6,37 @@ import { useState, useEffect, useMemo, startTransition } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, BarChart3,
-  ChefHat, Tag, Bell, RefreshCw, Zap, UtensilsCrossed, LogOut, Loader2, AlertTriangle,
+  ChefHat, Tag, Bell, RefreshCw, Zap, UtensilsCrossed, LogOut, Loader2,
+  Table2, CalendarDays, Users, Receipt, Banknote, ArrowLeftRight, Truck,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { useAuth } from '../../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { fetchBackendOrders, updateBackendOrderState, mapUiStateToBackend } from '../../services/platformApi'
 import DashboardView from './views/DashboardView'
 import OrdersView from './views/OrdersView'
 import MenuView from './views/MenuView'
+import TablesView from './views/TablesView'
+import ReservationsView from './views/ReservationsView'
+import EmployeesView from './views/EmployeesView'
+import InvoicesView from './views/InvoicesView'
+import SettlementsView from './views/SettlementsView'
+import DeliveriesView from './views/DeliveriesView'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'orders', label: 'Orders', icon: ClipboardList },
-  { id: 'menu', label: 'Menu', icon: Tag },
+  { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'kitchen', label: 'KDS', icon: ChefHat },
+  { id: 'tables', label: 'Tables', icon: Table2 },
+  { id: 'reservations', label: 'Reservations', icon: CalendarDays },
+  { id: 'menu', label: 'Menu', icon: Tag },
+  { id: 'employees', label: 'Employees', icon: Users },
+  { id: 'invoices', label: 'Invoices', icon: Receipt },
+  { id: 'settlements', label: 'Settlements', icon: Banknote },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
@@ -128,6 +142,7 @@ function KDSView({ orders, upsertOrder }) {
 
 export default function AdminPage() {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const [activeView, setActiveView] = useState('dashboard')
   const [globalSearch, setGlobalSearch] = useState('')
   const [orders, setOrders] = useState([])
@@ -164,8 +179,14 @@ export default function AdminPage() {
     switch (activeView) {
       case 'dashboard': return <DashboardView orders={orders} />
       case 'orders': return <OrdersView orders={orders} upsertOrder={upsertOrder} globalSearch={globalSearch} />
+      case 'deliveries': return <DeliveriesView />
       case 'menu': return <MenuView />
       case 'kitchen': return <KDSView orders={orders} upsertOrder={upsertOrder} />
+      case 'tables': return <TablesView />
+      case 'reservations': return <ReservationsView />
+      case 'employees': return <EmployeesView />
+      case 'invoices': return <InvoicesView />
+      case 'settlements': return <SettlementsView />
       case 'analytics': return <AnalyticsView orders={orders} />
       default: return <DashboardView orders={orders} />
     }
@@ -195,6 +216,9 @@ export default function AdminPage() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user">{user?.email}</div>
+          <button className="sidebar-item" onClick={() => navigate('/')} title="Switch role">
+            <ArrowLeftRight size={15} /> Switch Role
+          </button>
           <button className="sidebar-item" onClick={logout}>
             <LogOut size={15} /> Logout
           </button>

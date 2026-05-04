@@ -2,7 +2,7 @@
 Dzukku Bot — Main Entrypoint
 ============================
 Runs:
-  1. Telegram bot (python-telegram-bot polling, in its own thread)
+  1. Telegram bot (python-telegram-bot polling, same event loop as FastAPI)
   2. FastAPI REST API (uvicorn, main thread) — serves POS frontend
   3. WebSocket endpoint for real-time updates (KDS, waiter, admin)
   4. Outbox worker as background task
@@ -13,7 +13,6 @@ Database: PostgreSQL (via SQLAlchemy async + Alembic migrations).
 import asyncio
 import logging
 import os
-import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -46,16 +45,6 @@ async def init_db():
         raise
 
 
-# ── Telegram thread ───────────────────────────────────────────────────────────
-
-def run_telegram():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    tg_app = build_telegram_app()
-    logger.info("Telegram bot starting (polling)…")
-    tg_app.run_polling(drop_pending_updates=True, stop_signals=None)
-
-
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -66,12 +55,24 @@ async def lifespan(app: FastAPI):
     outbox_task = asyncio.create_task(outbox_worker_loop())
     logger.info("Outbox worker started.")
 
-    # Start Telegram bot in its own thread
-    tg_thread = threading.Thread(target=run_telegram, daemon=True)
-    tg_thread.start()
-    logger.info("Telegram thread started.")
+    # Start Telegram bot in the SAME event loop as FastAPI so all DB
+    # sessions (asyncpg) are bound to one loop — avoids "attached to a
+    # different loop" RuntimeErrors.
+    tg_app = build_telegram_app()
+    await tg_app.initialize()
+    await tg_app.start()
+    await tg_app.updater.start_polling(drop_pending_updates=True)
+    logger.info("Telegram bot started (polling, same event loop).")
 
     yield
+
+    # Graceful shutdown: stop Telegram first, then other tasks
+    try:
+        await tg_app.updater.stop()
+        await tg_app.stop()
+        await tg_app.shutdown()
+    except Exception as e:
+        logger.warning("Telegram shutdown warning: %s", e)
 
     outbox_task.cancel()
     await async_engine.dispose()
@@ -101,6 +102,9 @@ from app.api.routes.tables import router as tables_router
 from app.api.routes.kitchen import router as kitchen_router
 from app.api.routes.payments import router as payments_router
 from app.api.routes.deliveries import router as deliveries_router
+from app.api.routes.reservations import router as reservations_router
+from app.api.routes.staff import router as staff_router
+from app.api.routes.invoices import router as invoices_router
 
 api.include_router(auth_router)
 api.include_router(menu_router)
@@ -109,6 +113,9 @@ api.include_router(tables_router)
 api.include_router(kitchen_router)
 api.include_router(payments_router)
 api.include_router(deliveries_router)
+api.include_router(reservations_router)
+api.include_router(staff_router)
+api.include_router(invoices_router)
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────

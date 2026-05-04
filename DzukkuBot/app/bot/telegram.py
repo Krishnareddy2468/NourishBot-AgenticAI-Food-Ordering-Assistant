@@ -15,6 +15,14 @@ import logging
 import os
 import sys
 
+# Global bot instance for cross-module access (notifications)
+_bot_instance = None
+
+
+def get_bot_instance():
+    """Return the running bot instance for sending notifications."""
+    return _bot_instance
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -36,7 +44,7 @@ from dotenv import load_dotenv
 
 from app.agent.orchestrator import get_bot_response
 from app.agent.mcp_agent import get_mcp_response
-from app.agent.dzukku_agent import get_dzukku_response
+from app.agent.pipeline import process_message as pipeline_process
 from app.core.config import settings
 from app.db.crud import get_session, reset_session, save_session
 
@@ -157,8 +165,8 @@ async def _think_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     # Routing matrix:
     #   ordering_platform = Zomato/Swiggy + MCP_ENABLED → mcp_agent (LangGraph + MCP)
-    #   ordering_platform = Dzukku (or unset)           → dzukku_agent (LangGraph local tools)
-    #   any of the above returns None                   → legacy orchestrator (manual loop)
+    #   ordering_platform = Dzukku (or unset)           → deterministic DB pipeline
+    #   external MCP unavailable                        → legacy link fallback
     reply: str | None = None
     sess = await get_session(chat_id)
     platform_choice = (sess.get("ordering_platform") or "").strip()
@@ -175,26 +183,33 @@ async def _think_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             logger.error("MCP agent failed, falling back: %s", e, exc_info=True)
             reply = None
 
-    if reply is None and platform_choice != "Zomato" and platform_choice != "Swiggy":
-        # In-house Dzukku flow: try the new LangGraph ReAct agent first.
+    if reply is None and platform_choice not in ("Zomato", "Swiggy"):
+        # In-house Dzukku flow: 5-stage deterministic pipeline.
         try:
-            reply = await get_dzukku_response(
-                user_message=user_message,
+            reply = await pipeline_process(
+                message=user_message,
                 chat_id=chat_id,
                 user_name=user_name,
             )
         except Exception as e:
-            logger.error("Dzukku ReAct agent failed, falling back to legacy: %s", e, exc_info=True)
+            logger.error("Pipeline failed, falling back to legacy: %s", e, exc_info=True)
             reply = None
 
-    if reply is None:
-        # Last-resort fallback: legacy hand-rolled Gemini orchestrator.
+    if reply is None and platform_choice in ("Zomato", "Swiggy"):
+        # Last-resort fallback for external ordering: provide links / legacy
+        # behaviour if live MCP is unavailable.
         reply = await asyncio.get_event_loop().run_in_executor(
             None,
             get_bot_response,
             user_message,
             chat_id,
             user_name,
+        )
+
+    if reply is None:
+        reply = (
+            "Sorry, I had trouble reaching the restaurant system for a moment. "
+            "Please try again — I need the live menu/cart DB before I can order safely."
         )
 
     await update.effective_message.reply_text(
@@ -396,21 +411,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not intent:
         return
 
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-
-    reply = await asyncio.get_event_loop().run_in_executor(
-        None,
-        get_bot_response,
-        intent,
-        chat_id,
-        user_name,
-    )
-
-    await query.message.reply_text(
-        reply,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=main_keyboard(),
-    )
+    await _think_and_reply(update, context, intent)
 
 
 # ── Text message handler ──────────────────────────────────────────────────────
@@ -463,21 +464,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Find restaurants near me."
     )
 
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-
-    reply = await asyncio.get_event_loop().run_in_executor(
-        None,
-        get_bot_response,
-        location_message,
-        chat_id,
-        user_name,
-    )
-
-    await update.message.reply_text(
-        reply,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=main_keyboard(),
-    )
+    await _think_and_reply(update, context, location_message)
 
 
 # ── Error handler ──────────────────────────────────────────────────────────────
@@ -489,11 +476,13 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # ── App builder ───────────────────────────────────────────────────────────────
 
 def build_app():
+    global _bot_instance
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_TOKEN is not set in .env")
 
     app = ApplicationBuilder().token(token).build()
+    _bot_instance = app.bot
 
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("menu",    cmd_menu))

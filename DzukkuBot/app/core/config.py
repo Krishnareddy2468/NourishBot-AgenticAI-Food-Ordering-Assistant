@@ -21,8 +21,6 @@ class Settings:
     LOGS_DIR:     Path = ROOT_DIR / "logs"
     LOG_FILE:     Path = ROOT_DIR / "logs" / "dzukku.log"
     LOG_LEVEL:    str  = os.getenv("LOG_LEVEL", "INFO").upper()
-    XLSX_PATH:    Path = ROOT_DIR / "data" / "Project_Dzukku.xlsx"
-    MENU_SHEET:   str  = os.getenv("MENU_SHEET", "Master_Menu")
     CREDS_PATH:   Path = ROOT_DIR / "config" / "credentials.json"
 
     # ── PostgreSQL (vNext) ────────────────────────────────────────────────────
@@ -46,11 +44,6 @@ class Settings:
     GEMINI_FALLBACK_2:   str = os.getenv("GEMINI_FALLBACK_2_MODEL", "gemini-1.5-flash")
     GEMINI_MAX_TOKENS:   int = 1024
     AGENT_MAX_ITERATIONS: int = 6
-
-    # ── Google Sheets (deprecated — feature-flagged, will be removed) ──────
-    SHEETS_ENABLED:    bool = os.getenv("SHEETS_ENABLED", "false").lower() in ("1", "true", "yes")
-    GOOGLE_SHEET_ID:    str = os.getenv("GOOGLE_SHEET_ID", "")
-    GOOGLE_CREDENTIALS: str = os.getenv("GOOGLE_CREDENTIALS", "")
 
     # ── Razorpay (vNext) ────────────────────────────────────────────────────
     RAZORPAY_KEY_ID:       str = os.getenv("RAZORPAY_KEY_ID", "")

@@ -39,7 +39,6 @@ from app.db.crud import (
     save_reservation,
 )
 from app.core.config import settings
-from app.core.excel_sink import append_order as excel_append_order, append_reservation as excel_append_reservation
 from app.agent.policies import default_policy
 
 load_dotenv()
@@ -463,25 +462,6 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
 
         pretty = ", ".join(f"{c['qty']}x {c['item_name']}" for c in cart)
 
-        # Append to local Excel
-        excel_append_order(
-            order_ref      = order_ref,
-            customer_name  = name,
-            customer_phone = phone,
-            items          = cart,
-            total_price    = total,
-            platform       = platform_tag,
-            status         = "Pending",
-        )
-
-        # Google Sheets sync (feature-flagged)
-        if settings.SHEETS_ENABLED:
-            try:
-                from app.core.sheets import sync_order_to_sheet
-                sync_order_to_sheet(name, phone, pretty, total)
-            except Exception as e:
-                logger.warning("Sheets sync failed: %s", e)
-
         # Write outbox event for realtime
         try:
             from app.db.session import AsyncSessionLocal
@@ -534,24 +514,6 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
             return {"error": f"Maximum {default_policy.max_guests_per_reservation} guests per reservation."}, session_updates
 
         res_ref = _sa(save_reservation(name, phone, date, time_, guests, special))
-
-        excel_append_reservation(
-            reservation_ref = res_ref,
-            customer_name   = name,
-            customer_phone  = phone,
-            date            = date,
-            time            = time_,
-            guests          = guests,
-            special_request = special,
-        )
-
-        # Google Sheets sync (feature-flagged)
-        if settings.SHEETS_ENABLED:
-            try:
-                from app.core.sheets import sync_reservation_to_sheet
-                sync_reservation_to_sheet(name, phone, date, time_, guests, special)
-            except Exception as e:
-                logger.warning("Sheets reservation sync failed: %s", e)
 
         session_updates["state"]          = "res_confirmed"
         session_updates["customer_name"]  = name

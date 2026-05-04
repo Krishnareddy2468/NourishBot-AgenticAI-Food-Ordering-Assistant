@@ -4,7 +4,7 @@ Cart + Orders models: Cart, CartItem, Order, OrderItem.
 
 from sqlalchemy import Column, BigInteger, Text, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy import DateTime
 from sqlalchemy.orm import relationship
 
@@ -19,7 +19,7 @@ class Cart(Base, RestaurantMixin):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     restaurant_id = Column(BigInteger, nullable=False, index=True, server_default="1")
     customer_id = Column(BigInteger, ForeignKey("customers.id"), index=True)
-    status = Column(Text, default="OPEN")  # OPEN | CONVERTED | ABANDONED
+    status = Column(Text, nullable=False, server_default=text("'OPEN'"))  # OPEN | CONVERTED | ABANDONED
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -70,7 +70,7 @@ class Order(Base, RestaurantMixin):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    customer = relationship("Customer", back_populates="orders")
+    customer = relationship("Customer", back_populates="orders", lazy="selectin")
     channel = relationship("Channel")
     items = relationship("OrderItem", back_populates="order", lazy="selectin")
     delivery = relationship("Delivery", back_populates="order", uselist=False, lazy="selectin")
@@ -90,7 +90,7 @@ class OrderItem(Base, RestaurantMixin):
     qty = Column(Integer, nullable=False)
     unit_price_cents = Column(Integer, nullable=False)
     modifiers_json = Column(JSONB)
-    status = Column(Text, default="PENDING")  # PENDING | IN_PROGRESS | DONE | CANCELLED
+    status = Column(Text, nullable=False, default="PENDING", server_default=text("'PENDING'"))  # PENDING | IN_PROGRESS | DONE | CANCELLED
 
     # relationships
     order = relationship("Order", back_populates="items")
