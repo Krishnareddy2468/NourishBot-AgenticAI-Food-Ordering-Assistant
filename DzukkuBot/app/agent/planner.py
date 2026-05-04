@@ -46,51 +46,28 @@ GOALS = {
     "MENU_BROWSE",
 }
 
-# Full tool catalogue exposed to the planner
+# Compact tool catalogue for the planner
 TOOL_CATALOGUE = """
-AVAILABLE TOOLS (executor runs these — never fake results):
-
-── MENU DISCOVERY ───────────────────────────────────────────────────────────
-  search_menu         args: {query, filter_type?: Veg|Non-Veg|EGG|VEGAN, filter_category?}
-  get_menu            args: {filter_type?: All|Veg|Non-Veg, filter_category?}
-  get_item_details    args: {item_id?, item_name?}
-  get_restaurant_info args: {}
-  get_kitchen_eta     args: {}
-
-── CART ─────────────────────────────────────────────────────────────────────
-  add_to_cart         args: {items: [{name, qty}]}
-  update_cart_item    args: {item_name, qty}          (qty=0 to remove)
-  remove_from_cart    args: {item_name}
-  view_cart           args: {}
-  clear_cart          args: {}
-
-── ORDER FLOW ───────────────────────────────────────────────────────────────
-  set_order_type      args: {order_type: DELIVERY|PICKUP|DINE_IN}
-  set_delivery_address args: {address}               (required for DELIVERY)
-  update_customer     args: {name?, phone?, address?, language?}
-  place_order         args: {order_type: DELIVERY|PICKUP|DINE_IN, address?, notes?}
-  track_order         args: {order_ref}
-  cancel_order        args: {order_ref}
-
-── PAYMENT ──────────────────────────────────────────────────────────────────
-  create_payment_intent args: {order_ref, provider?: razorpay}
-  check_payment_status  args: {order_ref?, payment_id?}
-
-── RESERVATION ──────────────────────────────────────────────────────────────
-  make_reservation    args: {date, time, guests, special_request?}
-
-── DINE-IN (waiter / staff) ─────────────────────────────────────────────────
-  open_table_session  args: {table_id, guests, waiter_user_id?}
-  add_table_order     args: {table_session_id, items: [{name, qty}]}
-  close_table_session args: {table_session_id}
-  generate_invoice    args: {entity_id, entity_type: TABLE_SESSION|ORDER}
-
-── RESTAURANT OPS (staff only) ──────────────────────────────────────────────
-  set_item_availability args: {item_id?, item_name?, available: bool}
-  update_stock          args: {item_id?, item_name?, delta?, set_to?}
-  update_order_status   args: {order_ref?, order_id?, status}
-  assign_driver         args: {order_ref, driver_id}
-  update_delivery_status args: {delivery_id?, order_ref?, status}
+AVAILABLE TOOLS:
+  search_menu         {query, filter_type?, filter_category?}
+  get_menu            {filter_type?, filter_category?}
+  get_item_details    {item_id?, item_name?}
+  get_restaurant_info {}
+  get_kitchen_eta     {}
+  add_to_cart         {items: [{name, qty}]}
+  update_cart_item    {item_name, qty}
+  remove_from_cart    {item_name}
+  view_cart           {}
+  clear_cart          {}
+  set_order_type      {order_type: DELIVERY|PICKUP|DINE_IN}
+  set_delivery_address {address}
+  update_customer     {name?, phone?, address?, language?}
+  place_order         {order_type, address?, notes?}
+  track_order         {order_ref}
+  cancel_order        {order_ref}
+  create_payment_intent {order_ref, provider?}
+  check_payment_status {order_ref?, payment_id?}
+  make_reservation    {date, time, guests, special_request?}
 """
 
 # Slots required per goal
@@ -143,73 +120,40 @@ def _build_planner_prompt(message: str, ctx: ContextSnapshot) -> str:
     menu_text = "\n".join(menu_lines) or "  (no items available)"
     active_order_text = ctx.active_order_summary
 
-    slots_known = []
-    if ctx.customer_name:       slots_known.append("customer_name")
-    if ctx.customer_phone:      slots_known.append("customer_phone")
-    if ctx.order_type:          slots_known.append(f"order_type={ctx.order_type}")
-    if ctx.delivery_address:    slots_known.append("delivery_address")
-
     # State-specific instruction injected into rules
     state_hint = _state_hint(ctx.current_state, ctx)
 
-    return f"""You are the PLANNER for Dzukku Restaurant's AI agent.
+    return f"""You are the PLANNER for Dzukku Restaurant. Read the context + message. Output ONE JSON object.
 
-=== YOUR JOB ===
-Read the customer message + context. Output ONE JSON object describing what to do.
-You NEVER write to the database. You ONLY plan.
+CONTEXT:
+State: {ctx.current_state.value} | Time: {ctx.time_of_day} ({ctx.now.strftime('%I:%M %p')}) | Open: {ctx.is_open}
+Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | Order type: {ctx.order_type or "—"} | Address: {ctx.delivery_address or "—"}
+Cart: {ctx.cart_summary}
+Orders: {active_order_text} | Kitchen: {ctx.kitchen_load} orders
 
-=== CONTEXT ===
-Bot state     : {ctx.current_state.value}
-Time          : {ctx.time_of_day} ({ctx.now.strftime('%I:%M %p')})
-Restaurant    : {"OPEN" if ctx.is_open else "CLOSED"}
-Customer name : {ctx.customer_name or "(unknown)"}
-Customer phone: {ctx.customer_phone or "(unknown)"}
-Order type    : {ctx.order_type or "(not set)"}
-Delivery addr : {ctx.delivery_address or "(not set)"}
-Slots known   : {', '.join(slots_known) or 'none'}
-Cart          :
-{ctx.cart_summary}
-Active orders : {active_order_text}
-Pending payment: {ctx.pending_order_ref or "none"}
-Kitchen load  : {ctx.kitchen_load} orders in prep
-
-=== AVAILABLE MENU ===
+MENU (top 40):
 {menu_text}
 
+TOOLS:
 {TOOL_CATALOGUE}
 
-=== OUTPUT FORMAT (strict JSON, no extra keys) ===
-{{
-  "goal": "<ORDER_ONLINE|DINE_IN|TAKEAWAY|RESERVATION|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE>",
-  "missing_slots": ["list of slot names still needed"],
-  "constraints": {{"veg": true/false, "budget_max": 0, "allergy": ""}},
-  "proposed_actions": [
-    {{"tool": "<tool_name>", "args": {{...}}}}
-  ],
-  "user_intent_summary": "one line summary",
-  "requires_confirmation": true/false
-}}
+OUTPUT JSON:
+{{"goal":"ORDER_ONLINE|DINE_IN|TAKEAWAY|RESERVATION|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"...","args":{{...}}}}],"user_intent_summary":"...","requires_confirmation":false}}
 
-=== RULES ===
-1. proposed_actions max {settings.AGENT_MAX_ITERATIONS} entries.
-2. If cart is empty and customer wants to order → include add_to_cart first.
-3. Missing name/phone → add to missing_slots, DO NOT call place_order.
-4. DELIVERY orders also require delivery_address — add to missing_slots if absent.
-5. place_order ONLY when: cart non-empty + all required slots known + requires_confirmation=true + customer explicitly confirmed ("yes", "place it", "confirm").
-6. cancel_order ONLY on explicit cancel request with order ref.
-7. MENU_BROWSE/SUPPORT → proposed_actions may be empty or just search_menu/get_menu.
-8. requires_confirmation = true whenever place_order or cancel_order is in proposed_actions.
-9. Never fabricate item names or prices — only use menu items listed above.
-10. If bot state is AWAITING_PAYMENT → suggest check_payment_status or create_payment_intent.
+RULES:
+1. Max {settings.AGENT_MAX_ITERATIONS} proposed_actions.
+2. Missing name/phone → add to missing_slots, don't place_order.
+3. DELIVERY needs address → add to missing_slots if absent.
+4. place_order ONLY when: cart non-empty + all slots known + customer confirmed.
+5. Never fabricate items or prices.
 {state_hint}
 
-=== CONVERSATION HISTORY (last turns) ===
+HISTORY:
 {_format_history(ctx.last_turns)}
 
-=== CUSTOMER MESSAGE ===
-{message}
+MESSAGE: {message}
 
-Respond with ONLY the JSON object, no markdown, no explanation."""
+JSON only:"""
 
 
 def _build_minimal_prompt(message: str, ctx: ContextSnapshot) -> str:

@@ -16,6 +16,7 @@ Loop bound: max settings.AGENT_MAX_ITERATIONS tool calls per turn.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from app.agent.context_builder import build_context, save_pipeline_turn, ContextSnapshot
@@ -50,7 +51,20 @@ async def process_message(
     )
 
     # ── Stage 2: Planner ──────────────────────────────────────────────────────
+    # If we can deterministically extract slot values (phone, name, address),
+    # inject them as a hint so the planner LLM doesn't have to guess.
+    slot_hint = _extract_slot_hint(message, ctx)
+    if slot_hint:
+        ctx.pending_slots = slot_hint.get("remaining_slots", ctx.pending_slots)
+
     plan = await Planner.plan(message, ctx)
+
+    # If we extracted slot values, prepend update_customer / set_delivery_address
+    # actions so the executor saves them before anything else.
+    if slot_hint and slot_hint.get("actions"):
+        plan.proposed_actions = slot_hint["actions"] + plan.proposed_actions
+        plan.missing_slots = slot_hint.get("remaining_slots", plan.missing_slots)
+
     plan = _guard_order_plan(plan, ctx)
     logger.info(
         "Pipeline[chat=%s] plan — goal=%s missing=%s actions=%d confirm=%s",
@@ -163,6 +177,9 @@ async def process_message(
                 (action.data.get("status") or "").upper() in ("CAPTURED", "AUTHORIZED"):
             pending_payment_order_id = None  # clear after capture
 
+    if next_slots and next_state == BotState.AWAITING_CONFIRMATION:
+        next_state = BotState.COLLECTING_DETAILS
+
     await _persist(
         chat_id, message, reply, plan, ctx,
         next_goal=next_goal,
@@ -209,6 +226,71 @@ async def _persist(
         )
     except Exception as e:
         logger.error("Pipeline: failed to persist turn for chat=%s: %s", chat_id, e)
+
+
+def _extract_slot_hint(message: str, ctx: ContextSnapshot) -> dict | None:
+    """
+    Lightweight slot extractor — does NOT bypass the planner.
+    Finds phone/name/address in short replies and injects them as
+    proposed actions before the LLM plan. The planner still runs and
+    decides the goal; the responder LLM still composes the reply.
+    """
+    pending = list(ctx.pending_slots or [])
+    if not pending:
+        return None
+
+    text = (message or "").strip()
+    if not text:
+        return None
+
+    actions: list[dict] = []
+    consumed: set[str] = set()
+
+    # Phone extraction
+    phone = _extract_phone(text)
+    if "customer_phone" in pending and phone:
+        actions.append({"tool": "update_customer", "args": {"phone": phone}})
+        consumed.add("customer_phone")
+
+    # Name heuristics (short text that looks like a name)
+    if "customer_name" in pending and not phone:
+        words = re.findall(r"[A-Za-z][A-Za-z.'-]*", text)
+        if 1 <= len(words) <= 4 and not _is_action_word(text):
+            actions.append({"tool": "update_customer", "args": {"name": text.strip()}})
+            consumed.add("customer_name")
+
+    # Order type extraction
+    if "order_type" in pending:
+        order_type = _extract_order_type(text)
+        if order_type:
+            actions.append({"tool": "set_order_type", "args": {"order_type": order_type}})
+            consumed.add("order_type")
+
+    # Address extraction (long text with commas, not a name)
+    if "delivery_address" in pending:
+        cleaned = re.sub(r"\+?\d[\d\s().-]{6,}\d", "", text).strip(" \t\r\n,;:-")
+        if len(cleaned) >= 10 and not _is_action_word(cleaned):
+            if not any(a.get("tool") == "set_order_type" for a in actions) and not ctx.order_type:
+                actions.append({"tool": "set_order_type", "args": {"order_type": "DELIVERY"}})
+                consumed.add("order_type")
+            actions.append({"tool": "set_delivery_address", "args": {"address": cleaned}})
+            consumed.add("delivery_address")
+
+    if not actions:
+        return None
+
+    remaining = [slot for slot in pending if slot not in consumed]
+    return {"actions": actions, "remaining_slots": remaining}
+
+
+def _is_action_word(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    blocked = {
+        "order", "place", "confirm", "yes", "no", "delivery", "pickup",
+        "dine", "menu", "cart", "phone", "number", "cancel", "reserve",
+        "book", "help", "reset", "info", "specials",
+    }
+    return any(w in blocked for w in re.findall(r"\w+", lowered))
 
 
 def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutput:
@@ -284,3 +366,21 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
         user_intent_summary=plan.user_intent_summary,
         requires_confirmation=plan.requires_confirmation and not missing,
     )
+
+
+def _extract_phone(text: str) -> str:
+    digits = re.sub(r"\D", "", text or "")
+    if 8 <= len(digits) <= 15:
+        return digits
+    return ""
+
+
+def _extract_order_type(text: str) -> str:
+    lowered = (text or "").strip().lower()
+    if "delivery" in lowered or "deliver" in lowered:
+        return "DELIVERY"
+    if "pickup" in lowered or "pick up" in lowered or "takeaway" in lowered or "take away" in lowered:
+        return "PICKUP"
+    if "dine" in lowered or "table" in lowered or "restaurant" in lowered:
+        return "DINE_IN"
+    return ""
