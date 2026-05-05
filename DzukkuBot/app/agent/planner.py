@@ -216,7 +216,7 @@ class Planner:
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
                     temperature=0.1,
-                    max_output_tokens=1024,
+                    max_output_tokens=2048,
                 ),
             )
         return cls._model

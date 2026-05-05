@@ -41,7 +41,7 @@ class Responder:
                 model_name=settings.GEMINI_PRIMARY,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=1024,
+                    max_output_tokens=2048,
                 ),
             )
         return cls._model
@@ -72,25 +72,27 @@ class Responder:
                 )
                 text = (response.text or "").strip()
 
-                # Detect truncation: Gemini returns finish_reason=MAX_TOKENS
-                # when output is cut off. If so, retry with a shorter prompt.
+                # Check finish reason for truncation / safety blocks
                 finish = ""
                 try:
-                    finish = response.candidates[0].finish_reason.name
-                except Exception:
-                    pass
-                if finish == "MAX_TOKENS" or (text and not text.rstrip()[-1:] in ".!?😊🍽️❤️😉😄🔥🎉📅"):
-                    logger.warning(
-                        "Responder truncated (chat=%s) finish=%s text=%r",
-                        ctx.chat_id, finish, text[-40:],
-                    )
-                    if attempt == 0:
-                        # Retry with minimal prompt
-                        prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
-                        continue
-                    # 2nd attempt still truncated — return what we have + CTA
-                    if text:
-                        return text.rstrip(",:;- ") + ". Want me to help with anything else? 😊"
+                    finish = str(response.candidates[0].finish_reason)
+                    # finish_reason enum values: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER
+                    if "MAX_TOKENS" in finish or "SAFETY" in finish or "RECITATION" in finish:
+                        logger.warning(
+                            "Responder truncated/blocked (chat=%s) finish=%s len=%d tail=%r",
+                            ctx.chat_id, finish, len(text), text[-60:] if text else "",
+                        )
+                        if attempt == 0:
+                            prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
+                            continue
+                except Exception as e:
+                    logger.warning("Responder: could not read finish_reason: %s", e)
+
+                # If text looks cut off (ends mid-word, no punctuation), try once more
+                if text and attempt == 0 and not text[-1:] in ".!?😊😉😄🔥🎉📅\"'" and len(text) > 20:
+                    # Might be truncated even without MAX_TOKENS signal
+                    prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
+                    continue
 
                 if text:
                     return text
