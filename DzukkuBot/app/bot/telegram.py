@@ -329,7 +329,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Platform selection callback ──────────────────────────────────────────
     if query.data in PLATFORM_CALLBACKS:
         platform = PLATFORM_CALLBACKS[query.data]
-        await save_session(chat_id, {"ordering_platform": platform})
+        await save_session(chat_id, {
+            "ordering_platform": platform,
+            "history": [],
+        })
 
         # When MCP is enabled, route Zomato/Swiggy into the LangGraph
         # MCP agent — the user stays inside Telegram and orders through

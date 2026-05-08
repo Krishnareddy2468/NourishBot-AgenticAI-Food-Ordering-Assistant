@@ -42,7 +42,7 @@ export default function DeliveriesView() {
       const [dels, drvs] = await Promise.all([fetchDeliveries(), fetchDrivers()])
       setDeliveries(dels)
       setDrivers(drvs)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load deliveries')
     } finally {
       setLoading(false)
@@ -102,7 +102,7 @@ export default function DeliveriesView() {
     try {
       const data = await trackDelivery(deliveryId)
       setTrackingData(data)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load tracking data')
       setTrackingId(null)
     }

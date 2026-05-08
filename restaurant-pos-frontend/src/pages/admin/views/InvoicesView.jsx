@@ -12,7 +12,7 @@ export default function InvoicesView() {
       const data = await fetchInvoices()
       setInvoices(data)
     } catch (err) {
-      toast.error('Failed to load invoices')
+      toast.error(err.message || 'Failed to load invoices', { id: 'invoices-load-error' })
     } finally {
       setLoading(false)
     }

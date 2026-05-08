@@ -22,7 +22,7 @@ export default function ReservationsView() {
     try {
       const data = await fetchReservations()
       setReservations(data)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load reservations')
     } finally {
       setLoading(false)

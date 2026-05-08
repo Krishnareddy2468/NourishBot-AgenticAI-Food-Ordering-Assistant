@@ -3,8 +3,9 @@
  * For now, every user picks their primary role view.
  */
 
+import { useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { LayoutDashboard, ChefHat, UtensilsCrossed } from 'lucide-react'
+import { LayoutDashboard, ChefHat, UtensilsCrossed, Sparkles, ArrowRight } from 'lucide-react'
 
 const ROLES = [
   { id: 'ADMIN', label: 'Admin / POS', icon: LayoutDashboard, desc: 'Orders, menu, staff, payments, drivers' },
@@ -21,27 +22,37 @@ export default function RoleSelector({ onSelect }) {
     return r.id === role
   })
 
-  if (allowedRoles.length === 1) {
-    // Auto-select after mount
-    setTimeout(() => onSelect(allowedRoles[0].id), 0)
-    return null
-  }
+  useEffect(() => {
+    if (allowedRoles.length === 1) {
+      onSelect(allowedRoles[0].id)
+    }
+  }, [allowedRoles, onSelect])
+
+  if (allowedRoles.length === 1) return null
 
   return (
     <div className="role-selector">
-      <h2>Welcome, {user?.email || 'Staff'}</h2>
-      <p>Select your view:</p>
+      <div className="role-selector-shell">
+        <div className="role-selector-copy">
+          <span className="role-chip"><Sparkles size={14} /> Live restaurant control</span>
+          <h2>Pick the control room for this shift</h2>
+          <p>{user?.email || 'Staff'} can jump into service, kitchen, or full operations without losing sync.</p>
+        </div>
       <div className="role-cards">
         {allowedRoles.map(r => {
           const Icon = r.icon
           return (
             <button key={r.id} className="role-card" onClick={() => onSelect(r.id)}>
-              <Icon size={32} />
+              <div className="role-card-icon">
+                <Icon size={30} />
+              </div>
               <span className="role-card-label">{r.label}</span>
               <span className="role-card-desc">{r.desc}</span>
+              <span className="role-card-cta">Open workspace <ArrowRight size={14} /></span>
             </button>
           )
         })}
+      </div>
       </div>
     </div>
   )

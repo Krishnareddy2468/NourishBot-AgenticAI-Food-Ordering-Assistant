@@ -2,7 +2,7 @@
  * Admin portal — sidebar nav with real views.
  */
 
-import { useState, useEffect, useMemo, startTransition } from 'react'
+import { useState, useEffect, useMemo, startTransition, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, BarChart3,
@@ -50,7 +50,7 @@ function AnalyticsView({ orders }) {
   const byHour = useMemo(() => {
     const hours = Array.from({ length: 13 }, (_, i) => ({ hour: `${i + 10}h`, revenue: 0 }))
     orders.forEach(o => {
-      const h = o.dateTime ? new Date(o.dateTime).getHours() - 10 : -1
+      const h = o.createdAt ? new Date(o.createdAt).getHours() - 10 : -1
       if (h >= 0 && h < 13) hours[h].revenue += o.price || 0
     })
     return hours
@@ -144,36 +144,42 @@ export default function AdminPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [activeView, setActiveView] = useState('dashboard')
-  const [globalSearch, setGlobalSearch] = useState('')
+  const [globalSearch] = useState('')
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
-  const { on } = useWebSocket()
+  const [refreshing, setRefreshing] = useState(false)
+  const { on, connected } = useWebSocket(user?.restaurant_id || 1)
 
-  async function loadOrders(silent = false) {
+  const loadOrders = useCallback(async (silent = false) => {
+    if (silent) setRefreshing(true)
     try {
       const data = await fetchBackendOrders()
       startTransition(() => setOrders(data))
     } catch (err) {
       if (!silent) toast.error(err.message || 'Failed to load orders')
     } finally {
+      setRefreshing(false)
       setLoading(false)
     }
-  }
+  }, [])
 
   function upsertOrder(order) {
     setOrders(prev => [order, ...prev.filter(o => o.id !== order.id)])
   }
 
-  useEffect(() => { loadOrders() }, [])
+  useEffect(() => { loadOrders() }, [loadOrders])
 
   useEffect(() => {
     const handler = evt => {
       if (evt.event_type?.startsWith('order')) loadOrders(true)
     }
-    on('*', handler)
-  }, [on])
+    return on('*', handler)
+  }, [on, loadOrders])
 
   const pendingCount = orders.filter(o => o.status === 'Pending').length
+  const preparingCount = orders.filter(o => o.status === 'Preparing' || o.status === 'Accepted').length
+  const readyCount = orders.filter(o => o.status === 'Ready').length
+  const revenueToday = orders.reduce((sum, order) => sum + Number(order.price || 0), 0)
 
   function renderView() {
     switch (activeView) {
@@ -200,19 +206,22 @@ export default function AdminPage() {
           <span>Dzukku</span>
         </div>
         <nav className="sidebar-nav">
-          {NAV.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={`sidebar-item ${activeView === id ? 'active' : ''}`}
-              onClick={() => setActiveView(id)}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-              {id === 'orders' && pendingCount > 0 && (
-                <span className="sidebar-badge">{pendingCount}</span>
-              )}
-            </button>
-          ))}
+          {NAV.map((item) => {
+            const NavIcon = item.icon
+            return (
+              <button
+                key={item.id}
+                className={`sidebar-item ${activeView === item.id ? 'active' : ''}`}
+                onClick={() => setActiveView(item.id)}
+              >
+                <NavIcon size={15} />
+                <span>{item.label}</span>
+                {item.id === 'orders' && pendingCount > 0 && (
+                  <span className="sidebar-badge">{pendingCount}</span>
+                )}
+              </button>
+            )
+          })}
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user">{user?.email}</div>
@@ -232,8 +241,26 @@ export default function AdminPage() {
             <p>{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
           </div>
           <div className="topbar-actions">
+            <div className={`ops-chip ${connected ? 'online' : 'offline'}`}>
+              <span className="ops-chip-dot" />
+              {connected ? 'Live sync on' : 'Reconnecting'}
+            </div>
+            <div className="ops-chip warm">
+              <ShoppingCart size={13} />
+              {pendingCount} queued
+            </div>
+            <div className="ops-chip cool">
+              <ChefHat size={13} />
+              {preparingCount} in kitchen
+            </div>
+            <div className="ops-chip green">
+              <Truck size={13} />
+              {readyCount} ready
+            </div>
             {pendingCount > 0 && <div className="live-ticker"><Zap size={12} />{pendingCount} pending</div>}
-            <button className="icon-btn" onClick={() => loadOrders()} title="Refresh"><RefreshCw size={15} /></button>
+            <button className={`icon-btn ${refreshing ? 'is-spinning' : ''}`} onClick={() => loadOrders(true)} title="Refresh">
+              <RefreshCw size={15} />
+            </button>
             <button className="icon-btn"><Bell size={15} /><div className="notif-dot" /></button>
             <LiveClock />
           </div>
@@ -241,7 +268,32 @@ export default function AdminPage() {
         <div className="content">
           {loading ? (
             <div className="page-loading"><Loader2 className="spin" size={24} />Loading...</div>
-          ) : renderView()}
+          ) : (
+            <>
+              <section className="ops-hero">
+                <div>
+                  <span className="eyebrow">Operations pulse</span>
+                  <h3>Admin, waiter, and kitchen are working from the same live queue.</h3>
+                  <p>Orders flow from acceptance to prep to service with real-time updates across every station.</p>
+                </div>
+                <div className="ops-hero-stats">
+                  <article>
+                    <strong>{orders.length}</strong>
+                    <span>Total orders</span>
+                  </article>
+                  <article>
+                    <strong>₹{revenueToday.toLocaleString('en-IN')}</strong>
+                    <span>Gross tracked</span>
+                  </article>
+                  <article>
+                    <strong>{connected ? 'Live' : 'Retrying'}</strong>
+                    <span>Realtime link</span>
+                  </article>
+                </div>
+              </section>
+              {renderView()}
+            </>
+          )}
         </div>
       </div>
     </div>

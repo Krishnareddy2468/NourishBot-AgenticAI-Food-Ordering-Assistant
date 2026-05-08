@@ -51,6 +51,9 @@ def setup_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("telegram").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # Ensure Swiggy/Zomato MCP modules always log at DEBUG regardless of root level
+    logging.getLogger("app.agent.mcp_clients").setLevel(logging.DEBUG)
+    logging.getLogger("app.agent.mcp_agent").setLevel(logging.DEBUG)
 
     _configured = True
     logging.getLogger(__name__).info(

@@ -81,6 +81,8 @@ _TRANSITIONS: dict[tuple[BotState, Event], BotState] = {
     (BotState.BUILDING_CART, Event.ORDER_TYPE_SET):         BotState.COLLECTING_DETAILS,
     (BotState.BUILDING_CART, Event.DETAILS_COLLECTED):      BotState.AWAITING_CONFIRMATION,
     (BotState.BUILDING_CART, Event.CONFIRMATION_READY):     BotState.AWAITING_CONFIRMATION,
+    (BotState.BUILDING_CART, Event.ORDER_PLACED):           BotState.ORDER_PLACED,
+    (BotState.BUILDING_CART, Event.PAYMENT_REQUIRED):       BotState.AWAITING_PAYMENT,
     (BotState.BUILDING_CART, Event.ISSUE_RAISED):           BotState.SUPPORT_CASE,
     (BotState.BUILDING_CART, Event.RESET):                  BotState.IDLE,
 
@@ -89,6 +91,8 @@ _TRANSITIONS: dict[tuple[BotState, Event], BotState] = {
     (BotState.COLLECTING_DETAILS, Event.ADDRESS_SET):           BotState.COLLECTING_DETAILS,
     (BotState.COLLECTING_DETAILS, Event.DETAILS_COLLECTED):     BotState.AWAITING_CONFIRMATION,
     (BotState.COLLECTING_DETAILS, Event.CONFIRMATION_READY):    BotState.AWAITING_CONFIRMATION,
+    (BotState.COLLECTING_DETAILS, Event.ORDER_PLACED):          BotState.ORDER_PLACED,
+    (BotState.COLLECTING_DETAILS, Event.PAYMENT_REQUIRED):      BotState.AWAITING_PAYMENT,
     (BotState.COLLECTING_DETAILS, Event.RESET):                 BotState.IDLE,
 
     # From AWAITING_CONFIRMATION

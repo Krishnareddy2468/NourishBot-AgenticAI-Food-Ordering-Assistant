@@ -10,6 +10,18 @@ machine, mcp-remote will open a browser for the bot owner to log in. After
 that the cached token is reused — that's the "shared bot-owner token"
 model agreed for this build.
 
+IMPORTANT: Expected subprocess output
+─────────────────────────────────────
+During normal operation, you may see stderr messages from mcp-remote like:
+    Error from remote server: DOMException [AbortError]: This operation was aborted
+    at node:internal/deps/undici/undici:13502:13
+    at async StreamableHTTPClientTransport._startOrAuthSse (...)
+
+These are harmless cleanup noise occurring when the Node.js HTTPclient's SSE
+stream is closed during subprocess shutdown. The tool calls complete successfully
+before these errors occur. They cannot be suppressed from Python; mcp_agent.py
+catches the corresponding Python exceptions and handles them gracefully.
+
 Public surface
 --------------
     get_mcp_tools_async(platform) -> list[BaseTool]
@@ -125,11 +137,16 @@ async def get_mcp_tools_async(platform: str) -> list:
     per platform so Zomato and Swiggy never block each other.
 
     platform: "Zomato" or "Swiggy"
+    
+    The underlying MultiServerMCPClient spawns subprocess(es) running
+    `mcp-remote` to bridge remote HTTP MCP servers → local stdio.
+    These subprocesses stay alive as long as the client is referenced.
     """
     if not settings.MCP_ENABLED:
         return []
 
     if platform in _tools_caches:
+        logger.debug("MCP[%s]: returning cached %d tools", platform, len(_tools_caches[platform]))
         return _tools_caches[platform]
 
     last_fail = _last_failure_ts.get(platform, 0.0)
@@ -138,7 +155,9 @@ async def get_mcp_tools_async(platform: str) -> list:
         return []
 
     async with _get_connect_lock(platform):
+        # Double-check inside the lock (another coroutine may have filled the cache)
         if platform in _tools_caches:
+            logger.debug("MCP[%s]: another task filled cache; returning %d tools", platform, len(_tools_caches[platform]))
             return _tools_caches[platform]
 
         _ensure_imports()
@@ -151,10 +170,21 @@ async def get_mcp_tools_async(platform: str) -> list:
         try:
             logger.info("MCP[%s]: connecting to servers: %s", platform, list(servers.keys()))
             client = MultiServerMCPClient(servers)
+            logger.debug("MCP[%s]: MultiServerMCPClient instance created (PID tracking via subprocess)")
+            
             tools = await client.get_tools()
-            logger.info("MCP[%s]: %d tool(s) loaded.", platform, len(tools))
+            tool_names = [getattr(t, "name", str(t)) for t in tools]
+            logger.info("MCP[%s]: %d tool(s) loaded: %s", platform, len(tools), tool_names)
+            logger.debug("MCP[%s]: tool details: %s", platform, [
+                {"name": getattr(t, "name", "?"), "description": (getattr(t, "description", "") or "")[:80]}
+                for t in tools
+            ])
+            
+            # CRITICAL: Keep a strong reference to the client to prevent garbage collection.
+            # If the client is GC'd, the underlying subprocess(es) will shut down.
             _clients[platform]      = client
             _tools_caches[platform] = list(tools)
+            logger.info("MCP[%s]: client cached; subprocess(es) will remain alive", platform)
             return _tools_caches[platform]
         except Exception as e:
             _last_failure_ts[platform] = time.time()
@@ -162,15 +192,28 @@ async def get_mcp_tools_async(platform: str) -> list:
             return []
 
 
+async def reset_platform_cache(platform: str) -> None:
+    """
+    Evict the cached client + tools for a platform so the next call to
+    get_mcp_tools_async() spawns a fresh subprocess connection.
+    Called by mcp_agent when it detects a stale / failed connection.
+    Note: langchain-mcp-adapters 0.1.0 does not support __aexit__ — just
+    clear the cache dicts and let the subprocess clean itself up.
+    """
+    async with _get_connect_lock(platform):
+        _clients.pop(platform, None)
+        _tools_caches.pop(platform, None)
+    logger.info("MCP[%s]: cache reset — will reconnect on next request.", platform)
+
+
 async def close_all_async() -> None:
     """Tear down all per-platform MCP sessions cleanly (FastAPI shutdown hook)."""
     for platform, client in list(_clients.items()):
         try:
-            close = getattr(client, "aclose", None) or getattr(client, "close", None)
-            if close:
-                res = close()
-                if asyncio.iscoroutine(res):
-                    await res
+            # Try aclose if available (future versions), otherwise just clear.
+            aclose = getattr(client, "aclose", None)
+            if aclose and callable(aclose):
+                await aclose()
         except Exception as e:  # pragma: no cover
             logger.warning("MCP[%s]: clean shutdown raised: %s", platform, e)
     _clients.clear()

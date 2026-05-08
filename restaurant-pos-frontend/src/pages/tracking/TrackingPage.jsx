@@ -61,7 +61,9 @@ export default function TrackingPage() {
       try {
         const result = await trackDeliveryByOrder(orderRef)
         setData(result)
-      } catch {}
+      } catch {
+        // Keep the last successful tracking snapshot during background refresh failures.
+      }
     }, 15000)
     return () => clearInterval(id)
   }, [orderRef])

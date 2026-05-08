@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import { Users, RefreshCw, Loader2, Plus, Trash2, AlertTriangle, Edit2, Check, X } from 'lucide-react'
 import { fetchTables, fetchActiveSessions, createTable, updateTable, deleteTable } from '../../../services/platformApi'
 import { useWebSocket } from '../../../hooks/useWebSocket'
+import { useAuth } from '../../../context/AuthContext'
 
 const STATUS_COLOR = {
   AVAILABLE: '#1A936F',
@@ -21,6 +22,7 @@ const STATUS_BG = {
 const EMPTY_FORM = { name: '', capacity: 4 }
 
 export default function TablesView() {
+  const { user } = useAuth()
   const [tables, setTables] = useState([])
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -31,7 +33,7 @@ export default function TablesView() {
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [deletingId, setDeletingId] = useState(null)
-  const { on } = useWebSocket()
+  const { on } = useWebSocket(user?.restaurant_id || 1)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setError(null)
@@ -54,7 +56,7 @@ export default function TablesView() {
     const handler = evt => {
       if (evt.event_type?.startsWith('table_session')) load(true)
     }
-    on('*', handler)
+    return on('*', handler)
   }, [on, load])
 
   async function handleCreate(e) {

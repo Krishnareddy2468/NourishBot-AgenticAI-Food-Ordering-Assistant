@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { loginApi } from '../../services/platformApi'
-import { UtensilsCrossed, AlertTriangle, Loader2 } from 'lucide-react'
+import { UtensilsCrossed, AlertTriangle, Loader2, ShieldCheck, ChefHat, ConciergeBell } from 'lucide-react'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -36,10 +36,17 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">
-          <UtensilsCrossed size={40} />
-          <h1>Dzukku POS</h1>
-          <p>Restaurant Management Portal</p>
+        <div className="login-hero">
+          <div className="login-logo">
+            <UtensilsCrossed size={40} />
+            <h1>Dzukku POS</h1>
+            <p>Restaurant operations, floor service, and kitchen execution in one workspace.</p>
+          </div>
+          <div className="login-role-preview">
+            <div><ShieldCheck size={15} /> Admin control</div>
+            <div><ConciergeBell size={15} /> Waiter workflow</div>
+            <div><ChefHat size={15} /> Kitchen realtime</div>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
@@ -81,7 +88,7 @@ export default function LoginPage() {
         </form>
 
         <div className="login-footer">
-          admin@dzukku.com / admin123 &nbsp;|&nbsp; waiter@dzukku.com / waiter123
+          Demo: admin@dzukku.com / admin123 or waiter@dzukku.com / waiter123
         </div>
       </div>
     </div>

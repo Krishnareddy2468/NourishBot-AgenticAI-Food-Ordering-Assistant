@@ -45,7 +45,7 @@ function AppRoutes() {
           ? <RoleSelector onSelect={handleRoleSelect} />
           : <Navigate to="/login" replace />
       } />
-      <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+      <Route path="/admin/*" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminPage /></ProtectedRoute>} />
       <Route path="/waiter/*" element={<ProtectedRoute allowedRoles={['WAITER', 'ADMIN']}><WaiterPage /></ProtectedRoute>} />
       <Route path="/kitchen/*" element={<ProtectedRoute allowedRoles={['KITCHEN', 'ADMIN']}><KitchenPage /></ProtectedRoute>} />
       <Route path="/track/:orderRef" element={<TrackingPage />} />

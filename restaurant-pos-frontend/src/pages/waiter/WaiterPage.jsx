@@ -3,14 +3,25 @@
  * kitchen readiness tracking, billing with payment gate.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'react-hot-toast'
-import { Plus, Minus, Flame, Receipt, Users, Loader2, CheckCircle2, XCircle, ArrowLeftRight, LogOut, Clock, Bell } from 'lucide-react'
+import {
+  Plus, Minus, Flame, Users, Loader2, CheckCircle2, ArrowLeftRight, LogOut,
+  Clock, Bell, RefreshCw, ReceiptText, ChefHat, Wifi, WifiOff, CloudOff, Upload,
+} from 'lucide-react'
 import {
   fetchTables, fetchMenu, fetchActiveSessions, fetchSessionOrders,
-  openTableSession, addTableSessionOrder, fireTableSession,
-  generateTableInvoice, closeTableSession,
+  openTableSession, addTableSessionOrder, fireTableSession, generateTableInvoice,
 } from '../../services/platformApi'
+import {
+  buildOfflineOrderEntry,
+  enqueueOfflineOrder,
+  getOfflineOrderQueue,
+  getWaiterCache,
+  removeOfflineOrder,
+  setWaiterCache,
+  updateOfflineOrder,
+} from '../../services/offlineOrderQueue'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -18,14 +29,14 @@ import { useNavigate } from 'react-router-dom'
 const TABLE_COLORS = { AVAILABLE: '#1A936F', OCCUPIED: '#F59E0B', RESERVED: '#8B5CF6', INACTIVE: '#6B7280' }
 
 const ITEM_STATUS_CHIP = {
-  PENDING:      { label: 'Pending',   color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
-  IN_PROGRESS:  { label: 'Cooking',   color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
-  DONE:         { label: 'Done',      color: '#1A936F', bg: 'rgba(26,147,111,0.12)' },
-  CANCELLED:    { label: 'Cancelled',  color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
+  PENDING: { label: 'Pending', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  IN_PROGRESS: { label: 'Cooking', color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
+  DONE: { label: 'Done', color: '#1A936F', bg: 'rgba(26,147,111,0.12)' },
+  CANCELLED: { label: 'Cancelled', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' },
 }
 
 export default function WaiterPage() {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const navigate = useNavigate()
   const [tables, setTables] = useState([])
   const [sessions, setSessions] = useState([])
@@ -34,36 +45,49 @@ export default function WaiterPage() {
   const [activeSession, setActiveSession] = useState(null)
   const [sessionOrders, setSessionOrders] = useState([])
   const [cart, setCart] = useState([])
+  const [offlineQueue, setOfflineQueue] = useState(() => getOfflineOrderQueue())
   const [loading, setLoading] = useState(true)
-  const { on } = useWebSocket()
-
-  // Realtime: listen for session/order/item updates
-  useEffect(() => {
-    const handler = (evt) => {
-      if (evt.event_type?.startsWith('table_session') || evt.event_type?.startsWith('order')) {
-        loadData()
-      }
-    }
-    on('*', handler)
-    return () => {}
-  }, [on])
+  const [actionState, setActionState] = useState({ openTableId: null, firing: false, billing: false, refreshing: false, syncingOffline: false })
+  const [isOfflineMode, setIsOfflineMode] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false)
+  const { on, connected } = useWebSocket(user?.restaurant_id || 1)
 
   const loadData = useCallback(async (silent = false) => {
+    if (silent) {
+      setActionState(prev => ({ ...prev, refreshing: true }))
+    }
     try {
-      const [t, s, m] = await Promise.all([fetchTables(), fetchActiveSessions(), fetchMenu()])
-      setTables(t)
-      setSessions(s)
-      setMenu(m)
-    } catch (err) {
-      if (!silent) toast.error('Failed to load data')
+      const [nextTables, nextSessions, nextMenu] = await Promise.all([
+        fetchTables(),
+        fetchActiveSessions(),
+        fetchMenu(),
+      ])
+      setTables(nextTables)
+      setSessions(nextSessions)
+      setMenu(nextMenu)
+      setWaiterCache({ tables: nextTables, sessions: nextSessions, menu: nextMenu })
+      setIsOfflineMode(false)
+    } catch (_err) {
+      const cached = getWaiterCache()
+      if (cached.tables.length || cached.sessions.length || cached.menu.length) {
+        setTables(cached.tables)
+        setSessions(cached.sessions)
+        setMenu(cached.menu)
+        setIsOfflineMode(true)
+        if (!silent) toast('Offline mode: using last saved floor data')
+      } else if (!silent) {
+        toast.error(_err.message || 'Failed to load waiter data')
+      }
     } finally {
+      setActionState(prev => ({ ...prev, refreshing: false }))
       setLoading(false)
     }
   }, [])
 
-  // Reload session orders when session changes or data refreshes
   const loadSessionOrders = useCallback(async () => {
-    if (!activeSession?.id) { setSessionOrders([]); return }
+    if (!activeSession?.id) {
+      setSessionOrders([])
+      return
+    }
     try {
       const orders = await fetchSessionOrders(activeSession.id)
       setSessionOrders(orders)
@@ -75,74 +99,198 @@ export default function WaiterPage() {
   useEffect(() => { loadData() }, [loadData])
   useEffect(() => { loadSessionOrders() }, [loadSessionOrders])
 
-  // Count ready-to-serve orders for the bell indicator
-  const readyOrders = sessionOrders.filter(o => o.all_items_done && o.status !== 'DELIVERED')
+  useEffect(() => {
+    const handleOnline = () => setIsOfflineMode(false)
+    const handleOffline = () => setIsOfflineMode(true)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handler = (evt) => {
+      if (evt.event_type?.startsWith('table_session') || evt.event_type?.startsWith('order')) {
+        loadData(true)
+      }
+    }
+    return on('*', handler)
+  }, [on, loadData])
+
+  const syncOfflineOrders = useCallback(async () => {
+    const queue = getOfflineOrderQueue()
+    if (!queue.length || actionState.syncingOffline) return
+
+    setActionState(prev => ({ ...prev, syncingOffline: true }))
+    let syncedCount = 0
+
+    try {
+      for (const entry of queue) {
+        updateOfflineOrder(entry.queueId, { status: 'SYNCING' })
+        setOfflineQueue(getOfflineOrderQueue())
+
+        const items = entry.items.map(item => ({ item_id: item.id, qty: item.qty }))
+        await addTableSessionOrder(entry.sessionId, items)
+        await fireTableSession(entry.sessionId)
+
+        removeOfflineOrder(entry.queueId)
+        setOfflineQueue(getOfflineOrderQueue())
+        syncedCount += 1
+      }
+
+      if (syncedCount > 0) {
+        toast.success(`${syncedCount} offline order${syncedCount > 1 ? 's' : ''} synced`)
+        await Promise.all([loadData(true), loadSessionOrders()])
+      }
+    } catch (err) {
+      const syncingEntry = getOfflineOrderQueue().find(entry => entry.status === 'SYNCING')
+      if (syncingEntry) {
+        updateOfflineOrder(syncingEntry.queueId, { status: 'QUEUED' })
+        setOfflineQueue(getOfflineOrderQueue())
+      }
+
+      if (!navigator.onLine) {
+        setIsOfflineMode(true)
+      } else {
+        toast.error(err.message || 'Failed to sync offline orders')
+      }
+    } finally {
+      setActionState(prev => ({ ...prev, syncingOffline: false }))
+    }
+  }, [actionState.syncingOffline, loadData, loadSessionOrders])
+
+  useEffect(() => {
+    if (!isOfflineMode && navigator.onLine && offlineQueue.length > 0) {
+      syncOfflineOrders()
+    }
+  }, [isOfflineMode, offlineQueue.length, syncOfflineOrders])
+
+  useEffect(() => {
+    if (!activeSession?.id) return
+    const liveSession = sessions.find(session => session.id === activeSession.id)
+    if (!liveSession || liveSession.status !== 'OPEN') {
+      setActiveSession(null)
+      setSelectedTable(null)
+      setSessionOrders([])
+      setCart([])
+      return
+    }
+    setActiveSession(liveSession)
+  }, [sessions, activeSession])
+
+  useEffect(() => {
+    if (!selectedTable?.id) return
+    const liveTable = tables.find(table => table.id === selectedTable.id)
+    if (liveTable) setSelectedTable(liveTable)
+  }, [tables, selectedTable])
+
+  const readyOrders = sessionOrders.filter(order => order.all_items_done && order.status !== 'DELIVERED')
   const hasReady = readyOrders.length > 0
+  const availableMenu = useMemo(() => menu.filter(item => item.available !== false), [menu])
+  const cartTotal = cart.reduce((sum, item) => sum + (item.price_cents / 100) * item.qty, 0)
+  const cartQty = cart.reduce((sum, item) => sum + item.qty, 0)
+  const sessionOfflineQueue = offlineQueue.filter(entry => entry.sessionId === activeSession?.id)
+  const inProgressItems = sessionOrders.reduce((sum, order) => (
+    sum + (order.items || []).filter(item => item.status === 'PENDING' || item.status === 'IN_PROGRESS').length
+  ), 0)
+  const readyItems = sessionOrders.reduce((sum, order) => (
+    sum + (order.items || []).filter(item => item.status === 'DONE').length
+  ), 0)
 
   async function handleOpenSession(table) {
     const guests = prompt('Number of guests:', '2')
     if (!guests) return
+
+    setActionState(prev => ({ ...prev, openTableId: table.id }))
     try {
-      const session = await openTableSession(table.id, parseInt(guests))
+      const session = await openTableSession(table.id, parseInt(guests, 10))
       setActiveSession(session)
       setSelectedTable(table)
       setCart([])
-      toast.success(`Session opened — Table ${table.table_number || table.name}`)
-      loadData()
+      toast.success(`Session opened for Table ${table.table_number || table.name}`)
+      await loadData(true)
     } catch (err) {
-      toast.error(err.message)
+      toast.error(err.message || 'Could not open table session')
+    } finally {
+      setActionState(prev => ({ ...prev, openTableId: null }))
     }
   }
 
   function addToCart(item) {
     setCart(prev => {
-      const existing = prev.find(c => c.id === item.id)
-      if (existing) return prev.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
+      const existing = prev.find(entry => entry.id === item.id)
+      if (existing) {
+        return prev.map(entry => entry.id === item.id ? { ...entry, qty: entry.qty + 1 } : entry)
+      }
       return [...prev, { ...item, qty: 1 }]
     })
   }
 
   function removeFromCart(itemId) {
     setCart(prev => {
-      const existing = prev.find(c => c.id === itemId)
-      if (existing && existing.qty > 1) return prev.map(c => c.id === itemId ? { ...c, qty: c.qty - 1 } : c)
-      return prev.filter(c => c.id !== itemId)
+      const existing = prev.find(entry => entry.id === itemId)
+      if (existing && existing.qty > 1) {
+        return prev.map(entry => entry.id === itemId ? { ...entry, qty: entry.qty - 1 } : entry)
+      }
+      return prev.filter(entry => entry.id !== itemId)
     })
   }
 
   async function handleSendToKitchen() {
     if (!activeSession || cart.length === 0) return
+
+    setActionState(prev => ({ ...prev, firing: true }))
     try {
-      const items = cart.map(c => ({ item_id: c.id, qty: c.qty }))
+      const items = cart.map(item => ({ item_id: item.id, qty: item.qty }))
       await addTableSessionOrder(activeSession.id, items)
       await fireTableSession(activeSession.id)
       setCart([])
-      toast.success('Order fired to kitchen!')
-      loadSessionOrders()
-    } catch (err) {
-      toast.error(err.message)
+      setIsOfflineMode(false)
+      toast.success('Ticket fired to kitchen')
+      await Promise.all([loadSessionOrders(), loadData(true)])
+    } catch {
+      const offlineEntry = buildOfflineOrderEntry({
+        sessionId: activeSession.id,
+        table: selectedTable,
+        items: cart,
+        guests: activeSession.guests,
+      })
+      const nextQueue = enqueueOfflineOrder(offlineEntry)
+      setOfflineQueue(nextQueue)
+      setCart([])
+      setIsOfflineMode(true)
+      toast('Network unavailable. Order saved offline and will sync automatically.')
+    } finally {
+      setActionState(prev => ({ ...prev, firing: false }))
     }
   }
 
   async function handleGenerateBill() {
     if (!activeSession) return
-    // Check if any orders are still cooking
-    const cooking = sessionOrders.some(o =>
-      o.items?.some(i => i.status === 'PENDING' || i.status === 'IN_PROGRESS')
+
+    const cooking = sessionOrders.some(order =>
+      order.items?.some(item => item.status === 'PENDING' || item.status === 'IN_PROGRESS')
     )
     if (cooking) {
-      toast.error('Some items are still being prepared. Wait for all items to be done before billing.')
+      toast.error('Wait until all kitchen items are done before generating the bill.')
       return
     }
+
+    setActionState(prev => ({ ...prev, billing: true }))
     try {
       const invoice = await generateTableInvoice(activeSession.id)
       toast.success(`Bill generated — ₹${(invoice.total_cents / 100).toFixed(2)}`)
       setActiveSession(null)
       setSelectedTable(null)
       setSessionOrders([])
-      loadData()
+      setCart([])
+      await loadData(true)
     } catch (err) {
-      toast.error(err.message)
+      toast.error(err.message || 'Failed to generate bill')
+    } finally {
+      setActionState(prev => ({ ...prev, billing: false }))
     }
   }
 
@@ -150,22 +298,36 @@ export default function WaiterPage() {
 
   return (
     <div className="waiter-page">
-      {/* Top bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Users size={18} /> Waiter Portal
-          {hasReady && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              background: 'rgba(26,147,111,0.15)', color: '#1A936F',
-              padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-              animation: 'pulse 2s infinite',
-            }}>
-              <Bell size={12} /> {readyOrders.length} Ready to Serve
-            </span>
+      <div className="ops-shell">
+        <div className="ops-shell-copy">
+          <span className="eyebrow">Floor service</span>
+          <h2><Users size={20} /> Waiter Portal</h2>
+          <p>Run the dining floor from table opening to kitchen fire to a clean checkout.</p>
+        </div>
+        <div className="ops-shell-actions">
+          <div className={`ops-chip ${connected ? 'online' : 'offline'}`}>
+            {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
+            {connected ? 'Kitchen sync live' : 'Kitchen sync retrying'}
+          </div>
+          {offlineQueue.length > 0 && (
+            <div className="ops-chip warm">
+              <CloudOff size={13} /> {offlineQueue.length} offline queue
+            </div>
           )}
-        </h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+          {hasReady && (
+            <div className="ops-chip green">
+              <Bell size={13} /> {readyOrders.length} ready to serve
+            </div>
+          )}
+          <button className={`icon-btn ${actionState.refreshing ? 'is-spinning' : ''}`} onClick={() => loadData(true)} title="Refresh">
+            <RefreshCw size={15} />
+          </button>
+          {offlineQueue.length > 0 && (
+            <button className="btn btn-ghost btn-sm" onClick={syncOfflineOrders} disabled={actionState.syncingOffline}>
+              {actionState.syncingOffline ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
+              {actionState.syncingOffline ? 'Syncing...' : 'Sync Offline'}
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
             <ArrowLeftRight size={14} /> Switch Role
           </button>
@@ -175,48 +337,93 @@ export default function WaiterPage() {
         </div>
       </div>
 
-      {/* Table Map */}
+      <section className="ops-hero waiter-hero">
+        <div>
+          <span className="eyebrow">Service flow</span>
+          <h3>{activeSession ? `Table ${selectedTable?.table_number || selectedTable?.name} is active` : 'Pick a table to start a guest session'}</h3>
+          <p>
+            {activeSession
+              ? `Guests: ${activeSession.guests}. Add items, fire the ticket, and watch kitchen progress before billing.`
+              : 'Available tables can be opened instantly, and occupied ones keep their live order readiness here.'}
+          </p>
+          {isOfflineMode && (
+            <div className="offline-banner">
+              <CloudOff size={15} />
+              Offline mode enabled. New restaurant orders are being queued locally for sync.
+            </div>
+          )}
+        </div>
+        <div className="ops-hero-stats">
+          <article>
+            <strong>{tables.filter(table => table.active !== false).length}</strong>
+            <span>Floor tables</span>
+          </article>
+          <article>
+            <strong>{sessions.length}</strong>
+            <span>Open sessions</span>
+          </article>
+          <article>
+            <strong>{offlineQueue.length || (hasReady ? readyOrders.length : inProgressItems)}</strong>
+            <span>{offlineQueue.length ? 'Queued offline' : (hasReady ? 'Orders ready' : 'Items in kitchen')}</span>
+          </article>
+        </div>
+      </section>
+
       <section className="waiter-section">
-        <h3>Table Map</h3>
+        <div className="waiter-section-head">
+          <h3>Table Map</h3>
+          <span>{tables.length} tables</span>
+        </div>
         <div className="table-grid">
-          {tables.map(t => {
-            const session = sessions.find(s => s.table_id === t.id && s.status === 'OPEN')
-            const color = TABLE_COLORS[t.status] || TABLE_COLORS.AVAILABLE
+          {tables.map(table => {
+            const session = sessions.find(entry => entry.table_id === table.id && entry.status === 'OPEN')
+            const statusKey = session ? 'OCCUPIED' : table.status
+            const color = TABLE_COLORS[statusKey] || TABLE_COLORS.AVAILABLE
+            const isOpening = actionState.openTableId === table.id
+
             return (
               <button
-                key={t.id}
-                className={`table-tile ${selectedTable?.id === t.id ? 'selected' : ''}`}
+                key={table.id}
+                className={`table-tile ${selectedTable?.id === table.id ? 'selected' : ''}`}
                 style={{ borderColor: color }}
+                disabled={isOpening}
                 onClick={() => {
                   if (session) {
                     setActiveSession(session)
-                    setSelectedTable(t)
+                    setSelectedTable(table)
                     setCart([])
-                  } else if (t.status === 'AVAILABLE') {
-                    handleOpenSession(t)
+                  } else if (table.status === 'AVAILABLE') {
+                    handleOpenSession(table)
                   } else {
                     toast('Table not available')
                   }
                 }}
               >
-                <div className="table-tile-name">{t.table_number || t.name}</div>
-                <div className="table-tile-status" style={{ color }}>{t.status}</div>
+                <div className="table-tile-name">{table.table_number || table.name}</div>
+                <div className="table-tile-status" style={{ color }}>{statusKey}</div>
+                <div className="table-tile-capacity">Seats {table.capacity || '—'}</div>
                 {session && <div className="table-tile-guests"><Users size={12} />{session.guests}</div>}
+                {isOpening && <div className="table-tile-loading"><Loader2 className="spin" size={14} />Opening</div>}
               </button>
             )
           })}
         </div>
       </section>
 
-      {/* Menu + Cart + Kitchen Status (when session active) */}
       {activeSession && (
         <div className="waiter-order-area">
           <section className="waiter-section">
-            <h3>Menu — Add Items</h3>
+            <div className="waiter-section-head">
+              <h3>Menu</h3>
+              <span>{availableMenu.length} items available</span>
+            </div>
             <div className="waiter-menu-grid">
-              {menu.map(item => (
+              {availableMenu.map(item => (
                 <button key={item.id} className="menu-quick-add" onClick={() => addToCart(item)}>
-                  <span>{item.name}</span>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>{item.category_name || item.category || 'Menu item'}</small>
+                  </div>
                   <span className="menu-quick-price">₹{item.price_cents / 100}</span>
                 </button>
               ))}
@@ -224,93 +431,69 @@ export default function WaiterPage() {
           </section>
 
           <section className="waiter-section">
-            <h3>Current Ticket</h3>
+            <div className="waiter-section-head">
+              <h3>Current Ticket</h3>
+              <span>{cartQty} items</span>
+            </div>
             {cart.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No items yet. Tap menu items to add.</p>
             ) : (
               <div className="waiter-cart">
-                {cart.map(c => (
-                  <div key={c.id} className="waiter-cart-item">
-                    <span>{c.name}</span>
+                {cart.map(item => (
+                  <div key={item.id} className="waiter-cart-item">
+                    <span>{item.name}</span>
                     <div className="waiter-cart-qty">
-                      <button className="btn btn-ghost btn-sm" onClick={() => removeFromCart(c.id)}><Minus size={14} /></button>
-                      <span>{c.qty}</span>
-                      <button className="btn btn-ghost btn-sm" onClick={() => addToCart(c)}><Plus size={14} /></button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeFromCart(item.id)}><Minus size={14} /></button>
+                      <span>{item.qty}</span>
+                      <button className="btn btn-ghost btn-sm" onClick={() => addToCart(item)}><Plus size={14} /></button>
                     </div>
-                    <span>₹{(c.price_cents / 100) * c.qty}</span>
+                    <span>₹{((item.price_cents / 100) * item.qty).toFixed(2)}</span>
                   </div>
                 ))}
-                <div className="waiter-cart-total">
-                  Total: ₹{cart.reduce((sum, c) => sum + (c.price_cents / 100) * c.qty, 0).toFixed(2)}
-                </div>
+                <div className="waiter-cart-total">Total: ₹{cartTotal.toFixed(2)}</div>
                 <div className="waiter-cart-actions">
-                  <button className="btn btn-primary" onClick={handleSendToKitchen}>
-                    <Flame size={14} /> Fire to Kitchen
+                  <button className="btn btn-primary" onClick={handleSendToKitchen} disabled={actionState.firing}>
+                    {actionState.firing ? <Loader2 size={14} className="spin" /> : <Flame size={14} />}
+                    {actionState.firing ? 'Sending...' : 'Fire to Kitchen'}
                   </button>
+                  <button className="btn btn-ghost" onClick={() => setCart([])}>Clear Ticket</button>
                 </div>
               </div>
             )}
           </section>
 
-          {/* ── Kitchen Readiness Panel ──────────────────────────────────── */}
           <section className="waiter-section">
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              Kitchen Status
+            <div className="waiter-section-head">
+              <h3>Kitchen Status</h3>
               {hasReady && (
-                <span style={{
-                  background: '#1A936F', color: 'white', fontSize: 11,
-                  padding: '1px 8px', borderRadius: 10, fontWeight: 700,
-                }}>
-                  {readyOrders.length} Ready
+                <span className="waiter-ready-pill">
+                  <Bell size={12} /> {readyOrders.length} Ready
                 </span>
               )}
-            </h3>
+            </div>
             {sessionOrders.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No orders sent to kitchen yet.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="waiter-status-stack">
                 {sessionOrders.map(order => {
                   const allDone = order.all_items_done
                   return (
-                    <div key={order.id} style={{
-                      background: allDone ? 'rgba(26,147,111,0.08)' : 'var(--bg-overlay)',
-                      border: `1px solid ${allDone ? 'rgba(26,147,111,0.3)' : 'var(--border)'}`,
-                      borderRadius: 10, padding: 12,
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 700, fontSize: 13 }}>#{order.order_ref}</span>
+                    <div key={order.id} className={`waiter-order-status-card ${allDone ? 'done' : ''}`}>
+                      <div className="waiter-order-status-head">
+                        <span>#{order.order_ref}</span>
                         {allDone ? (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            color: '#1A936F', fontSize: 12, fontWeight: 700,
-                          }}>
-                            <CheckCircle2 size={13} /> Ready to Serve
-                          </span>
+                          <span className="waiter-chip success"><CheckCircle2 size={13} /> Ready to serve</span>
                         ) : (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            color: '#3B82F6', fontSize: 12,
-                          }}>
-                            <Clock size={13} /> Preparing
-                          </span>
+                          <span className="waiter-chip info"><Clock size={13} /> Preparing</span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <div className="waiter-status-list">
                         {(order.items || []).map(item => {
                           const chip = ITEM_STATUS_CHIP[item.status] || ITEM_STATUS_CHIP.PENDING
                           return (
-                            <div key={item.id} style={{
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                              fontSize: 12, padding: '2px 0',
-                            }}>
+                            <div key={item.id} className="waiter-status-row">
                               <span>{item.qty}x {item.name}</span>
-                              <span style={{
-                                fontSize: 10, fontWeight: 600,
-                                color: chip.color, background: chip.bg,
-                                padding: '1px 7px', borderRadius: 8,
-                              }}>
-                                {chip.label}
-                              </span>
+                              <span style={{ color: chip.color, background: chip.bg }}>{chip.label}</span>
                             </div>
                           )
                         })}
@@ -320,20 +503,61 @@ export default function WaiterPage() {
                 })}
               </div>
             )}
-          </section>
 
-          <button className="btn btn-secondary" style={{ marginTop: 16 }} onClick={handleGenerateBill}>
-            <Receipt size={14} /> Generate Bill & Close
-          </button>
+            {sessionOfflineQueue.length > 0 && (
+              <div className="offline-order-stack">
+                <div className="waiter-section-head" style={{ marginTop: 16 }}>
+                  <h3>Offline Queue</h3>
+                  <span>{sessionOfflineQueue.length} pending sync</span>
+                </div>
+                {sessionOfflineQueue.map(entry => (
+                  <div key={entry.queueId} className="offline-order-card">
+                    <div className="offline-order-head">
+                      <strong>{entry.tableName}</strong>
+                      <span>{entry.status === 'SYNCING' ? 'Syncing' : 'Queued offline'}</span>
+                    </div>
+                    <div className="offline-order-lines">
+                      {entry.items.map(item => (
+                        <div key={`${entry.queueId}-${item.id}`} className="offline-order-line">
+                          <span>{item.qty}x {item.name}</span>
+                          <span>₹{(((item.price_cents || 0) / 100) * item.qty).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="waiter-kpi-strip">
+              <div>
+                <ChefHat size={14} />
+                <span>{inProgressItems} cooking</span>
+              </div>
+              <div>
+                <CheckCircle2 size={14} />
+                <span>{readyItems} ready items</span>
+              </div>
+              <div>
+                <ReceiptText size={14} />
+                <span>{sessionOrders.length} fired orders</span>
+              </div>
+            </div>
+
+            <div className="waiter-billing-card">
+              <div>
+                <span className="eyebrow">Close the table</span>
+                <h4>Generate bill only after the kitchen is clear</h4>
+                <p>Billing stays blocked while any fired item is still pending or cooking.</p>
+              </div>
+              <button className="btn btn-primary" onClick={handleGenerateBill} disabled={actionState.billing}>
+                {actionState.billing ? <Loader2 size={14} className="spin" /> : <ReceiptText size={14} />}
+                {actionState.billing ? 'Generating...' : 'Generate Bill & Close'}
+              </button>
+            </div>
+          </section>
         </div>
       )}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
-        }
-      `}</style>
     </div>
   )
 }

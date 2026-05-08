@@ -303,6 +303,7 @@ _CTA = {
         "help":         "Anything else I can help with? 😊",
         "menu_browse":  "Want to explore the menu? I can filter by Veg, Non-Veg, or category!",
         "slot_name":    "What's your name?",
+        "slot_contact_details": "Please send your name, mobile number, and delivery address in one message.",
         "slot_order_type": "Is this for delivery, pickup, or dine-in?",
         "slot_phone":   "Can I get your phone number?",
         "slot_address": "What's your delivery address?",
@@ -316,6 +317,7 @@ _CTA = {
         "help":         "Inkemi kavali? 😊",
         "menu_browse":  "Menu chudatam try cheyandamma — Veg leda Non-Veg?",
         "slot_name":    "Meeru peru cheppagalara?",
+        "slot_contact_details": "Mee name, mobile number, delivery address okka message lo pampandi.",
         "slot_order_type": "Delivery, pickup, leda dine-in ah?",
         "slot_phone":   "Mee phone number ivagalara?",
         "slot_address": "Delivery address cheppandi.",
@@ -329,6 +331,7 @@ _CTA = {
         "help":         "Kuch aur chahiye? 😊",
         "menu_browse":  "Menu dekhein — Veg ya Non-Veg?",
         "slot_name":    "Aapka naam kya hai?",
+        "slot_contact_details": "Apna name, mobile number, aur delivery address ek message mein bhej dijiye.",
         "slot_order_type": "Delivery, pickup, ya dine-in?",
         "slot_phone":   "Aapka phone number dein please?",
         "slot_address": "Delivery address bataiye.",
@@ -352,3 +355,12 @@ def slot_question(slot: str, language: str) -> str:
     }.get(slot, slot)
     key = f"slot_{slot}"
     return get_cta(key, language) or f"Could you provide your {slot}?"
+
+
+def slots_question(slots: list[str], language: str) -> str:
+    detail_slots = {"customer_name", "customer_phone", "delivery_address"}
+    if detail_slots & set(slots or []):
+        return get_cta("slot_contact_details", language)
+    if slots:
+        return slot_question(slots[0], language)
+    return get_cta("help", language)

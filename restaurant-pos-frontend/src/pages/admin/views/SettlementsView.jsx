@@ -12,7 +12,7 @@ export default function SettlementsView() {
       const data = await fetchBackendOrders()
       setOrders(data)
     } catch (err) {
-      toast.error('Failed to load settlement data')
+      toast.error(err.message || 'Failed to load settlement data', { id: 'settlements-load-error' })
     } finally {
       setLoading(false)
     }
