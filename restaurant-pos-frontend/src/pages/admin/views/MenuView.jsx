@@ -13,7 +13,7 @@ export default function MenuView() {
     try {
       const data = await fetchMenu()
       setItems(data)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load menu')
     } finally {
       setLoading(false)

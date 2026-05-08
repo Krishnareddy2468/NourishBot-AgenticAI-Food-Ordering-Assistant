@@ -102,7 +102,7 @@ class Settings:
     # ── Restaurant static info ─────────────────────────────────────────────────
     RESTAURANT_NAME:     str = "Dzukku Restaurant"
     RESTAURANT_TAGLINE:  str = "Where every bite hits different ❤️"
-    RESTAURANT_TIMINGS:  str = "11:00 AM – 11:00 PM, all days"
+    RESTAURANT_TIMINGS:  str = "6:00 AM – 11:00 PM, all days"
     RESTAURANT_LOCATION: str = "Hyderabad, Telangana"
     RESTAURANT_CUISINE:  str = "Indian – Veg & Non-Veg"
     RESTAURANT_DELIVERY: str = "Via Swiggy & Zomato"

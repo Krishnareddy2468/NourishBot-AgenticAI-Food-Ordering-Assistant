@@ -14,13 +14,22 @@ export function useWebSocket(restaurantId = 1) {
   const listenersRef = useRef({})
 
   const on = useCallback((eventType, callback) => {
-    if (!listenersRef.current[eventType]) listenersRef.current[eventType] = []
-    listenersRef.current[eventType].push(callback)
+    if (!listenersRef.current[eventType]) listenersRef.current[eventType] = new Set()
+    listenersRef.current[eventType].add(callback)
+    return () => {
+      listenersRef.current[eventType]?.delete(callback)
+      if (listenersRef.current[eventType]?.size === 0) {
+        delete listenersRef.current[eventType]
+      }
+    }
   }, [])
 
   const off = useCallback((eventType, callback) => {
     if (!listenersRef.current[eventType]) return
-    listenersRef.current[eventType] = listenersRef.current[eventType].filter(cb => cb !== callback)
+    listenersRef.current[eventType].delete(callback)
+    if (listenersRef.current[eventType].size === 0) {
+      delete listenersRef.current[eventType]
+    }
   }, [])
 
   useEffect(() => {
@@ -61,6 +70,7 @@ export function useWebSocket(restaurantId = 1) {
     return () => {
       clearTimeout(reconnectTimer)
       if (wsRef.current) wsRef.current.close()
+      listenersRef.current = {}
     }
   }, [restaurantId])
 

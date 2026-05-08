@@ -440,7 +440,7 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
 
         # Policy check: operating hours
         if not default_policy.is_within_operating_hours():
-            return {"error": "Sorry, we're currently closed. Our hours are 11 AM – 11 PM, all days."}, session_updates
+            return {"error": "Sorry, we're currently closed. Our hours are 6 AM – 11 PM, all days."}, session_updates
 
         # Policy check: max items
         if len(cart) > default_policy.max_items_per_order:
@@ -532,7 +532,7 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
         return {
             "name":        "Dzukku Restaurant",
             "tagline":     "Where every bite hits different",
-            "timings":     "11:00 AM - 11:00 PM, all days",
+            "timings":     "6:00 AM - 11:00 PM, all days",
             "location":    "Hyderabad, Telangana",
             "contact":     "Available via this chat",
             "delivery":    "Via Swiggy & Zomato",

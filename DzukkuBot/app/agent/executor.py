@@ -415,7 +415,8 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
 
     # ── Auto-chain: create Razorpay payment intent for DELIVERY/PICKUP orders ──
     payment_data = {}
-    if order_type in ("DELIVERY", "PICKUP"):
+    razorpay_configured = bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET)
+    if order_type in ("DELIVERY", "PICKUP") and razorpay_configured:
         try:
             payment_result = await _tool_create_payment_intent(
                 {"order_ref": order_ref}, ctx, result
@@ -424,6 +425,8 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
                 payment_data = payment_result.data
         except Exception as e:
             logger.warning("Auto payment intent failed for %s: %s", order_ref, e)
+    elif order_type in ("DELIVERY", "PICKUP") and not razorpay_configured:
+        logger.info("Razorpay not configured — order %s confirmed as COD.", order_ref)
 
     return ActionResult("place_order", True, data={
         "order_ref": order_ref,

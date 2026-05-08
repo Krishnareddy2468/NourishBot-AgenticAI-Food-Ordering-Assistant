@@ -50,7 +50,7 @@ export function normalizeBackendOrder(order) {
     items: items.map(item => ({
       ...item,
       name: item.name || item.item_name_snapshot,
-      finalPrice: Number(item.unit_price ?? item.price ?? item.unit_price_cents / 100 ?? 0),
+      finalPrice: Number(item.unit_price ?? item.price ?? ((item.unit_price_cents ?? 0) / 100)),
       emoji: item.emoji || '',
     })),
     qty,
@@ -59,6 +59,7 @@ export function normalizeBackendOrder(order) {
     paymentState: order.payment_state || order.payment_status || 'PENDING',
     orderType: order.order_type || 'DELIVERY',
     eta: '20 mins',
+    createdAt: order.created_at || '',
     dateTime: order.created_at
       ? new Date(order.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : '',
@@ -74,7 +75,17 @@ export function normalizeBackendOrder(order) {
 async function parseResponse(res) {
   if (!res.ok) {
     let message = `Request failed (${res.status})`
-    try { const error = await res.json(); message = error.detail || error.message || message } catch {}
+    try {
+      const error = await res.json()
+      message = error.detail || error.message || message
+    } catch {
+      // Ignore non-JSON error responses and preserve the fallback message.
+    }
+    if (res.status === 401) {
+      localStorage.removeItem('dzukku_token')
+      localStorage.removeItem('dzukku_user')
+      window.dispatchEvent(new Event('dzukku-auth-expired'))
+    }
     throw new Error(message)
   }
   return res.json()

@@ -36,7 +36,7 @@ export default function DashboardView({ orders }) {
       revenue: 0,
     }))
     orders.forEach(o => {
-      const h = o.dateTime ? new Date(o.dateTime).getHours() : -1
+      const h = o.createdAt ? new Date(o.createdAt).getHours() : -1
       const idx = h - 10
       if (idx >= 0 && idx < 12) {
         hours[idx].orders++

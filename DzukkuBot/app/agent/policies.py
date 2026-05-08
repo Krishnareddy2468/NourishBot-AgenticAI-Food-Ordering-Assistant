@@ -32,7 +32,7 @@ class RestaurantPolicy:
     max_guests_per_reservation: int = 20
 
     # Operating hours
-    opens_at: time = time(11, 0)
+    opens_at: time = time(6, 0)
     closes_at: time = time(23, 0)
     timezone: str = "Asia/Kolkata"
 

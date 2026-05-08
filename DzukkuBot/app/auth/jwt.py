@@ -24,7 +24,8 @@ def create_access_token(
 ) -> str:
     """Generate a JWT access token for a staff user."""
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
+        "user_id": user_id,
         "restaurant_id": restaurant_id,
         "role": role,
         "email": email,

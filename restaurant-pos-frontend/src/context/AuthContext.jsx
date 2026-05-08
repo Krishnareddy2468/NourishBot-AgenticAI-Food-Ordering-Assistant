@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Auth context — manages JWT token, user role, and login/logout.
  */
@@ -36,13 +37,16 @@ export function AuthProvider({ children }) {
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
 
-  // Clear user data when token is removed externally
   useEffect(() => {
-    if (!token && user) {
+    const handleExpired = () => {
+      setToken('')
       setUser(null)
+      localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(USER_KEY)
     }
-  }, [token])
+    window.addEventListener('dzukku-auth-expired', handleExpired)
+    return () => window.removeEventListener('dzukku-auth-expired', handleExpired)
+  }, [])
 
   return (
     <AuthContext.Provider value={{ token, user, role, isLoggedIn, login, logout, authHeaders }}>

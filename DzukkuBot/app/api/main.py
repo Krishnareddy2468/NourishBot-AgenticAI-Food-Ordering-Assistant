@@ -32,6 +32,13 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+def env_flag(name: str, default: bool = True) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # ── DB init on startup ────────────────────────────────────────────────────────
 
 async def init_db():
@@ -55,24 +62,38 @@ async def lifespan(app: FastAPI):
     outbox_task = asyncio.create_task(outbox_worker_loop())
     logger.info("Outbox worker started.")
 
-    # Start Telegram bot in the SAME event loop as FastAPI so all DB
-    # sessions (asyncpg) are bound to one loop — avoids "attached to a
-    # different loop" RuntimeErrors.
-    tg_app = build_telegram_app()
-    await tg_app.initialize()
-    await tg_app.start()
-    await tg_app.updater.start_polling(drop_pending_updates=True)
-    logger.info("Telegram bot started (polling, same event loop).")
+    tg_app = None
+    telegram_enabled = env_flag("TELEGRAM_BOT_ENABLED", default=True)
+    if telegram_enabled:
+        try:
+            # Start Telegram bot in the SAME event loop as FastAPI so all DB
+            # sessions (asyncpg) are bound to one loop — avoids "attached to a
+            # different loop" RuntimeErrors.
+            tg_app = build_telegram_app()
+            await tg_app.initialize()
+            await tg_app.start()
+            await tg_app.updater.start_polling(drop_pending_updates=True)
+            logger.info("Telegram bot started (polling, same event loop).")
+        except Exception as e:
+            logger.exception(
+                "Telegram bot startup failed. API will continue without Telegram polling. "
+                "Set TELEGRAM_BOT_ENABLED=false to disable bot startup explicitly. Error: %s",
+                e,
+            )
+            tg_app = None
+    else:
+        logger.info("Telegram bot startup disabled via TELEGRAM_BOT_ENABLED=false.")
 
     yield
 
     # Graceful shutdown: stop Telegram first, then other tasks
-    try:
-        await tg_app.updater.stop()
-        await tg_app.stop()
-        await tg_app.shutdown()
-    except Exception as e:
-        logger.warning("Telegram shutdown warning: %s", e)
+    if tg_app is not None:
+        try:
+            await tg_app.updater.stop()
+            await tg_app.stop()
+            await tg_app.shutdown()
+        except Exception as e:
+            logger.warning("Telegram shutdown warning: %s", e)
 
     outbox_task.cancel()
     await async_engine.dispose()

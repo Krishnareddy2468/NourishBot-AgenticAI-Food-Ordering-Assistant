@@ -28,7 +28,7 @@ export default function EmployeesView() {
     try {
       const data = await fetchStaff()
       setStaff(data)
-    } catch (err) {
+    } catch {
       toast.error('Failed to load staff')
     } finally {
       setLoading(false)
