@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dzukku Platform Brochure</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm;
+    }
+
+    :root {
+      --ink: #17212b;
+      --muted: #5f6b78;
+      --line: #d9e1e8;
+      --brand: #b72b35;
+      --brand-dark: #7d1821;
+      --gold: #c48a2c;
+      --green: #16795b;
+      --blue: #2764a8;
+      --bg: #f7f4ee;
+      --panel: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.48;
+      font-size: 10.8pt;
+    }
+
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      background: var(--panel);
+      min-height: 100vh;
+    }
+
+    .hero {
+      padding: 42px 46px 34px;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(125, 24, 33, 0.96), rgba(23, 33, 43, 0.92)),
+        radial-gradient(circle at 82% 16%, rgba(196, 138, 44, 0.55), transparent 34%);
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 700;
+      font-size: 9pt;
+      color: #f7d794;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: 37pt;
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 780px;
+      margin: 18px 0 0;
+      color: #f7efe8;
+      font-size: 14pt;
+      line-height: 1.42;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .hero-stat {
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      padding: 13px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.09);
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-size: 15pt;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .hero-stat span {
+      color: #f4dccb;
+      font-size: 9pt;
+    }
+
+    main {
+      padding: 34px 46px 48px;
+    }
+
+    section {
+      margin: 0 0 30px;
+      break-inside: avoid;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      color: var(--brand-dark);
+      font-size: 20pt;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      color: #26313c;
+      font-size: 13.5pt;
+    }
+
+    p {
+      margin: 0 0 10px;
+    }
+
+    ul {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    .lead {
+      color: #374656;
+      font-size: 12.2pt;
+      line-height: 1.55;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 15px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .card h3 {
+      margin-top: 0;
+      color: var(--brand-dark);
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin: 13px 0 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #f1f5f8;
+      color: #26313c;
+      border: 1px solid #dde7ee;
+      font-size: 9pt;
+      font-weight: 700;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      border-left: 5px solid var(--gold);
+      background: #fff8ea;
+      border-radius: 6px;
+      color: #3d3020;
+    }
+
+    .ai-flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .step {
+      min-height: 92px;
+      padding: 11px 10px;
+      border-radius: 8px;
+      border: 1px solid #dce5eb;
+      background: #f8fafb;
+    }
+
+    .step strong {
+      display: block;
+      color: var(--blue);
+      margin-bottom: 5px;
+      font-size: 10pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 0;
+      font-size: 9.7pt;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 9px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #eef3f6;
+      color: #22303c;
+    }
+
+    .pill {
+      display: inline-block;
+      color: #fff;
+      background: var(--green);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 8.8pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .architecture {
+      font-family: "Courier New", monospace;
+      background: #101820;
+      color: #eaf2f8;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 8.6pt;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .footer {
+      margin-top: 26px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 9pt;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <p class="eyebrow">Project Dzukku Platform Brochure</p>
+      <h1>Dzukku: An AI-Powered Restaurant Ordering, POS, and Operations Platform</h1>
+      <p class="subtitle">
+        A conversational food-ordering assistant connected to a complete restaurant control room:
+        live orders, kitchen display, tables, reservations, delivery, payments, invoices, analytics,
+        and automation.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-stat"><strong>AI Chat</strong><span>Telegram, WhatsApp, Swiggy, Zomato-ready flows</span></div>
+        <div class="hero-stat"><strong>Live POS</strong><span>Admin, waiter, kitchen, and tracking portals</span></div>
+        <div class="hero-stat"><strong>Realtime</strong><span>WebSocket events, KDS updates, order lifecycle</span></div>
+        <div class="hero-stat"><strong>Data First</strong><span>PostgreSQL/SQLite, Excel, Google Sheets, n8n</span></div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <h2>Executive Overview</h2>
+        <p class="lead">
+          Dzukku is built for restaurants and cloud kitchens that want the convenience of aggregator-style ordering
+          without losing their customer relationship, margin, or operational visibility. Customers place orders by
+          simply chatting with an AI assistant. Staff manage the entire restaurant workflow from a React POS dashboard.
+          The platform connects conversational ordering, restaurant operations, kitchen execution, reservations,
+          payment readiness, delivery tracking, and business analytics into one ecosystem.
+        </p>
+        <p>
+          The platform is especially suitable for the restaurant operations ecosystem because it does not treat ordering
+          as a disconnected form. Every order moves through a complete journey: customer conversation, cart creation,
+          confirmation, kitchen preparation, status updates, billing, delivery or service, reporting, and optional
+          downstream automation.
+        </p>
+      </section>
+
+      <section>
+        <h2>What This Application Includes</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Customer AI Assistant</h3>
+            <p>Customers can order, browse menus, ask for recommendations, reserve tables, and track progress through chat.</p>
+            <ul>
+              <li>Natural-language ordering</li>
+              <li>Mood, time, budget, and cuisine-aware suggestions</li>
+              <li>Telegram and WhatsApp flows</li>
+              <li>Swiggy and Zomato MCP/redirect support</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Restaurant POS</h3>
+            <p>A staff-facing dashboard for day-to-day operations across admin, waiter, kitchen, delivery, and billing roles.</p>
+            <ul>
+              <li>Order board and status chips</li>
+              <li>Kitchen Display System</li>
+              <li>Tables and dining sessions</li>
+              <li>Invoices, settlements, staff, menu, analytics</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Operational Backend</h3>
+            <p>A FastAPI service with structured models, authentication, real-time events, and durable order processing.</p>
+            <ul>
+              <li>REST APIs and WebSocket events</li>
+              <li>JWT-protected staff access</li>
+              <li>Outbox event pattern</li>
+              <li>Excel, Google Sheets, n8n, Razorpay-ready integrations</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Core Platform Features</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Feature Set</th>
+              <th>Business Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>AI Ordering</strong></td>
+              <td>Conversational menu discovery, cart management, confirmations, reservation booking, multilingual code-mix responses.</td>
+              <td>Reduces friction and lets customers order the way they naturally speak.</td>
+            </tr>
+            <tr>
+              <td><strong>Menu Intelligence</strong></td>
+              <td>Live menu reads, item availability, category filters, fuzzy matching, alternatives, Excel-based menu seeding.</td>
+              <td>Keeps AI responses grounded in actual restaurant data and current prices.</td>
+            </tr>
+            <tr>
+              <td><strong>Kitchen Operations</strong></td>
+              <td>KDS queues, item-level status, pending/cooking/done stages, kitchen load signals, expedite queue.</td>
+              <td>Improves preparation visibility and reduces missed or delayed orders.</td>
+            </tr>
+            <tr>
+              <td><strong>Dine-In Workflow</strong></td>
+              <td>Table map, table sessions, waiter cart, guest count, fire-to-kitchen, invoice generation.</td>
+              <td>Supports restaurant floor operations, not only delivery orders.</td>
+            </tr>
+            <tr>
+              <td><strong>Delivery Workflow</strong></td>
+              <td>Driver assignment, delivery status updates, GPS event model, proof of delivery columns, tracking page.</td>
+              <td>Creates an end-to-end delivery experience from order to completion.</td>
+            </tr>
+            <tr>
+              <td><strong>Payments & Billing</strong></td>
+              <td>Payment intents, Razorpay integration readiness, paid state, invoices, settlements.</td>
+              <td>Prepares the platform for real transaction handling and financial reconciliation.</td>
+            </tr>
+            <tr>
+              <td><strong>Realtime Visibility</strong></td>
+              <td>WebSocket broadcasting, order.created events, status_changed events, live dashboard refresh.</td>
+              <td>Staff can react instantly when a chat order arrives or changes state.</td>
+            </tr>
+            <tr>
+              <td><strong>Analytics</strong></td>
+              <td>Revenue KPIs, top dishes, order trends, revenue-by-hour charts, historical Excel data.</td>
+              <td>Turns operating data into decisions for menu planning and staffing.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="page-break">
+        <h2>How The AI Works</h2>
+        <p>
+          Dzukku's AI is designed as an agentic restaurant assistant, not a fixed FAQ bot. The language model handles
+          conversation, intent, tone, and planning, while deterministic application code validates and commits business
+          actions. This is important: the AI can suggest a tool call, but it cannot directly write arbitrary data,
+          invent prices, or bypass order rules.
+        </p>
+        <div class="ai-flow">
+          <div class="step"><strong>1. Context</strong>Reads customer, session, cart, history, menu, restaurant state, and order context.</div>
+          <div class="step"><strong>2. Planner</strong>Gemini decides the customer goal and proposes actions such as add item or book table.</div>
+          <div class="step"><strong>3. Executor</strong>Python validates items, prices, availability, payment readiness, and writes to the database.</div>
+          <div class="step"><strong>4. Verifier</strong>The system re-reads committed data, recomputes totals, and checks the order summary.</div>
+          <div class="step"><strong>5. Responder</strong>AI turns verified facts into a warm, concise reply in the customer's language style.</div>
+        </div>
+        <div class="callout" style="margin-top: 14px;">
+          <strong>Principle:</strong> the LLM proposes; trusted code commits. This keeps the customer experience flexible
+          while preserving accuracy for price, availability, payment, order status, and database writes.
+        </div>
+      </section>
+
+      <section>
+        <h2>AI Capabilities In Detail</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Natural Conversation</h3>
+            <p>
+              Customers do not need to learn a strict command syntax. They can type requests such as "show veg starters
+              under 200", "I want something spicy", "same as last time", or "book a table for 4 tonight".
+            </p>
+          </div>
+          <div class="card">
+            <h3>Contextual Recommendations</h3>
+            <p>
+              The assistant can recommend food based on time of day, mood, celebration context, weather-style wording,
+              budget, dietary preference, and previously known customer details.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Multilingual And Code-Mix Friendly</h3>
+            <p>
+              Dzukku is designed for real Indian chat behavior, including English, Hindi-English, and Telugu-English style
+              conversations. It mirrors the user's pace and language instead of forcing a rigid app UI.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Tool-Grounded Accuracy</h3>
+            <p>
+              Food prices, menu items, cart totals, customer information, orders, and reservations are handled through
+              tools backed by the database and menu source. The AI is not the source of financial truth.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Memory And Continuity</h3>
+            <p>
+              Sessions retain name, phone, cart, state, ordering platform, and rolling conversation history. A returning
+              customer does not have to repeat basic details each time.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Safe Upselling</h3>
+            <p>
+              The assistant can suggest one relevant add-on, such as dessert, beverage, or combo, while keeping the
+              conversation helpful rather than pushy.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Why It Fits The Restaurant Ecosystem</h2>
+        <p>
+          Restaurants need more than online ordering. They need an operating system that connects discovery, ordering,
+          kitchen execution, dine-in service, delivery, reporting, and customer retention. Dzukku is suitable because it
+          works at the intersection of customer experience and back-office discipline.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Restaurant Need</th>
+              <th>How Dzukku Supports It</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lower dependency on aggregator commissions</td>
+              <td>Direct chat ordering allows repeat customers to order from the restaurant without marketplace friction.</td>
+            </tr>
+            <tr>
+              <td>Fast service during peak hours</td>
+              <td>Orders flow directly into POS and KDS; staff see queue state, preparation progress, and live updates.</td>
+            </tr>
+            <tr>
+              <td>Better customer retention</td>
+              <td>The restaurant owns customer data, session memory, phone details, order history, and loyalty possibilities.</td>
+            </tr>
+            <tr>
+              <td>Operational clarity</td>
+              <td>Dashboards show KPIs, order status, kitchen items, reservations, invoices, deliveries, and settlements.</td>
+            </tr>
+            <tr>
+              <td>Menu agility</td>
+              <td>Excel-backed menu seeding and admin menu controls make price or availability changes easier to manage.</td>
+            </tr>
+            <tr>
+              <td>Multi-channel readiness</td>
+              <td>Telegram, WhatsApp, Swiggy, Zomato, direct dine-in, delivery, and pickup can coexist under one platform model.</td>
+            </tr>
+            <tr>
+              <td>Human-like ordering experience</td>
+              <td>AI handles natural language, mood, language mix, incomplete details, and conversational confirmations.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="page-break">
+        <h2>Customer Journey</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Direct Chat Order</h3>
+            <ol>
+              <li>Customer opens Telegram or WhatsApp from QR/link.</li>
+              <li>Bot asks whether to order through Dzukku, Swiggy, or Zomato.</li>
+              <li>Customer asks naturally for food or recommendations.</li>
+              <li>AI calls menu/cart tools and confirms exact items and total.</li>
+              <li>Bot collects missing name, phone, delivery/pickup details.</li>
+              <li>Customer explicitly confirms.</li>
+              <li>Order is saved and appears in the POS/KDS.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h3>Dine-In Or Reservation</h3>
+            <ol>
+              <li>Customer asks for a table date, time, and guest count.</li>
+              <li>Bot asks only for missing fields and special requests.</li>
+              <li>Reservation is committed with a reference number.</li>
+              <li>Staff see booking in the reservations view.</li>
+              <li>Waiter can open a table session and fire items to kitchen.</li>
+              <li>Invoice is generated when service is complete.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Restaurant Staff Experience</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Admin Portal</h3>
+            <p>Dashboard, orders, deliveries, kitchen status, tables, reservations, menu, employees, invoices, settlements, and analytics.</p>
+          </div>
+          <div class="card">
+            <h3>Waiter Portal</h3>
+            <p>Table map, active sessions, cart building, guest count, fire-to-kitchen workflow, and bill generation.</p>
+          </div>
+          <div class="card">
+            <h3>Kitchen Portal</h3>
+            <p>Queued, cooking, and done columns with item-level progress, station filtering, and ready-to-serve/deliver flow.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Technology Architecture</h2>
+        <div class="architecture">Customer Chat: Telegram / WhatsApp
+        |
+        v
+Dzukku AI Bot: Gemini + LangGraph/ReAct + local tools + MCP tools
+        |
+        v
+FastAPI Backend: Auth, Orders, Menu, Tables, Kitchen, Payments, Delivery, Invoices
+        |
+        +-- PostgreSQL / SQLite data layer
+        +-- Excel menu and historical data
+        +-- Google Sheets operational sync
+        +-- Razorpay payment readiness
+        +-- n8n workflow automation
+        |
+        v
+React POS Frontend: Admin + Waiter + Kitchen + Tracking + Analytics
+        |
+        v
+Realtime WebSocket events: order.created, order.status_changed, kitchen updates</div>
+        <div class="badge-row">
+          <span class="badge">React 19</span>
+          <span class="badge">Vite</span>
+          <span class="badge">FastAPI</span>
+          <span class="badge">PostgreSQL</span>
+          <span class="badge">SQLite</span>
+          <span class="badge">Gemini 2.5 Flash</span>
+          <span class="badge">LangGraph</span>
+          <span class="badge">MCP</span>
+          <span class="badge">WebSocket</span>
+          <span class="badge">Razorpay-ready</span>
+          <span class="badge">Google Sheets</span>
+          <span class="badge">n8n</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Data, Safety, And Reliability</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Control</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>JWT authentication</strong></td>
+              <td>Protects staff routes and supports role-based access for admin, manager, kitchen, waiter, and related workflows.</td>
+            </tr>
+            <tr>
+              <td><strong>Idempotency keys</strong></td>
+              <td>Prevents duplicate order creation when a request is retried or submitted twice.</td>
+            </tr>
+            <tr>
+              <td><strong>Outbox pattern</strong></td>
+              <td>Keeps event delivery reliable by writing events with database transactions before broadcasting.</td>
+            </tr>
+            <tr>
+              <td><strong>LLM guardrails</strong></td>
+              <td>Planner cannot directly commit financial or operational actions; executor validates all important writes.</td>
+            </tr>
+            <tr>
+              <td><strong>Model fallback</strong></td>
+              <td>Gemini primary model can fall back to alternate Gemini models if the primary path fails.</td>
+            </tr>
+            <tr>
+              <td><strong>Offline queue</strong></td>
+              <td>Frontend waiter flow can queue work locally and sync when connectivity returns.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="page-break">
+        <h2>Deployment Model</h2>
+        <p>
+          Dzukku can be deployed as a single-restaurant system first and then expanded into a multi-restaurant SaaS
+          platform. The current application structure already separates the customer-facing bot, FastAPI backend,
+          database, real-time layer, integrations, and React POS frontend, which makes deployment practical across
+          cloud, VPS, or private restaurant infrastructure.
+        </p>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Single Restaurant Deployment</h3>
+            <p>
+              A small restaurant or cloud kitchen can run one backend service, one frontend deployment, one database,
+              and one configured bot/channel. This is the fastest path for pilot launches and real restaurant testing.
+            </p>
+            <ul>
+              <li>Backend hosted with FastAPI and Uvicorn/Gunicorn.</li>
+              <li>React POS built with Vite and served from static hosting or the backend server.</li>
+              <li>Database deployed as PostgreSQL for production or SQLite for compact local pilots.</li>
+              <li>Environment variables store tokens for Telegram, Gemini, Google Sheets, Razorpay, Twilio, and n8n.</li>
+              <li>Restaurant menu is seeded from Excel and managed through POS menu tools.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Production Cloud Deployment</h3>
+            <p>
+              For production, Dzukku should run behind HTTPS with process supervision, backups, logging, and separate
+              environments for development, staging, and production.
+            </p>
+            <ul>
+              <li>Containerize backend with Docker and deploy on AWS, Azure, GCP, Render, Railway, DigitalOcean, or a VPS.</li>
+              <li>Use managed PostgreSQL with daily backups and migration control through Alembic.</li>
+              <li>Serve frontend through Nginx, Vercel, Netlify, Cloudflare Pages, or S3-style static hosting.</li>
+              <li>Use a reverse proxy for HTTPS, WebSocket upgrade headers, request limits, and health checks.</li>
+              <li>Run background workers for outbox events, automations, and integration retries.</li>
+            </ul>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Recommended Deployment Practice</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Backend API</td>
+              <td>FastAPI service running in Docker, supervised by platform runtime, systemd, or Kubernetes.</td>
+            </tr>
+            <tr>
+              <td>Database</td>
+              <td>Managed PostgreSQL for production; migrations through Alembic; encrypted backups and restore testing.</td>
+            </tr>
+            <tr>
+              <td>Frontend</td>
+              <td>Vite production build served through static hosting or Nginx with API base URL configured per environment.</td>
+            </tr>
+            <tr>
+              <td>Bot Channels</td>
+              <td>Telegram polling for simple pilots; webhooks for stronger production scaling; Twilio webhook for WhatsApp.</td>
+            </tr>
+            <tr>
+              <td>Realtime</td>
+              <td>WebSocket endpoint behind HTTPS reverse proxy with reconnect logic already handled in the frontend.</td>
+            </tr>
+            <tr>
+              <td>Observability</td>
+              <td>Structured logs, API health endpoint, order failure alerts, model error tracking, and integration retry logs.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Multi-Restaurant Platform Expansion</h2>
+        <p>
+          Dzukku can evolve from one restaurant into a platform serving many restaurants by making every major record
+          tenant-aware. In the repository architecture this direction is already visible through restaurant-scoped models
+          such as restaurants, users, customers, channels, menu categories, menu items, orders, payments, deliveries,
+          tables, reservations, invoices, and outbox events.
+        </p>
+        <div class="architecture">Dzukku SaaS Control Plane
+        |
+        +-- Restaurant A
+        |     +-- Own menu, staff, bot persona, tables, orders, customers, analytics
+        |     +-- Telegram/WhatsApp channel A
+        |
+        +-- Restaurant B
+        |     +-- Own menu, staff, bot persona, tables, orders, customers, analytics
+        |     +-- Telegram/WhatsApp channel B
+        |
+        +-- Restaurant C
+              +-- Own menu, staff, bot persona, tables, orders, customers, analytics
+              +-- Telegram/WhatsApp channel C
+
+Shared Platform Services: auth, billing, AI orchestration, integrations, monitoring, backups</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>How Multi-Restaurant Mode Works</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tenant isolation</td>
+              <td>Every operational object is scoped by restaurant_id so orders, menus, staff, tables, and analytics stay separated.</td>
+            </tr>
+            <tr>
+              <td>Restaurant onboarding</td>
+              <td>Admin creates restaurant profile, uploads menu, configures opening hours, adds staff, and connects Telegram/WhatsApp channels.</td>
+            </tr>
+            <tr>
+              <td>Custom branding</td>
+              <td>Each restaurant can have its own name, logo, tone, cuisine, greeting, offers, color theme, and assistant personality.</td>
+            </tr>
+            <tr>
+              <td>Separate operations</td>
+              <td>Each restaurant gets its own POS views, KDS queue, table map, reservations, delivery workflow, invoices, and settlements.</td>
+            </tr>
+            <tr>
+              <td>Central owner dashboard</td>
+              <td>A group owner can compare branches, revenue, top dishes, order load, staff performance, and customer retention across locations.</td>
+            </tr>
+            <tr>
+              <td>Shared platform cost</td>
+              <td>AI, infrastructure, integration, and monitoring services can be shared while keeping restaurant data logically separated.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Multi-Agent AI Model</h2>
+        <p>
+          As the platform grows, Dzukku can use multiple specialized AI agents instead of one general bot. A coordinator
+          agent can understand the customer's message and route work to focused agents for ordering, reservations,
+          support, delivery, promotions, or analytics. This keeps the system easier to scale, test, and improve.
+        </p>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Host / Router Agent</h3>
+            <p>Identifies the restaurant, channel, customer intent, language, and next best workflow.</p>
+          </div>
+          <div class="card">
+            <h3>Menu Agent</h3>
+            <p>Handles search, filters, dietary preferences, item alternatives, availability, and recommendation logic.</p>
+          </div>
+          <div class="card">
+            <h3>Ordering Agent</h3>
+            <p>Manages cart, quantities, customer details, confirmation, idempotency, payment readiness, and order placement.</p>
+          </div>
+          <div class="card">
+            <h3>Reservation Agent</h3>
+            <p>Handles date, time, guests, table availability, special requests, booking confirmation, and reminders.</p>
+          </div>
+          <div class="card">
+            <h3>Operations Agent</h3>
+            <p>Assists staff with order status, kitchen load, delayed orders, delivery assignment, and manager alerts.</p>
+          </div>
+          <div class="card">
+            <h3>Analytics Agent</h3>
+            <p>Answers business questions such as top dishes, peak hours, repeat customers, revenue, and menu performance.</p>
+          </div>
+        </div>
+        <div class="callout" style="margin-top: 14px;">
+          <strong>Best architecture:</strong> one shared orchestration layer, many restaurant-specific personas, and
+          multiple specialized agents. This allows Dzukku to serve different restaurant brands while keeping the core
+          platform consistent and reliable.
+        </div>
+      </section>
+
+      <section class="page-break">
+        <h2>Dzukku Compared With Aggregator Apps</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>Swiggy / Zomato Style</th>
+              <th>Dzukku Style</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Customer entry</td>
+              <td>App install, login, location, marketplace browsing.</td>
+              <td>Open a chat link or QR and speak naturally.</td>
+            </tr>
+            <tr>
+              <td>Discovery</td>
+              <td>Cards, filters, ads, ratings, long scroll journeys.</td>
+              <td>Conversational suggestions based on preference, mood, budget, and time.</td>
+            </tr>
+            <tr>
+              <td>Restaurant economics</td>
+              <td>Commission-heavy marketplace model.</td>
+              <td>Direct customer relationship and lower dependency on third-party commissions.</td>
+            </tr>
+            <tr>
+              <td>Customer data</td>
+              <td>Primarily owned by the aggregator platform.</td>
+              <td>Restaurant owns operational data and can build loyalty directly.</td>
+            </tr>
+            <tr>
+              <td>Operations</td>
+              <td>Separate partner dashboards and restaurant-side tools.</td>
+              <td>POS, KDS, tables, reservations, billing, analytics, and AI in one ecosystem.</td>
+            </tr>
+            <tr>
+              <td>Best use case</td>
+              <td>New customer discovery across many restaurants.</td>
+              <td>Repeat customers, direct ordering, in-house operations, and relationship-driven service.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Use Cases</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Cloud Kitchen</h3>
+            <p>Accept direct orders through chat, reduce marketplace dependency, track kitchen load, and manage delivery from one dashboard.</p>
+          </div>
+          <div class="card">
+            <h3>Dine-In Restaurant</h3>
+            <p>Combine reservations, waiter table sessions, kitchen tickets, invoices, and customer follow-up in one platform.</p>
+          </div>
+          <div class="card">
+            <h3>QSR / Cafe</h3>
+            <p>Enable quick ordering, reordering, combo suggestions, and live preparation status for high-volume service.</p>
+          </div>
+          <div class="card">
+            <h3>Multi-Channel Ordering</h3>
+            <p>Support direct Dzukku ordering while still giving customers Swiggy/Zomato paths when needed.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Implementation Strengths</h2>
+        <ul>
+          <li><strong>Full-stack coverage:</strong> customer bot, backend, POS frontend, kitchen, tables, delivery, and payment readiness.</li>
+          <li><strong>AI with real controls:</strong> model reasoning is paired with deterministic execution and verification.</li>
+          <li><strong>Real operational data model:</strong> restaurants, staff, customers, channels, sessions, carts, orders, payments, deliveries, tables, reservations, invoices, and outbox events.</li>
+          <li><strong>Realtime by design:</strong> WebSocket events make orders visible to staff immediately.</li>
+          <li><strong>Operator-friendly data:</strong> Excel and Google Sheets support non-technical restaurant workflows.</li>
+          <li><strong>Deployment ready:</strong> Docker, PostgreSQL, Alembic migrations, environment-based configuration, and cloud/VPS deployment path.</li>
+          <li><strong>Expansion path:</strong> MCP integrations, Razorpay, n8n, multi-role portals, multi-agent AI, and future multi-tenant capability.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Future Growth Opportunities</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Opportunity</th>
+              <th>Impact</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Loyalty and offers engine</td>
+              <td>Personalized discounts, birthday offers, repeat-order campaigns, and customer segments.</td>
+            </tr>
+            <tr>
+              <td>Multi-restaurant SaaS mode</td>
+              <td>Turn the platform into a repeatable product for many restaurants and cloud kitchens.</td>
+            </tr>
+            <tr>
+              <td>Multi-agent restaurant AI</td>
+              <td>Use specialized AI agents for ordering, reservations, menu recommendations, delivery support, and analytics.</td>
+            </tr>
+            <tr>
+              <td>Branch-level deployment automation</td>
+              <td>Onboard each restaurant or branch with a guided setup flow, generated bot credentials, menu import, and default POS configuration.</td>
+            </tr>
+            <tr>
+              <td>Inventory integration</td>
+              <td>Stock-aware menu availability, purchase planning, and waste reduction.</td>
+            </tr>
+            <tr>
+              <td>Voice ordering</td>
+              <td>Let customers or staff create orders through speech in noisy, fast-moving service contexts.</td>
+            </tr>
+            <tr>
+              <td>Advanced AI analytics</td>
+              <td>Demand prediction, menu engineering, customer churn risk, and prep-time forecasting.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Summary</h2>
+        <p class="lead">
+          Dzukku is a practical AI restaurant ecosystem: friendly enough for customers, structured enough for staff,
+          and technically grounded enough for real operations. Its biggest advantage is the bridge it creates between
+          natural customer conversation and disciplined restaurant execution. A customer says what they want; Dzukku
+          turns that into a verified order, kitchen workflow, billable transaction, and business record.
+        </p>
+        <div class="footer">
+          Prepared for Project Dzukku. Source context: repository documentation, backend architecture, AI bot workflow,
+          and React POS frontend structure.
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

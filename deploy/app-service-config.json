@@ -1,0 +1,25 @@
+{
+  "_comment": "Sample Azure App Service configuration for DzukkuBot container deployment.",
+  "name": "dzukku-backend",
+  "properties": {
+    "httpsOnly": true,
+    "linuxFxVersion": "DOCKER|${ACR_NAME}/dzukku-bot:latest",
+    "siteConfig": {
+      "alwaysOn": true,
+      "appSettings": [
+        { "name": "PORT", "value": "8000" },
+        { "name": "WEBSITES_PORT", "value": "8000" },
+        { "name": "TELEGRAM_TOKEN", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/telegram-token/)" },
+        { "name": "GEMINI_API_KEY", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/gemini-api-key/)" },
+        { "name": "DATABASE_URL", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/database-url/)" },
+        { "name": "DATABASE_URL_SYNC", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/database-url-sync/)" },
+        { "name": "REDIS_URL", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/redis-url/)" },
+        { "name": "RAZORPAY_KEY_ID", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/razorpay-key-id/)" },
+        { "name": "RAZORPAY_KEY_SECRET", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/razorpay-key-secret/)" },
+        { "name": "JWT_SECRET", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/jwt-secret/)" },
+        { "name": "LOG_LEVEL", "value": "INFO" },
+        { "name": "MCP_ENABLED", "value": "false" }
+      ]
+    }
+  }
+}

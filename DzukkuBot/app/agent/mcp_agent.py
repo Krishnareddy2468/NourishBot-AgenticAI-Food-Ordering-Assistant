@@ -225,6 +225,16 @@ def _build_context_from_messages(out_messages: list[Any]) -> str | None:
     return "\n".join(combined)
 
 
+def _is_hidden_context_turn(turn: dict[str, Any]) -> bool:
+    return turn.get("role") in {"mcp_context", "mcp_action"}
+
+
+def _visible_history(history: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    """Return user/assistant turns only; hidden MCP context is injected separately."""
+    visible = [turn for turn in history if not _is_hidden_context_turn(turn)]
+    return visible[-limit:]
+
+
 # ── Lazy imports (guarded so the bot still boots without LangGraph) ──────────
 
 _LC_IMPORTS_DONE = False
@@ -334,6 +344,7 @@ create_react_agent     = None  # type: ignore[assignment]
 # ── Agent build / cache ──────────────────────────────────────────────────────
 
 _agent_cache: dict[str, Any] = {}
+_tool_names_cache: dict[str, list[str]] = {}
 _build_lock: asyncio.Lock | None = None  # lazy-init: see _get_build_lock
 
 
@@ -404,6 +415,12 @@ RULE 7: RESPONSE DISCIPLINE
 - When listing menus/orders, format clearly with prices.
 - Never apologize excessively; be honest and forward-looking.
 - Do NOT repeat the same failed search. Change strategy or ask for clarification.
+
+RULE 8: MCP TOOL USAGE DISCIPLINE
+- For every non-greeting ordering/search/menu/cart turn, call the relevant MCP tool before answering.
+- Do not answer restaurant availability, menu items, item prices, cart contents, delivery ETA, or checkout status from memory.
+- If saved IDs are provided in "SAVED MCP CONTEXT", reuse those exact address_id/res_id values instead of asking again.
+- If the user chooses by number or restaurant name and the saved context contains an ID, call the next tool with that ID.
 
 CONTEXT & CONSTRAINTS
 - User: {user_name or "there"}
@@ -503,6 +520,7 @@ async def _build_agent(platform: str):
         # If our naming convention doesn't match (langchain-mcp-adapters
         # may name tools <server>__<tool> or similar), fall back to all tools.
         bound_tools = filtered or tools
+        _tool_names_cache[cache_key] = [getattr(t, "name", str(t)) for t in bound_tools]
 
         api_key = os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
         llm = _build_llm_with_fallbacks(api_key)
@@ -546,17 +564,29 @@ async def get_mcp_response(
     # Cheap deterministic guard for greetings — skip a tool call.
     if _is_greeting(user_message):
         plat_label = "Zomato" if platform == "Zomato" else "Swiggy"
-        return (
+        reply = (
             f"Hey {user_name or 'there'}! 👋 I'm connected to *{plat_label}* now. "
             "Tell me what cuisine you're craving or share your area / pin code."
         )
+        session = await get_session(chat_id)
+        new_history = list(session.get("history") or [])
+        new_history.append({"role": "user", "content": user_message})
+        new_history.append({"role": "assistant", "content": reply})
+        await save_session(chat_id, {
+            "history": _trim_mcp_history(new_history),
+            "ordering_platform": platform,
+        })
+        return reply
 
     _ensure_imports()
 
     # Replay rolling conversation history (last 8 turns) so the model has
     # continuity, just like the Dzukku orchestrator does.
     session = await get_session(chat_id)
-    history = (session.get("history") or [])[-8:]
+    full_history = list(session.get("history") or [])
+    history = _visible_history(full_history, limit=8)
+    saved_context = _extract_last_mcp_context(full_history)
+    normalized_user_message = _normalize_followup_selection(user_message, full_history)
 
     # Build system prompt
     system_content = _system_prompt(platform, user_name)
@@ -567,14 +597,34 @@ async def get_mcp_response(
         from app.agent.mcp_clients import get_mcp_tools_async
         # Quietly fetch tools to ensure client is initialized, but we primarily
         # want the side effect of having a live MCP connection for context queries
-        _ = await asyncio.wait_for(
+        live_tools = await asyncio.wait_for(
             get_mcp_tools_async(platform),
             timeout=settings.MCP_TOOL_TIMEOUT_S
         )
+        if live_tools and platform not in _tool_names_cache:
+            prefix = "zomato" if platform == "Zomato" else "swiggy"
+            filtered_tools = [
+                t for t in live_tools
+                if (getattr(t, "name", "") or "").lower().startswith(prefix)
+            ]
+            chosen_tools = filtered_tools or live_tools
+            _tool_names_cache[platform] = [getattr(t, "name", str(t)) for t in chosen_tools]
     except Exception as e:
         logger.debug("MCP[%s]: could not prefetch tools for context: %s", platform, e)
 
     messages: list = [SystemMessage(content=system_content)]
+    tool_names = _tool_names_cache.get(platform) or []
+    if tool_names:
+        messages.append(SystemMessage(
+            content=(
+                "AVAILABLE MCP TOOL NAMES FOR THIS PLATFORM:\n"
+                + "\n".join(f"- {name}" for name in tool_names)
+                + "\nUse these exact tool names through the tool-calling interface. "
+                  "Do not mention imaginary tool names in the final user reply."
+            )
+        ))
+    if saved_context:
+        messages.append(SystemMessage(content=f"SAVED MCP CONTEXT FROM PREVIOUS TOOL RESULTS:\n{saved_context}"))
     for turn in history:
         role    = turn.get("role")
         content = turn.get("content") or ""
@@ -582,11 +632,11 @@ async def get_mcp_response(
             messages.append(HumanMessage(content=content))
         elif role == "assistant":
             messages.append(AIMessage(content=content))
-    messages.append(HumanMessage(content=user_message))
+    messages.append(HumanMessage(content=normalized_user_message))
 
     logger.debug(
-        "MCP[%s] turn start — chat=%s user=%r history_turns=%d",
-        platform, chat_id, user_message[:120], len(history),
+        "MCP[%s] turn start — chat=%s user=%r normalized=%r history_turns=%d has_saved_context=%s",
+        platform, chat_id, user_message[:120], normalized_user_message[:160], len(history), bool(saved_context),
     )
 
     result = None
@@ -628,6 +678,7 @@ async def get_mcp_response(
             from app.agent.mcp_clients import reset_platform_cache
             await reset_platform_cache(platform)
             _agent_cache.pop(platform, None)
+            _tool_names_cache.pop(platform, None)
             return None
 
     if result is None:
@@ -636,6 +687,7 @@ async def get_mcp_response(
     # ── Debug: log every message in the result ────────────────────────────────
     out_messages = result.get("messages") if isinstance(result, dict) else None
     detected_address_error = False
+    tool_call_count = 0
     
     if out_messages:
         for i, m in enumerate(out_messages):
@@ -650,6 +702,7 @@ async def get_mcp_response(
                         "MCP[%s] msg[%d] TOOL_CALL — tool=%s args=%s",
                         platform, i, tc_name, str(tc_args)[:200],
                     )
+                    tool_call_count += 1
                     # Extra focus on address/location args
                     if isinstance(tc_args, dict):
                         for k, v in tc_args.items():
@@ -703,16 +756,41 @@ async def get_mcp_response(
     if not final_text:
         final_text = "Got it — anything else you'd like me to do on " + platform + "?"
 
-    logger.debug("MCP[%s] reply chat=%s: %r", platform, chat_id, final_text[:120])
+    context_update = _build_context_from_messages(out_messages or [])
+
+    logger.debug(
+        "MCP[%s] reply chat=%s tool_calls=%d context_update=%s: %r",
+        platform, chat_id, tool_call_count, bool(context_update), final_text[:120],
+    )
 
     # Persist this turn into rolling history (cap last 16)
-    new_history = list(session.get("history") or [])
+    new_history = list(full_history)
     new_history.append({"role": "user",      "content": user_message})
     new_history.append({"role": "assistant", "content": final_text})
-    new_history = new_history[-16:]
+    if context_update:
+        new_history.append({"role": "mcp_context", "content": context_update})
+    new_history = _trim_mcp_history(new_history)
     await save_session(chat_id, {
         "history":           new_history,
         "ordering_platform": platform,
     })
 
     return final_text
+
+
+def _trim_mcp_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Keep the chat history small without losing the latest hidden MCP context.
+    Visible user/assistant turns are capped, while the newest mcp_context turn
+    is preserved so follow-up selections can reuse exact address_id/res_id data.
+    """
+    latest_context: dict[str, Any] | None = None
+    for turn in reversed(history):
+        if turn.get("role") == "mcp_context":
+            latest_context = turn
+            break
+
+    visible = [turn for turn in history if not _is_hidden_context_turn(turn)][-16:]
+    if latest_context:
+        visible.append(latest_context)
+    return visible

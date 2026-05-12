@@ -29,6 +29,7 @@ from app.db.models.dine_in import DiningTable, TableSession, TableSessionOrder
 from app.db.models.reservations import Reservation
 from app.db.models.invoices import Invoice
 from app.db.models.outbox import OutboxEvent
+from app.db.models.user_preferences import UserPreferences
 
 __all__ = [
     "Restaurant",
@@ -56,4 +57,5 @@ __all__ = [
     "Reservation",
     "Invoice",
     "OutboxEvent",
+    "UserPreferences",
 ]

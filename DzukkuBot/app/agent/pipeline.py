@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Optional
 
 from app.agent.context_builder import build_context, save_pipeline_turn, ContextSnapshot
@@ -40,19 +41,23 @@ async def process_message(
     Returns the assistant reply string.
     """
     # ── Stage 1: Context ──────────────────────────────────────────────────────
+    t0 = time.monotonic()
     ctx = await build_context(chat_id, user_name)
     logger.info(
-        "Pipeline[chat=%s] ctx built — customer=%r cart=%d orders=%d kitchen_load=%d",
+        "Pipeline[chat=%s] ctx built — customer=%r cart=%d orders=%d kitchen_load=%d (stage=%s duration_ms=%d)",
         chat_id,
         ctx.customer_name or "new",
         len(ctx.cart),
         len(ctx.active_orders),
         ctx.kitchen_load,
+        "context",
+        int((time.monotonic() - t0) * 1000),
     )
 
     # ── Stage 2: Planner ──────────────────────────────────────────────────────
     # If we can deterministically extract slot values (phone, name, address),
     # inject them as a hint so the planner LLM doesn't have to guess.
+    t1 = time.monotonic()
     slot_hint = _extract_slot_hint(message, ctx)
     if slot_hint:
         ctx.pending_slots = slot_hint.get("remaining_slots", ctx.pending_slots)
@@ -67,9 +72,11 @@ async def process_message(
 
     plan = _guard_order_plan(plan, ctx)
     logger.info(
-        "Pipeline[chat=%s] plan — goal=%s missing=%s actions=%d confirm=%s",
+        "Pipeline[chat=%s] plan — goal=%s missing=%s actions=%d confirm=%s (stage=%s duration_ms=%d)",
         chat_id, plan.goal, plan.missing_slots,
         len(plan.proposed_actions), plan.requires_confirmation,
+        "planner",
+        int((time.monotonic() - t1) * 1000),
     )
 
     # ── Short-circuit: only missing slots, no executable actions ─────────────
@@ -98,6 +105,7 @@ async def process_message(
         return reply
 
     # ── Stage 3: Executor + Stage 4: Verifier (loop up to max iterations) ────
+    t2 = time.monotonic()
     exec_result = ExecutionResult()
     summary = VerifiedSummary()
     remaining_actions = list(plan.proposed_actions)
@@ -127,11 +135,13 @@ async def process_message(
         iteration += 1
 
     logger.info(
-        "Pipeline[chat=%s] exec done — committed=%d rejected=%d order=%s",
+        "Pipeline[chat=%s] exec done — committed=%d rejected=%d order=%s (stage=%s duration_ms=%d)",
         chat_id,
         len(exec_result.committed),
         len(exec_result.rejected),
         exec_result.order_ref or "—",
+        "executor+verifier",
+        int((time.monotonic() - t2) * 1000),
     )
 
     # ── State machine transitions ─────────────────────────────────────────────
@@ -151,7 +161,12 @@ async def process_message(
         upsell_count = min(upsell_count + 1, ctx.policy.max_upsells_per_session)
 
     # ── Stage 5: Responder ────────────────────────────────────────────────────
+    t3 = time.monotonic()
     reply = await Responder.respond(summary, ctx, message)
+    logger.info(
+        "Pipeline[chat=%s] responder done (stage=%s duration_ms=%d)",
+        chat_id, "responder", int((time.monotonic() - t3) * 1000),
+    )
 
     # ── Persist turn + state ──────────────────────────────────────────────────
     next_goal = plan.goal if not StateMachine.is_terminal(next_state) else None

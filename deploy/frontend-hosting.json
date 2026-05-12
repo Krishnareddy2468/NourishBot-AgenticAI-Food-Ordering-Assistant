@@ -1,0 +1,17 @@
+{
+  "_comment": "Azure Blob Storage static website hosting configuration for restaurant-pos-frontend.",
+  "kind": "StorageV2",
+  "properties": {
+    "staticWebsite": {
+      "enabled": true,
+      "indexDocument": "index.html",
+      "errorDocument404Path": "index.html"
+    }
+  },
+  "cdn": {
+    "_comment": "Optional: Azure CDN profile for custom domain + SSL.",
+    "profileName": "dzukku-pos-cdn",
+    "endpointName": "dzukku-pos",
+    "customDomain": "pos.dzukku.com"
+  }
+}

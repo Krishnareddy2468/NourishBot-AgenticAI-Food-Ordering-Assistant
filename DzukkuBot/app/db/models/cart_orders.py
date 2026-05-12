@@ -66,6 +66,7 @@ class Order(Base, RestaurantMixin):
     eta_ts = Column(DateTime(timezone=True))
     idempotency_key = Column(Text, unique=True)
     notes = Column(Text)
+    rating = Column(Integer, nullable=True, comment="1–5 star rating after delivery")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

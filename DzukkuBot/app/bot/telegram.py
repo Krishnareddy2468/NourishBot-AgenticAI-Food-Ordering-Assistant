@@ -46,7 +46,7 @@ from app.agent.orchestrator import get_bot_response
 from app.agent.mcp_agent import get_mcp_response
 from app.agent.pipeline import process_message as pipeline_process
 from app.core.config import settings
-from app.db.crud import get_session, reset_session, save_session
+from app.db.crud import get_session, reset_session, save_session, save_order_rating
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -100,6 +100,21 @@ def platform_selection_inline() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🟥 Zomato",  callback_data="platform_zomato"),
             InlineKeyboardButton("🟧 Swiggy",  callback_data="platform_swiggy"),
         ],
+    ])
+
+
+# ── Rating keyboard ───────────────────────────────────────────────────────────
+
+def rating_inline_keyboard(order_ref: str) -> InlineKeyboardMarkup:
+    """Inline keyboard for post-order rating (1–5 stars)."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⭐",       callback_data=f"rating_1_{order_ref}"),
+            InlineKeyboardButton("⭐⭐",      callback_data=f"rating_2_{order_ref}"),
+            InlineKeyboardButton("⭐⭐⭐",     callback_data=f"rating_3_{order_ref}"),
+            InlineKeyboardButton("⭐⭐⭐⭐",   callback_data=f"rating_4_{order_ref}"),
+            InlineKeyboardButton("⭐⭐⭐⭐⭐",  callback_data=f"rating_5_{order_ref}"),
+        ]
     ])
 
 
@@ -161,6 +176,26 @@ async def _think_and_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     user      = update.effective_user
     user_name = user.first_name if user else ""
 
+    try:
+        await _do_think_and_reply(update, context, chat_id, user_name, user_message)
+    except Exception as e:
+        logger.exception("_think_and_reply crashed (chat=%s): %s", chat_id, e)
+        try:
+            await update.effective_message.reply_text(
+                "I hit a snag — could you try that again?",
+                reply_markup=main_keyboard(),
+            )
+        except Exception:
+            pass  # best effort
+
+
+async def _do_think_and_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    user_name: str,
+    user_message: str,
+) -> None:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
     # Routing matrix:
@@ -326,6 +361,48 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user      = update.effective_user
     user_name = user.first_name if user else ""
 
+    # ── Rating callback (Phase 1) ───────────────────────────────────────────
+    if query.data and query.data.startswith("rating_"):
+        parts = query.data.split("_", 2)
+        if len(parts) == 3:
+            rating = int(parts[1])
+            order_ref = parts[2]
+            ok = await save_order_rating(order_ref, rating)
+            if ok:
+                try:
+                    from sqlalchemy import select as _sel
+                    from app.db.session import AsyncSessionLocal
+                    from app.db.models import Order as OrderModel, OrderItem
+                    from app.agent.memory_agent import update_taste_vector
+                    async with AsyncSessionLocal() as _db:
+                        _or = (await _db.execute(
+                            _sel(OrderModel).where(OrderModel.order_ref == order_ref)
+                        )).scalar_one_or_none()
+                        if _or and _or.customer_id:
+                            _ir = await _db.execute(
+                                _sel(OrderItem).where(OrderItem.order_id == _or.id)
+                            )
+                            items = [
+                                {"item_name": oi.item_name_snapshot, "qty": oi.qty,
+                                 "price_cents": oi.unit_price_cents}
+                                for oi in _ir.scalars().all()
+                            ]
+                            import asyncio as _aio
+                            _aio.create_task(update_taste_vector(_or.customer_id, items, rating=rating))
+                except Exception as _e:
+                    logger.debug("Rating feedback skipped: %s", _e)
+                stars = "⭐" * rating
+                await query.edit_message_text(
+                    f"Thanks! You rated this order {stars}\nYour preferences have been updated.",
+                    reply_markup=None,
+                )
+            else:
+                await query.edit_message_text(
+                    "Sorry, I couldn't save your rating. The order may no longer exist.",
+                    reply_markup=None,
+                )
+        return
+
     # ── Platform selection callback ──────────────────────────────────────────
     if query.data in PLATFORM_CALLBACKS:
         platform = PLATFORM_CALLBACKS[query.data]
@@ -432,24 +509,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text or ""
 
-    # Greeting → show the platform-selection prompt (skip if user is mid-flow
-    # i.e. has cart or has already chosen a platform AND it's not a fresh greeting)
+    # Greeting → show the platform-selection prompt only before a platform is
+    # chosen. External MCP carts live on Zomato/Swiggy, not in the local Dzukku
+    # cart, so using the local cart as the only "mid-flow" signal breaks MCP
+    # conversations by re-opening the picker on a simple "hi".
     if _is_greeting(raw) and raw not in BUTTON_INTENT_MAP:
         chat_id = update.effective_chat.id
         sess    = await get_session(chat_id)
         cart    = sess.get("cart", []) or []
         platform_chosen = (sess.get("ordering_platform") or "").strip()
 
-        # Only re-prompt if cart is empty (don't disturb an in-progress order)
-        if not cart:
+        # Only re-prompt before platform selection. Once Zomato/Swiggy is
+        # selected, route greetings into that MCP agent so its session remains
+        # continuous across the chat.
+        if not cart and not platform_chosen:
             user      = update.effective_user
             user_name = (user.first_name if user else "") or sess.get("user_name") or "there"
 
-            greeting_line = (
-                f"👋 Hey *{user_name}*! Welcome back to *Dzukku Restaurant* 🍽️"
-                if platform_chosen
-                else f"👋 Hey *{user_name}*! Welcome to *Dzukku Restaurant* 🍽️"
-            )
+            greeting_line = f"👋 Hey *{user_name}*! Welcome to *Dzukku Restaurant* 🍽️"
             await update.message.reply_text(
                 greeting_line,
                 parse_mode=ParseMode.MARKDOWN,

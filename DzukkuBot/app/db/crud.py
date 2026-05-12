@@ -55,7 +55,17 @@ async def _get_channel(chat_id: int) -> Optional[Channel]:
 
 
 async def get_session(chat_id: int) -> dict:
-    """Return session state as a dict (same shape as old SQLite version)."""
+    """Return session state as a dict (same shape as old SQLite version).
+
+    Tries Redis cache first; falls back to PostgreSQL on miss.
+    """
+    # ── Redis cache hit ──────────────────────────────────────────────────
+    from app.core.redis_client import get_cached_session, cache_session
+    cached = await get_cached_session(chat_id)
+    if cached is not None:
+        return cached
+
+    # ── PostgreSQL fallback ──────────────────────────────────────────────
     async with get_session_factory()() as session:
         # Find channel
         ch_result = await session.execute(
@@ -66,7 +76,7 @@ async def get_session(chat_id: int) -> dict:
         )
         channel = ch_result.scalar_one_or_none()
         if not channel:
-            return {
+            result = {
                 "chat_id": chat_id,
                 "state": "new",
                 "user_name": "",
@@ -76,6 +86,8 @@ async def get_session(chat_id: int) -> dict:
                 "history": [],
                 "ordering_platform": "",
             }
+            await cache_session(chat_id, result)
+            return result
 
         # Find session
         s_result = await session.execute(
@@ -83,7 +95,7 @@ async def get_session(chat_id: int) -> dict:
         )
         sess = s_result.scalar_one_or_none()
         if not sess:
-            return {
+            result = {
                 "chat_id": chat_id,
                 "state": "new",
                 "user_name": "",
@@ -93,6 +105,8 @@ async def get_session(chat_id: int) -> dict:
                 "history": [],
                 "ordering_platform": "",
             }
+            await cache_session(chat_id, result)
+            return result
 
         # Reconstruct cart from Cart + CartItems if linked
         cart_data = []
@@ -134,7 +148,7 @@ async def get_session(chat_id: int) -> dict:
             history = list(sess.history_json.get("turns") or [])
         else:
             history = []
-        return {
+        result = {
             "chat_id": chat_id,
             "state": sess.state,
             "user_name": "",
@@ -144,10 +158,16 @@ async def get_session(chat_id: int) -> dict:
             "history": history,
             "ordering_platform": sess.ordering_platform or "",
         }
+        await cache_session(chat_id, result)
+        return result
 
 
 async def save_session(chat_id: int, updates: dict) -> None:
-    """Update session fields from a dict of updates."""
+    """Update session fields from a dict of updates.
+
+    Writes to PostgreSQL first, then refreshes Redis cache.
+    """
+    from app.core.redis_client import invalidate_session_cache
     async with get_session_factory()() as session:
         # Find or create channel
         ch_result = await session.execute(
@@ -195,6 +215,7 @@ async def save_session(chat_id: int, updates: dict) -> None:
             pass
 
         await session.commit()
+        await invalidate_session_cache(chat_id)
 
 
 async def reset_session(chat_id: int, user_name: str = "") -> None:
@@ -232,6 +253,49 @@ async def reset_session(chat_id: int, user_name: str = "") -> None:
         sess.ordering_platform = ""
         sess.history_json = {"meta": {}, "turns": []}
         await session.commit()
+        await invalidate_session_cache(chat_id)
+
+
+# ── User preference helpers ──────────────────────────────────────────────────
+
+async def get_user_preferences(customer_id: int) -> Optional[dict]:
+    """Return user preferences as dict, or None if not found."""
+    from app.db.models.user_preferences import UserPreferences
+    async with get_session_factory()() as session:
+        result = await session.execute(
+            select(UserPreferences).where(UserPreferences.customer_id == customer_id)
+        )
+        prefs = result.scalar_one_or_none()
+        if prefs is None:
+            return None
+        return {
+            "customer_id": prefs.customer_id,
+            "spice_level": prefs.spice_level,
+            "cuisine_weights": prefs.cuisine_weights,
+            "price_band": prefs.price_band,
+            "order_timing": prefs.order_timing,
+            "dietary_flags": prefs.dietary_flags,
+            "health_goals": prefs.health_goals,
+            "allergies": prefs.allergies,
+            "health_onboarding_done": prefs.health_onboarding_done,
+            "craving_cycles": prefs.craving_cycles,
+            "total_orders": prefs.total_orders,
+            "total_spent_cents": prefs.total_spent_cents,
+        }
+
+
+async def save_order_rating(order_ref: str, rating: int) -> bool:
+    """Save a 1–5 star rating to an order. Returns True on success."""
+    async with get_session_factory()() as session:
+        result = await session.execute(
+            select(Order).where(Order.order_ref == order_ref)
+        )
+        order = result.scalar_one_or_none()
+        if order is None:
+            return False
+        order.rating = rating
+        await session.commit()
+        return True
 
 
 # ── Menu helpers ──────────────────────────────────────────────────────────────
