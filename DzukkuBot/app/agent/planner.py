@@ -131,6 +131,10 @@ Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | 
 Cart: {ctx.cart_summary}
 Orders: {active_order_text} | Kitchen: {ctx.kitchen_load} orders
 
+USER MEMORY:
+{ctx.memory_summary or "(no history)"}
+Top cravings right now: {", ".join(ctx.top_cravings) if ctx.top_cravings else "none detected"}
+
 MENU (top 40):
 {menu_text}
 

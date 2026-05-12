@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dzukku Business Brochure</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    :root {
+      --ink: #18222f;
+      --muted: #657180;
+      --soft: #f7f4ee;
+      --paper: #ffffff;
+      --line: #dde5ec;
+      --brand: #bf342e;
+      --brand-dark: #7d1821;
+      --orange: #ff7043;
+      --gold: #c48a2c;
+      --green: #12966f;
+      --blue: #2764a8;
+      --night: #111421;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: #e8edf2;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.45;
+    }
+
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 18mm;
+      background: var(--paper);
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .cover {
+      color: #fff;
+      padding: 0;
+      background:
+        linear-gradient(135deg, rgba(125, 24, 33, 0.98), rgba(15, 18, 30, 0.96) 52%, rgba(13, 31, 55, 0.95)),
+        radial-gradient(circle at 18% 12%, rgba(255, 112, 67, 0.36), transparent 28%),
+        radial-gradient(circle at 88% 84%, rgba(39, 100, 168, 0.42), transparent 32%);
+    }
+
+    .cover-inner {
+      height: 297mm;
+      padding: 22mm 18mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #ffd4b5;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 168mm;
+      margin-bottom: 14px;
+      font-size: 46px;
+      line-height: 1.04;
+      letter-spacing: -0.4px;
+    }
+
+    .cover-subtitle {
+      max-width: 160mm;
+      color: #f3e7df;
+      font-size: 18px;
+      line-height: 1.45;
+    }
+
+    .cover-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .cover-card {
+      min-height: 31mm;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .cover-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+
+    .cover-card span {
+      color: #ead7cd;
+      font-size: 11px;
+    }
+
+    .cover-shot {
+      margin-top: 22px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 22px 52px rgba(0, 0, 0, 0.38);
+      overflow: hidden;
+      background: #0c0f1a;
+    }
+
+    .cover-shot img {
+      display: block;
+      width: 100%;
+      max-height: 110mm;
+      object-fit: cover;
+      object-position: top center;
+    }
+
+    .cover-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      color: #e6d9d0;
+      font-size: 12px;
+    }
+
+    .section-kicker {
+      margin-bottom: 6px;
+      color: var(--brand);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.7px;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin-bottom: 11px;
+      color: var(--brand-dark);
+      font-size: 29px;
+      line-height: 1.08;
+      letter-spacing: -0.2px;
+    }
+
+    h3 {
+      margin-bottom: 7px;
+      color: #243141;
+      font-size: 16px;
+      line-height: 1.22;
+    }
+
+    p,
+    li,
+    td,
+    th {
+      font-size: 12.2px;
+    }
+
+    p {
+      margin-bottom: 9px;
+    }
+
+    .lead {
+      max-width: 168mm;
+      color: #374656;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .card {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .card.tint {
+      border-color: #f0d3c4;
+      background: #fff8f2;
+    }
+
+    .metric {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--orange);
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .callout {
+      margin: 12px 0;
+      padding: 15px 16px;
+      border-left: 5px solid var(--gold);
+      border-radius: 10px;
+      background: #fff8e8;
+      color: #3a2d1e;
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef3f6;
+      color: #26313c;
+      font-weight: 800;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .flow-step {
+      min-height: 33mm;
+      padding: 11px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fbfc;
+      color: #2f3b49;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .flow-step span {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin-bottom: 8px;
+      border-radius: 50%;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .flow-step strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #162231;
+      font-size: 13px;
+      line-height: 1.18;
+    }
+
+    .screenshot {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 14px 30px rgba(24, 34, 47, 0.08);
+      break-inside: avoid;
+    }
+
+    .screenshot img {
+      display: block;
+      width: 100%;
+      border: 1px solid #d4dde7;
+      border-radius: 10px;
+    }
+
+    .screenshot h3 {
+      margin: 10px 0 5px;
+      color: var(--brand-dark);
+    }
+
+    .phone-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      align-items: start;
+    }
+
+    .phone-shot {
+      padding: 8px;
+    }
+
+    .phone-shot img {
+      height: 122mm;
+      max-height: 122mm;
+      object-fit: contain;
+      background: #111;
+    }
+
+    .phone-shot h3 {
+      margin-top: 8px;
+      font-size: 13.5px;
+      line-height: 1.2;
+    }
+
+    .phone-shot p {
+      font-size: 10.8px;
+      line-height: 1.35;
+    }
+
+    .mini-label {
+      display: inline-block;
+      margin-bottom: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f3efe8;
+      color: var(--brand-dark);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .footer-note {
+      position: absolute;
+      right: 18mm;
+      bottom: 9mm;
+      left: 18mm;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: #8a95a3;
+      font-size: 10px;
+    }
+
+    .dark-band {
+      margin: 16px -18mm 0;
+      padding: 15mm 18mm;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(125, 24, 33, 0.94), rgba(17, 20, 33, 0.98) 58%, rgba(13, 31, 55, 0.96));
+    }
+
+    .dark-band h2,
+    .dark-band h3 {
+      color: #fff;
+    }
+
+    .dark-band p,
+    .dark-band li {
+      color: #ded8d7;
+    }
+
+    .dark-band .flow-step {
+      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.94);
+      color: #293746;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+    }
+
+    .dark-band .flow-step strong {
+      color: #172231;
+    }
+
+    .dark-card {
+      padding: 13px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    ul,
+    ol {
+      margin: 7px 0 0 18px;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    @media print {
+      html,
+      body {
+        background: #fff;
+      }
+
+      .page {
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <div class="cover-inner">
+      <div>
+        <p class="eyebrow">Business Product Brochure</p>
+        <h1>Dzukku: AI Ordering And Restaurant Operations In One Platform</h1>
+        <p class="cover-subtitle">
+          A practical restaurant growth platform that helps businesses accept direct orders, manage staff workflows,
+          coordinate kitchen execution, and understand daily performance from one connected system.
+        </p>
+        <div class="cover-grid">
+          <div class="cover-card"><strong>Customer Chat</strong><span>Order through familiar chat and quick actions.</span></div>
+          <div class="cover-card"><strong>Live Operations</strong><span>Orders, kitchen, tables, delivery, billing.</span></div>
+          <div class="cover-card"><strong>Owner Visibility</strong><span>Revenue, order status, demand, trends.</span></div>
+          <div class="cover-card"><strong>Scalable Model</strong><span>Single restaurant, cloud kitchen, or chain.</span></div>
+        </div>
+        <div class="cover-shot">
+          <img src="assets/business-brochure/03-dashboard.png" alt="Dzukku dashboard preview">
+        </div>
+      </div>
+      <div class="cover-footer">
+        <span>Prepared for business owners, operators, and decision-makers</span>
+        <span>Project Dzukku</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Executive Understanding</p>
+    <h2>What Is Dzukku?</h2>
+    <p class="lead">
+      Dzukku is an AI-powered restaurant ordering and operations platform. Customers order through chat, while the
+      restaurant team manages orders, kitchen preparation, table service, delivery, invoices, and analytics from a
+      role-based POS workspace.
+    </p>
+    <div class="callout">
+      In simple terms: Dzukku talks to the customer, captures the order, sends it to the right team, tracks the work,
+      and gives the owner a clear view of the business.
+    </div>
+    <div class="grid-3">
+      <div class="card tint">
+        <span class="metric">1</span>
+        <h3>Customers order naturally</h3>
+        <p>Through Telegram, WhatsApp-style chat, QR links, and simple buttons such as Menu, Order, Cart, and Reserve.</p>
+      </div>
+      <div class="card tint">
+        <span class="metric">2</span>
+        <h3>Staff work from live queues</h3>
+        <p>Admin, waiter, and kitchen teams see the right screen for their role and work from the same order flow.</p>
+      </div>
+      <div class="card tint">
+        <span class="metric">3</span>
+        <h3>Owners gain control</h3>
+        <p>Daily orders, pending load, revenue, top activity, and operations become visible instead of scattered.</p>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Business Question</th>
+          <th>Dzukku Answer</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Who is it for?</td>
+          <td>Restaurants, cafes, cloud kitchens, QSRs, food courts, hotels, and multi-branch food businesses.</td>
+        </tr>
+        <tr>
+          <td>What does it replace?</td>
+          <td>Scattered ordering over calls, chats, spreadsheets, handwritten tickets, disconnected dashboards, and manual follow-up.</td>
+        </tr>
+        <tr>
+          <td>Why should a business care?</td>
+          <td>It can improve direct ordering, service speed, kitchen clarity, customer ownership, reporting, and branch scalability.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Executive Overview</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Business Challenge</p>
+    <h2>The Problem Restaurants Face Today</h2>
+    <p class="lead">
+      Restaurants do not only need online ordering. They need an operating system that connects customer demand with
+      kitchen execution and business visibility.
+    </p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Heavy aggregator dependency</h3>
+        <p>Marketplaces are useful for discovery, but repeat customers often still go through commission-heavy channels.</p>
+      </div>
+      <div class="card">
+        <h3>Scattered operations</h3>
+        <p>Orders, tables, reservations, kitchen status, delivery, and billing may live in different tools or staff memory.</p>
+      </div>
+      <div class="card">
+        <h3>Customer app fatigue</h3>
+        <p>Customers do not want another complicated ordering app. They want quick recommendations and simple confirmation.</p>
+      </div>
+      <div class="card">
+        <h3>Limited owner visibility</h3>
+        <p>Owners need to know what is selling, what is delayed, what is pending, and where the business can improve.</p>
+      </div>
+    </div>
+    <div class="dark-band">
+      <p class="section-kicker">Business Outcome</p>
+      <h2>Dzukku connects the full restaurant journey.</h2>
+      <div class="flow">
+        <div class="flow-step"><span>1</span><strong>Customer asks</strong><br>Chat, QR, menu, reservation, or quick reorder.</div>
+        <div class="flow-step"><span>2</span><strong>AI assists</strong><br>Recommends, confirms, and collects details.</div>
+        <div class="flow-step"><span>3</span><strong>Order appears</strong><br>Admin/POS receives a structured order.</div>
+        <div class="flow-step"><span>4</span><strong>Kitchen executes</strong><br>Items move pending, cooking, done.</div>
+        <div class="flow-step"><span>5</span><strong>Owner learns</strong><br>Revenue, orders, delays, and demand become visible.</div>
+      </div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Business Challenge</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Product Modules</p>
+    <h2>What The Product Includes</h2>
+    <p class="lead">
+      Dzukku is a connected set of business modules, not a single chatbot. Each module maps to a real restaurant workflow.
+    </p>
+    <div class="grid-3">
+      <div class="card"><h3>AI Ordering Assistant</h3><p>Conversational menu help, item selection, cart, customer details, confirmation, and channel choice.</p></div>
+      <div class="card"><h3>POS Command Center</h3><p>Live dashboard for orders, revenue, pending load, kitchen count, invoices, and staff operations.</p></div>
+      <div class="card"><h3>Kitchen Display</h3><p>Pending, cooking, and done stages so the back of house works from a clear queue.</p></div>
+      <div class="card"><h3>Waiter Portal</h3><p>Table map, guest sessions, dine-in orders, kitchen fire, and bill generation.</p></div>
+      <div class="card"><h3>Reservations</h3><p>Chat-based table booking with guest count, date, time, and special request handling.</p></div>
+      <div class="card"><h3>Delivery Workflow</h3><p>Driver assignment, status tracking, proof of delivery, and customer progress updates.</p></div>
+      <div class="card"><h3>Invoices & Settlements</h3><p>Billing, paid status, direct/platform settlement visibility, and daily reconciliation support.</p></div>
+      <div class="card"><h3>Analytics</h3><p>Top dishes, peak hours, revenue patterns, repeat behavior, and operational KPIs.</p></div>
+      <div class="card"><h3>Multi-Outlet Readiness</h3><p>Separate menus, staff, orders, customers, dashboards, and brand-specific AI assistants by branch.</p></div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Product Modules</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Staff Operations</p>
+    <h2>Role-Based Workspaces Make It Easy For Non-Technical Teams</h2>
+    <p class="lead">
+      A good restaurant system should not overwhelm staff. Dzukku separates work by role so each team sees only the
+      controls they need.
+    </p>
+    <div class="screenshot">
+      <img src="assets/business-brochure/01-role-selector.png" alt="Dzukku role selector">
+      <h3>One product, three operating rooms</h3>
+      <p>Admin/POS manages full operations. Waiter handles floor service. Kitchen handles preparation. This separation improves adoption and keeps work focused.</p>
+    </div>
+    <div class="grid-3" style="margin-top: 12px;">
+      <div class="card"><h3>Admin / POS</h3><p>Orders, menu, staff, payments, deliveries, invoices, reservations, and analytics.</p></div>
+      <div class="card"><h3>Waiter</h3><p>Table map, active sessions, cart building, kitchen fire, and checkout support.</p></div>
+      <div class="card"><h3>Kitchen</h3><p>Item-level KDS queue with pending, cooking, and done status movement.</p></div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Role-Based Workspaces</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Management View</p>
+    <h2>Owner Dashboard: The Daily Business Snapshot</h2>
+    <div class="screenshot">
+      <img src="assets/business-brochure/03-dashboard.png" alt="Dzukku owner dashboard">
+      <h3>Live visibility for owners and managers</h3>
+      <p>
+        The dashboard gives decision-makers a shift-level picture: total orders, revenue, pending work, delivered orders,
+        live sync, kitchen count, and order trends. This helps managers act during the day, not only after closing.
+      </p>
+    </div>
+    <div class="grid-3" style="margin-top: 12px;">
+      <div class="card tint"><h3>Sales view</h3><p>Revenue, order count, peak hours, and demand patterns.</p></div>
+      <div class="card tint"><h3>Operations view</h3><p>Pending orders, kitchen load, ready orders, and service bottlenecks.</p></div>
+      <div class="card tint"><h3>Growth view</h3><p>Top dishes, repeat orders, direct channel adoption, and campaign opportunities.</p></div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Owner Dashboard</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Trackable Work</p>
+    <h2>Live Orders: Every Customer Request Becomes A Managed Queue</h2>
+    <div class="screenshot">
+      <img src="assets/business-brochure/09-orders.png" alt="Dzukku live orders view">
+      <h3>From customer request to restaurant execution</h3>
+      <p>
+        The orders screen makes work visible: order references, customer names, ordered items, totals, source channel,
+        and current status. This gives the team a shared truth and reduces repeated checking between counter, kitchen,
+        delivery, and management.
+      </p>
+    </div>
+    <div class="callout">Business value: fewer lost orders, clearer accountability, faster follow-up, and better service consistency.</div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Order Management</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Floor And Kitchen</p>
+    <h2>Built For Real Restaurant Service</h2>
+    <div class="grid-2">
+      <div class="screenshot">
+        <img src="assets/business-brochure/04-waiter-portal.png" alt="Dzukku waiter portal">
+        <h3>Waiter Portal</h3>
+        <p>Waiters can open table sessions, see available and occupied tables, manage guests, send orders to kitchen, and complete checkout.</p>
+      </div>
+      <div class="screenshot">
+        <img src="assets/business-brochure/05-kitchen-display.png" alt="Dzukku kitchen display">
+        <h3>Kitchen Display</h3>
+        <p>Kitchen staff can move every line item from pending to cooking to done while admin and waiter screens stay aligned.</p>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top: 12px;">
+      <div class="card tint"><h3>Front of house benefit</h3><p>Staff can answer customer questions because kitchen readiness is visible.</p></div>
+      <div class="card tint"><h3>Back of house benefit</h3><p>The kitchen gets a structured queue instead of scattered verbal instructions.</p></div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Restaurant Operations</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Customer Experience</p>
+    <h2>Customers Order Through A Familiar Chat Interface</h2>
+    <p class="lead">
+      Dzukku is simple for customers because it does not force them to learn a new app. They can chat, tap quick actions,
+      choose direct Dzukku ordering, or use supported delivery channels.
+    </p>
+    <div class="phone-grid">
+      <div class="screenshot phone-shot">
+        <img src="assets/business-brochure/06-telegram-dzukku.png" alt="Dzukku direct Telegram ordering">
+        <h3>Direct Dzukku Ordering</h3>
+        <p>Best for repeat customers, QR ordering, table ordering, packaging links, and social campaigns.</p>
+      </div>
+      <div class="screenshot phone-shot">
+        <img src="assets/business-brochure/07-swiggy-assistant.png" alt="Dzukku Swiggy assistant">
+        <h3>Swiggy Channel Support</h3>
+        <p>Customers who prefer Swiggy can still be guided through a familiar conversational path.</p>
+      </div>
+      <div class="screenshot phone-shot">
+        <img src="assets/business-brochure/08-zomato-assistant.png" alt="Dzukku Zomato assistant">
+        <h3>Zomato Channel Support</h3>
+        <p>Dzukku can preserve flexibility while direct ordering remains the preferred repeat-customer path.</p>
+      </div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Customer Chat Ordering</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Business Value</p>
+    <h2>Why Businesses Should Consider Dzukku</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>More direct customer relationships</h3>
+        <p>Restaurants can promote QR and chat ordering to repeat customers instead of depending only on marketplace apps.</p>
+      </div>
+      <div class="card">
+        <h3>Lower operational confusion</h3>
+        <p>Orders, kitchen readiness, table sessions, and delivery status become visible in one workflow.</p>
+      </div>
+      <div class="card">
+        <h3>Better customer experience</h3>
+        <p>Customers get quick replies, menu help, simple buttons, clear confirmation, and familiar ordering channels.</p>
+      </div>
+      <div class="card">
+        <h3>Management-grade visibility</h3>
+        <p>Owners can track revenue, pending orders, top dishes, peak hours, service delays, and growth opportunities.</p>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Business Area</th>
+          <th>Expected Improvement</th>
+          <th>How To Measure</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Direct ordering</td>
+          <td>More orders through restaurant-owned channels.</td>
+          <td>QR scans, chat starts, completed direct orders.</td>
+        </tr>
+        <tr>
+          <td>Kitchen execution</td>
+          <td>Fewer missed items and clearer preparation status.</td>
+          <td>Prep time, ready time, delayed orders, corrections.</td>
+        </tr>
+        <tr>
+          <td>Revenue quality</td>
+          <td>More repeat customers and stronger average order value.</td>
+          <td>Repeat rate, AOV, add-on acceptance, campaign response.</td>
+        </tr>
+        <tr>
+          <td>Management control</td>
+          <td>Better decisions on staffing, menu, offers, and branches.</td>
+          <td>Peak-hour reports, item sales, status mix, trend dashboards.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Business Value</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Use Cases</p>
+    <h2>Where Dzukku Fits</h2>
+    <div class="grid-2">
+      <div class="card"><span class="mini-label">Cloud Kitchen</span><h3>Direct online orders and kitchen discipline</h3><p>Accept direct chat orders, manage prep queues, coordinate delivery, and track demand patterns.</p></div>
+      <div class="card"><span class="mini-label">Dine-In Restaurant</span><h3>Table service and kitchen alignment</h3><p>Manage tables, guest sessions, waiter orders, reservations, kitchen tickets, and bills.</p></div>
+      <div class="card"><span class="mini-label">Cafe / QSR</span><h3>Quick repeat ordering</h3><p>Make menu browsing, combos, pickup orders, and preparation updates faster for regular customers.</p></div>
+      <div class="card"><span class="mini-label">Restaurant Group</span><h3>Multi-outlet control</h3><p>Give each branch separate operations while owners compare performance centrally.</p></div>
+    </div>
+    <div class="dark-band">
+      <h2>Not a replacement for every aggregator use case.</h2>
+      <p>
+        Swiggy and Zomato remain useful for new customer discovery. Dzukku is strongest for direct ordering, repeat
+        customers, dine-in operations, restaurant-owned loyalty, and branch-level management.
+      </p>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Use Cases</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Rollout Plan</p>
+    <h2>Recommended Implementation Approach</h2>
+    <p class="lead">
+      The best rollout is staged. Start small, prove value, train teams, then expand into deeper workflows and multiple
+      branches.
+    </p>
+    <div class="flow">
+      <div class="flow-step"><span>1</span><strong>Discovery</strong>Menu, roles, channels, table flow, delivery model.</div>
+      <div class="flow-step"><span>2</span><strong>Setup</strong>Profile, menu, staff, assistant, POS views.</div>
+      <div class="flow-step"><span>3</span><strong>Pilot</strong>Test selected orders or tables with staff feedback.</div>
+      <div class="flow-step"><span>4</span><strong>Launch</strong>Publish QR links, train staff, promote direct ordering.</div>
+      <div class="flow-step"><span>5</span><strong>Optimize</strong>Review KPIs, offers, loyalty, payments, branches.</div>
+    </div>
+    <div class="grid-2" style="margin-top: 14px;">
+      <div class="card">
+        <h3>Required for launch</h3>
+        <ul>
+          <li>Final menu with prices and categories.</li>
+          <li>Restaurant timings, address, service area, contact details.</li>
+          <li>Staff roles for admin, waiter, kitchen, delivery.</li>
+          <li>Telegram/WhatsApp ordering channel and QR placement plan.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Recommended for growth</h3>
+        <ul>
+          <li>First-time and repeat-customer offer strategy.</li>
+          <li>Kitchen preparation time targets.</li>
+          <li>Delivery assignment rules.</li>
+          <li>Weekly review of orders, AOV, top dishes, and feedback.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Implementation</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Client Confidence</p>
+    <h2>Common Business Questions</h2>
+    <div class="grid-2">
+      <div class="card"><h3>Is this only a chatbot?</h3><p>No. Chat is the customer entry point. The platform also includes POS, KDS, tables, reservations, invoices, delivery workflows, and analytics.</p></div>
+      <div class="card"><h3>Can non-technical staff use it?</h3><p>Yes. Staff use role-based screens, so each team sees the workflow that matches their daily responsibilities.</p></div>
+      <div class="card"><h3>Will it replace Swiggy or Zomato?</h3><p>Not necessarily. Aggregators are useful for discovery. Dzukku is best for direct ordering, repeat customers, and restaurant-owned operations.</p></div>
+      <div class="card"><h3>Can it support multiple branches?</h3><p>Yes. The platform can grow into separate menus, staff, customers, orders, dashboards, and AI personalities by branch.</p></div>
+      <div class="card"><h3>How do we measure success?</h3><p>Track direct orders, chat conversion, repeat customers, average order value, kitchen time, cancellations, and customer feedback.</p></div>
+      <div class="card"><h3>What should we launch first?</h3><p>Start with one outlet, one menu, one ordering channel, one dashboard, and one kitchen queue. Expand after the workflow is proven.</p></div>
+    </div>
+    <div class="callout">
+      Consultant recommendation: begin with a controlled pilot for repeat customers. Prove direct ordering and kitchen
+      visibility first, then expand into loyalty, payments, delivery automation, and multi-branch reporting.
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Client Questions</span></div>
+  </section>
+
+  <section class="page">
+    <p class="section-kicker">Final Recommendation</p>
+    <h2>Dzukku Is A Practical Step Toward Restaurant Digital Ownership</h2>
+    <p class="lead">
+      Dzukku gives food businesses a way to modernize customer ordering and daily operations without making the
+      experience complicated. Customers use chat. Staff use role-based screens. Owners get visibility.
+    </p>
+    <div class="grid-3">
+      <div class="card tint"><h3>For customers</h3><p>Quick ordering, simple buttons, helpful recommendations, and clear confirmation.</p></div>
+      <div class="card tint"><h3>For staff</h3><p>Fewer missed orders, clearer kitchen flow, better table coordination, and less manual communication.</p></div>
+      <div class="card tint"><h3>For owners</h3><p>More direct relationships, better margin potential, stronger visibility, and a platform that can scale.</p></div>
+    </div>
+    <div class="dark-band">
+      <h2>Recommended first milestone</h2>
+      <p>
+        Launch Dzukku for one restaurant, one menu, one direct ordering channel, and one kitchen workflow. Measure direct
+        orders, conversion, preparation time, average order value, and repeat customer behavior. Use those results to
+        decide the next growth phase.
+      </p>
+    </div>
+    <div class="footer-note"><span>Dzukku Business Brochure</span><span>Final Recommendation</span></div>
+  </section>
+</body>
+</html>

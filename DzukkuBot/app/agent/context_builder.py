@@ -38,6 +38,7 @@ from app.db.models import (
 )
 from app.agent.policies import RestaurantPolicy, default_policy
 from app.agent.state_machine import BotState
+from app.agent.memory_agent import get_user_memory_summary, get_top_cravings
 
 logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
@@ -77,6 +78,11 @@ class ContextSnapshot:
     pending_goal: Optional[str] = None
     pending_slots: list[str] = field(default_factory=list)
     upsell_count: int = 0
+
+    # User memory (Phase 1 — persistent preferences across sessions)
+    user_preferences: Optional[dict] = None
+    memory_summary: str = ""
+    top_cravings: list[str] = field(default_factory=list)
 
     # Order context (collected progressively)
     order_type: Optional[str] = None               # DELIVERY | PICKUP | DINE_IN
@@ -157,6 +163,13 @@ async def build_context(chat_id: int, user_name: str = "") -> ContextSnapshot:
                     ctx.customer_phone = customer.phone or ""
                     ctx.language = customer.language_pref or "en"
                     ctx.marketing_opt_in = bool(customer.marketing_opt_in)
+
+                    # ── Load user memory for personalization (Phase 1) ───
+                    try:
+                        ctx.memory_summary = await get_user_memory_summary(ctx.customer_id)
+                        ctx.top_cravings = await get_top_cravings(ctx.customer_id)
+                    except Exception:
+                        pass  # memory is non-critical
 
             # ── 3. Session + history + cart ───────────────────────────────────
             sess_result = await db.execute(

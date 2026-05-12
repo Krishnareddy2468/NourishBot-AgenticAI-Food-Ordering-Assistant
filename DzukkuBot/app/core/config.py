@@ -23,6 +23,9 @@ class Settings:
     LOG_LEVEL:    str  = os.getenv("LOG_LEVEL", "INFO").upper()
     CREDS_PATH:   Path = ROOT_DIR / "config" / "credentials.json"
 
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     # ── PostgreSQL (vNext) ────────────────────────────────────────────────────
     DATABASE_URL:      str = os.getenv("DATABASE_URL", "")
     DATABASE_URL_SYNC: str = os.getenv("DATABASE_URL_SYNC", "")

@@ -413,6 +413,20 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
 
     logger.info("Order placed: %s for customer %s", order_ref, ctx.customer_phone)
 
+    # ── Update taste vector after order placement (Phase 1) ──────────────────
+    if ctx.customer_id:
+        try:
+            from app.agent.memory_agent import update_taste_vector
+            item_data = [
+                {"item_name": ci["item_name"], "qty": ci["qty"],
+                 "price_cents": ci["unit_price_cents"]}
+                for ci in cart
+            ]
+            import asyncio as _asyncio
+            _asyncio.create_task(update_taste_vector(ctx.customer_id, item_data))
+        except Exception as _e:
+            logger.debug("Taste vector update skipped: %s", _e)
+
     # ── Auto-chain: create Razorpay payment intent for DELIVERY/PICKUP orders ──
     payment_data = {}
     razorpay_configured = bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET)

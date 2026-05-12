@@ -21,6 +21,21 @@
 # That populates ~/.mcp-auth which the mcp profile mounts.
 
 services:
+  # ── Infrastructure ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles: ["cloud", "mcp"]
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   bot:
     build: .
     image: dzukku-bot:latest
@@ -29,10 +44,14 @@ services:
     env_file: .env
     environment:
       MCP_ENABLED: "false"
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "8000:8000"
     volumes:
       - bot_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
 
   bot-mcp:
     build: .
@@ -43,6 +62,7 @@ services:
     environment:
       MCP_ENABLED: "true"
       MCP_AUTH_DIR: "/run/mcp-auth"
+      REDIS_URL: "redis://redis:6379/0"
     ports:
       - "8000:8000"
     volumes:
@@ -52,6 +72,42 @@ services:
       # deployment, swap this for a platform secret or a separately
       # mounted secret volume populated from `scripts/export_mcp_auth.sh`.
       - ${MCP_AUTH_HOST_DIR:-${HOME}/.mcp-auth}:/run/mcp-auth:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Celery worker (async tasks: notifications, reports, scheduled jobs) ──
+  celery-worker:
+    build: .
+    image: dzukku-bot:latest
+    profiles: ["cloud"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - bot_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Celery beat (scheduler for periodic tasks) ──
+  celery-beat:
+    build: .
+    image: dzukku-bot:latest
+    profiles: ["cloud"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    volumes:
+      - bot_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   bot_logs:
+  redis_data:

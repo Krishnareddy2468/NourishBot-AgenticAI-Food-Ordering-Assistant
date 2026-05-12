@@ -56,6 +56,11 @@ storage/uploads/
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-compose.override.yml
 
+# ── Azure DevOps / Cloud ──────────────────────────────────────────────────────
+*.arm
+*.parameters.json
+.env.cloud
+
 # ── Coverage / Test ──────────────────────────────────────────────────────────
 htmlcov/
 .coverage
