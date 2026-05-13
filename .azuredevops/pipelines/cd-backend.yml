@@ -1,0 +1,30 @@
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: devops-pipeline-templates
+      ref: refs/heads/main
+
+trigger:
+  branches:
+    include: [ main ]
+  paths:
+    include:
+      - backend/**
+      - packages/contracts/**
+      - infra/docker/Dockerfile.backend
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: DeployBackend
+    displayName: 'Build & Deploy Backend'
+    steps:
+      - checkout: self
+
+      - template: templates/docker-build.yml@templates
+        parameters:
+          imageName: 'dzukku-backend'
+          dockerfile: 'infra/docker/Dockerfile.backend'
+          buildContext: '.'
