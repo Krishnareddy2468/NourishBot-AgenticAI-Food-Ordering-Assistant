@@ -253,6 +253,7 @@ async def reset_session(chat_id: int, user_name: str = "") -> None:
         sess.ordering_platform = ""
         sess.history_json = {"meta": {}, "turns": []}
         await session.commit()
+        from app.core.redis_client import invalidate_session_cache
         await invalidate_session_cache(chat_id)
 
 
