@@ -57,6 +57,7 @@ class ContextSnapshot:
     customer_name: str = ""
     customer_phone: str = ""
     language: str = "en"
+    user_language: str = "en"  # persisted across sessions (en / te / hi)
     marketing_opt_in: bool = False
 
     # Cart — list of {item_id, item_name, qty, unit_price_cents, available, type}
