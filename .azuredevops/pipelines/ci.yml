@@ -1,0 +1,60 @@
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: devops-pipeline-templates
+      ref: refs/heads/main
+
+trigger: none
+
+pr:
+  branches:
+    include: [ main ]
+  paths:
+    include:
+      - frontend/**
+      - backend/**
+      - packages/**
+      - sdk/**
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: ValidateFrontend
+    displayName: 'Validate Frontend Build'
+    steps:
+      - checkout: self
+
+      - task: NodeTool@0
+        displayName: 'Setup Node 20'
+        inputs:
+          versionSpec: '20.x'
+
+      - script: npm install -g pnpm
+        displayName: 'Install pnpm'
+
+      - script: pnpm install --frozen-lockfile
+        displayName: 'Install dependencies'
+
+      - script: pnpm build
+        displayName: 'Build all packages'
+
+      - script: pnpm lint
+        displayName: 'Lint check'
+
+  - job: ValidateBackend
+    displayName: 'Validate Backend'
+    steps:
+      - checkout: self
+
+      - task: UsePythonVersion@0
+        displayName: 'Setup Python 3.11'
+        inputs:
+          versionSpec: '3.11'
+
+      - script: pip install -r backend/requirements.txt
+        displayName: 'Install Python dependencies'
+
+      - script: pytest backend/tests --tb=short
+        displayName: 'Run backend tests'
