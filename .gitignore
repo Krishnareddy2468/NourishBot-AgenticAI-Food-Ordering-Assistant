@@ -32,14 +32,18 @@ env/
 .env
 .env.*
 !.env.example
-config/credentials.json
-DzukkuBot/config/credentials.json
+**/config/credentials.json
 *.pem
 *.key
 
+# ── Monorepo template (reference only, not for deployment) ───────────────────
+ve-lyra-monorepo-template/
+
 # ── Node / Frontend ─────────────────────────────────────────────────────────
 node_modules/
+.next/
 dist-ssr/
+.turbo/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
@@ -60,6 +64,12 @@ docker-compose.override.yml
 *.arm
 *.parameters.json
 .env.cloud
+
+# ── Terraform ────────────────────────────────────────────────────────────────
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
 
 # ── Coverage / Test ──────────────────────────────────────────────────────────
 htmlcov/
