@@ -1,7 +1,7 @@
 """
 Planner — Stage 2 of the Dzukku Pipeline.
 
-One LLM call (Gemini, JSON mode) that reads the ContextSnapshot +
+One LLM call (OpenAI, JSON mode) that reads the ContextSnapshot +
 user message and outputs a structured PlannerOutput:
 
   {
@@ -26,7 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-import google.generativeai as genai
+from openai import OpenAI
 
 from app.agent.context_builder import ContextSnapshot
 from app.agent.state_machine import BotState
@@ -209,27 +209,20 @@ def _format_history(turns: list[dict]) -> str:
 # ── Planner class ─────────────────────────────────────────────────────────────
 
 class Planner:
-    _model: Any = None
+    _client: OpenAI | None = None
 
     @classmethod
-    def _get_model(cls) -> Any:
-        if cls._model is None:
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            cls._model = genai.GenerativeModel(
-                model_name=settings.GEMINI_PRIMARY,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1,
-                    max_output_tokens=2048,
-                ),
-            )
-        return cls._model
+    def _get_client(cls) -> OpenAI:
+        if cls._client is None:
+            cls._client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        return cls._client
 
     @classmethod
     async def plan(cls, message: str, ctx: ContextSnapshot) -> PlannerOutput:
-        """Call Gemini in JSON mode and return a validated PlannerOutput."""
+        """Call OpenAI in JSON mode and return a validated PlannerOutput."""
         import asyncio
         loop = asyncio.get_running_loop()
+        client = cls._get_client()
 
         for attempt in range(2):
             prompt = (
@@ -240,15 +233,15 @@ class Planner:
             try:
                 response = await loop.run_in_executor(
                     None,
-                    lambda p=prompt: cls._get_model().generate_content(p),
+                    lambda p=prompt: client.chat.completions.create(
+                        model=settings.OPENAI_PRIMARY,
+                        messages=[{"role": "user", "content": p}],
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                        max_tokens=2048,
+                    ),
                 )
-                raw = (response.text or "").strip()
-                # Strip markdown code fences if model adds them
-                if raw.startswith("```"):
-                    raw = raw.split("```")[1]
-                    if raw.startswith("json"):
-                        raw = raw[4:]
-                raw = raw.strip()
+                raw = (response.choices[0].message.content or "").strip()
                 data = json.loads(raw)
                 out = PlannerOutput.from_dict(data)
                 logger.info(

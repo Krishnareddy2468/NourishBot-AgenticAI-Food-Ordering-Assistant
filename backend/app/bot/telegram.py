@@ -1,7 +1,7 @@
 """
 Telegram Bot — Dzukku Restaurant
 =================================
-Agentic bot using Gemini 2.5 via agent_orchestrator.
+Agentic bot using OpenAI GPT-4o via agent_orchestrator.
 Features:
   - Persistent session state per user (PostgreSQL)
   - Inline keyboards for quick actions

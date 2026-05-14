@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any
 
-import google.generativeai as genai
+from openai import OpenAI
 
 from app.agent.context_builder import ContextSnapshot
 from app.agent.verifier import VerifiedSummary
@@ -31,20 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 class Responder:
-    _model: Any = None
+    _client: OpenAI | None = None
 
     @classmethod
-    def _get_model(cls) -> Any:
-        if cls._model is None:
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            cls._model = genai.GenerativeModel(
-                model_name=settings.GEMINI_PRIMARY,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=2048,
-                ),
-            )
-        return cls._model
+    def _get_client(cls) -> OpenAI:
+        if cls._client is None:
+            cls._client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        return cls._client
 
     @classmethod
     async def respond(
@@ -64,33 +57,33 @@ class Responder:
         try:
             import asyncio
             loop = asyncio.get_running_loop()
+            client = cls._get_client()
 
             for attempt in range(2):
                 response = await loop.run_in_executor(
                     None,
-                    lambda p=prompt: cls._get_model().generate_content(p),
+                    lambda p=prompt: client.chat.completions.create(
+                        model=settings.OPENAI_PRIMARY,
+                        messages=[{"role": "user", "content": p}],
+                        temperature=0.7,
+                        max_tokens=2048,
+                    ),
                 )
-                text = (response.text or "").strip()
+                text = (response.choices[0].message.content or "").strip()
 
-                # Check finish reason for truncation / safety blocks
-                finish = ""
-                try:
-                    finish = str(response.candidates[0].finish_reason)
-                    # finish_reason enum values: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER
-                    if "MAX_TOKENS" in finish or "SAFETY" in finish or "RECITATION" in finish:
-                        logger.warning(
-                            "Responder truncated/blocked (chat=%s) finish=%s len=%d tail=%r",
-                            ctx.chat_id, finish, len(text), text[-60:] if text else "",
-                        )
-                        if attempt == 0:
-                            prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
-                            continue
-                except Exception as e:
-                    logger.warning("Responder: could not read finish_reason: %s", e)
+                # Check finish reason for truncation
+                finish = response.choices[0].finish_reason or ""
+                if finish in ("length", "content_filter"):
+                    logger.warning(
+                        "Responder truncated/blocked (chat=%s) finish=%s len=%d tail=%r",
+                        ctx.chat_id, finish, len(text), text[-60:] if text else "",
+                    )
+                    if attempt == 0:
+                        prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
+                        continue
 
                 # If text looks cut off (ends mid-word, no punctuation), try once more
                 if text and attempt == 0 and not text[-1:] in ".!?😊😉😄🔥🎉📅\"'" and len(text) > 20:
-                    # Might be truncated even without MAX_TOKENS signal
                     prompt = _build_minimal_responder_prompt(summary, ctx, original_message)
                     continue
 

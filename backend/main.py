@@ -6,7 +6,7 @@ Delegates to app.api.main, which boots FastAPI + Telegram bot together.
 import os
 import warnings
 
-# Silence noisy third-party deprecation warnings (urllib3/LibreSSL, google.generativeai)
+# Silence noisy third-party deprecation warnings (urllib3/LibreSSL)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 try:

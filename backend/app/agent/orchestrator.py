@@ -1,7 +1,7 @@
 """
 Agent Orchestrator v2 — Dzukku Restaurant Bot
 ==============================================
-Uses Gemini 2.5 Flash with function-calling tools.
+Uses OpenAI GPT-4o with function-calling tools.
 
 Architecture: Planner → Executor → Verifier
   - Planner:  LLM decides which tools to call
@@ -27,7 +27,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
-import google.generativeai as genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 from app.db.crud import (
@@ -56,20 +56,26 @@ def _sa(coro):
         return asyncio.run(coro)
 
 
-# ── Gemini setup ──────────────────────────────────────────────────────────────
+# ── OpenAI setup ──────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY is not set in .env")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "") or settings.OPENAI_API_KEY
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY is not set in .env")
 
-genai.configure(api_key=GEMINI_API_KEY)
+_client = OpenAI(api_key=OPENAI_API_KEY)
 
-PRIMARY_MODEL   = os.getenv("GEMINI_PRIMARY_MODEL",  "gemini-2.5-flash")
-FALLBACK_MODEL  = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
+PRIMARY_MODEL   = settings.OPENAI_PRIMARY
+FALLBACK_MODEL  = settings.OPENAI_FALLBACK
 
-# ── Tool definitions (sent to Gemini as function declarations) ─────────────────
 
-TOOLS = [
+def _to_openai_tools(raw_tools: list[dict]) -> list[dict]:
+    """Convert flat {name, description, parameters} to OpenAI tool format."""
+    return [{"type": "function", "function": t} for t in raw_tools]
+
+
+# ── Tool definitions (OpenAI function-calling format) ──────────────────────────
+
+RAW_TOOLS = [
     {
         "name": "get_menu",
         "description": (
@@ -1032,22 +1038,11 @@ HARD RULES
 """
 
 
-# ── Planner: LLM interaction ──────────────────────────────────────────────────
+# ── Planner: build OpenAI messages ────────────────────────────────────────────
 
-def _call_gemini(model_name: str, messages: list, tools: list) -> Any:
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        tools=tools,
-        system_instruction=None,
-    )
-    chat  = model.start_chat(history=messages[:-1])
-    return chat.send_message(messages[-1]["parts"])
-
-
-def plan(session: dict, user_message: str) -> list:
+def _build_messages(session: dict, user_message: str) -> list[dict]:
     """
-    Planner phase: prepare messages for the LLM.
-    Returns the Gemini messages list ready for the LLM call.
+    Build OpenAI-format messages list with system prompt + history + user message.
     """
     system_prompt = build_system_prompt(session)
 
@@ -1061,9 +1056,8 @@ def plan(session: dict, user_message: str) -> list:
         history_text = "\n\nRECENT CONVERSATION (most recent last):\n" + "\n".join(lines)
 
     return [
-        {"role": "user", "parts": [
-            system_prompt + history_text + "\n\n---\nCustomer says: " + user_message
-        ]},
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": history_text + "\n\n---\nCustomer says: " + user_message if history_text else user_message},
     ]
 
 
@@ -1085,8 +1079,8 @@ def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> st
         session["user_name"] = user_name
 
     # ── Planner ────────────────────────────────────────────────────────────────
-    gemini_messages = plan(session, user_message)
-    gemini_tools = [{"function_declarations": TOOLS}]
+    messages = _build_messages(session, user_message)
+    openai_tools = _to_openai_tools(RAW_TOOLS)
 
     # ── Executor + Verifier loop ──────────────────────────────────────────────
     max_iterations = settings.AGENT_MAX_ITERATIONS
@@ -1098,7 +1092,13 @@ def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> st
         response = None
         for model_name in (PRIMARY_MODEL, FALLBACK_MODEL):
             try:
-                response = _call_gemini(model_name, gemini_messages, gemini_tools)
+                response = _client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    tools=openai_tools,
+                    max_tokens=settings.OPENAI_MAX_TOKENS,
+                    temperature=0.4,
+                )
                 break
             except Exception as e:
                 logger.warning("[%s] Model %s failed: %s", trace_id, model_name, e)
@@ -1109,21 +1109,31 @@ def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> st
                         "Please try again in a moment."
                     )
 
-        candidate = response.candidates[0]
-        parts = candidate.content.parts
+        choice = response.choices[0]
+        msg = choice.message
 
-        function_calls = [p.function_call for p in parts if hasattr(p, "function_call") and p.function_call]
-        text_parts     = [p.text for p in parts if hasattr(p, "text") and p.text]
-
-        if not function_calls:
-            final_text = "\n".join(text_parts).strip()
+        tool_calls = msg.tool_calls or []
+        if not tool_calls:
+            final_text = (msg.content or "").strip()
             break
 
+        # Add assistant message with tool calls to conversation
+        messages.append({
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in tool_calls
+            ],
+        })
+
         # ── Executor: run each tool ────────────────────────────────────────────
-        tool_results = []
-        for fc in function_calls:
-            tool_name = fc.name
-            tool_args = dict(fc.args)
+        for tc in tool_calls:
+            tool_name = tc.function.name
+            try:
+                tool_args = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                tool_args = {}
             logger.info("[%s] Tool call: %s(%s)", trace_id, tool_name, tool_args)
 
             session.update(session_updates_accumulated)
@@ -1134,19 +1144,13 @@ def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> st
 
             session_updates_accumulated.update(updates)
             logger.info("[%s] Tool result: %s", trace_id, str(result)[:200])
-            tool_results.append({
-                "tool_name": tool_name,
-                "result": result,
-            })
 
-        tool_results_text = "\n".join(
-            f"[Tool: {r['tool_name']}]\n{json.dumps(r['result'], ensure_ascii=False, indent=2)}"
-            for r in tool_results
-        )
-        gemini_messages[-1]["parts"][0] += (
-            f"\n\n[System: Tool results]\n{tool_results_text}"
-            "\n\nNow reply to the customer based on these results."
-        )
+            # Feed tool result back to conversation
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": json.dumps(result, ensure_ascii=False),
+            })
 
     if not final_text:
         final_text = "Sorry, I couldn't process that. Could you try again?"

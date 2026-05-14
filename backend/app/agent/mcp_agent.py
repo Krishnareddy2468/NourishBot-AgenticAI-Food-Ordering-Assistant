@@ -7,7 +7,7 @@ Mirrors the architecture of the previous Zomatobot LangGraph backend:
     Telegram message
         -> deterministic guards (greeting, reset, simple intents)
         -> LangGraph ReAct agent
-            - Gemini 2.5 Flash chat model (bound to MCP tools)
+            - OpenAI GPT-4o chat model (bound to MCP tools)
             - Tools come from langchain-mcp-adapters (Zomato + Swiggy)
             - System prompt enforces no-hallucination + concise replies
         -> Final assistant text returned to Telegram
@@ -240,12 +240,12 @@ def _visible_history(history: list[dict[str, Any]], limit: int = 8) -> list[dict
 _LC_IMPORTS_DONE = False
 
 def _ensure_imports() -> None:
-    global _LC_IMPORTS_DONE, ChatGoogleGenerativeAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
+    global _LC_IMPORTS_DONE, ChatOpenAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
     global create_react_agent  # noqa: PLW0603
     if _LC_IMPORTS_DONE:
         return
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI as _ChatGoogleGenerativeAI
+        from langchain_openai import ChatOpenAI as _ChatOpenAI
         from langchain_core.messages import (
             HumanMessage as _HumanMessage,
             SystemMessage as _SystemMessage,
@@ -256,85 +256,39 @@ def _ensure_imports() -> None:
         raise RuntimeError(
             "LangGraph MCP agent stack not installed. Run: pip install -r requirements.txt"
         ) from e
-    ChatGoogleGenerativeAI = _ChatGoogleGenerativeAI
-    HumanMessage           = _HumanMessage
-    SystemMessage          = _SystemMessage
-    AIMessage              = _AIMessage
-    create_react_agent     = _create_react_agent
-    _patch_gemini_schema_converter()
+    ChatOpenAI         = _ChatOpenAI
+    HumanMessage       = _HumanMessage
+    SystemMessage      = _SystemMessage
+    AIMessage          = _AIMessage
+    create_react_agent = _create_react_agent
     _LC_IMPORTS_DONE = True
 
 
 def _build_llm_with_fallbacks(api_key: str) -> Any:
     """
-    Build a Gemini LLM with a 2-tier fallback chain:
-      gemini-2.5-flash  (primary — fast, capable)
-        └─ gemini-2.0-flash  (fallback 1 — stable, less traffic)
-             └─ gemini-1.5-flash  (fallback 2 — old reliable)
+    Build an OpenAI LLM with a 2-tier fallback chain:
+      gpt-4o       (primary — fast, capable)
+        └─ gpt-4o-mini   (fallback 1 — cheaper, stable)
+             └─ gpt-3.5-turbo  (fallback 2 — legacy reliable)
 
     LangChain's .with_fallbacks() automatically retries the next model when
-    the previous one raises any exception (503 high-demand, 429 rate-limit, etc.)
-    The Google SDK already does its own exponential retry on transient errors;
-    this chain kicks in only when all SDK retries are exhausted.
+    the previous one raises any exception (rate-limit, server error, etc.)
     """
     def _llm(model: str) -> Any:
-        return ChatGoogleGenerativeAI(
+        return ChatOpenAI(
             model=model,
-            google_api_key=api_key,
+            api_key=api_key,
             temperature=0.4,
-            max_output_tokens=settings.GEMINI_MAX_TOKENS,
+            max_tokens=settings.OPENAI_MAX_TOKENS,
         )
 
-    primary   = _llm(settings.GEMINI_PRIMARY)
-    fallback1 = _llm(settings.GEMINI_FALLBACK)
-    fallback2 = _llm(settings.GEMINI_FALLBACK_2)
+    primary   = _llm(settings.OPENAI_PRIMARY)
+    fallback1 = _llm(settings.OPENAI_FALLBACK)
+    fallback2 = _llm(settings.OPENAI_FALLBACK_2)
     return primary.with_fallbacks([fallback1, fallback2])
 
 
-def _patch_gemini_schema_converter() -> None:
-    """
-    Monkey-patch langchain_google_genai._dict_to_genai_schema so that:
-      1. enum values that are integers become strings (Gemini rejects int enums)
-      2. additionalProperties keys are stripped (Gemini doesn't support them)
-
-    This is a one-time patch at import time. It covers ALL recursive calls
-    because the original function looks up _dict_to_genai_schema in its own
-    module globals — which now point to the patched version.
-    """
-    try:
-        import langchain_google_genai._function_utils as _fu
-        _orig = _fu._dict_to_genai_schema
-
-        def _sanitize(d: Any) -> Any:
-            if not isinstance(d, dict):
-                return d
-            out: dict = {}
-            for k, v in d.items():
-                if k == "additionalProperties":
-                    continue  # not supported by Gemini
-                if k == "enum" and isinstance(v, list):
-                    out[k] = [str(i) for i in v]  # integers → strings
-                elif isinstance(v, dict):
-                    out[k] = _sanitize(v)
-                elif isinstance(v, list):
-                    out[k] = [_sanitize(i) if isinstance(i, dict) else i for i in v]
-                else:
-                    out[k] = v
-            # Gemini only allows enum on STRING type — force type if enum present
-            if "enum" in out and out.get("type") != "string":
-                out["type"] = "string"
-            return out
-
-        def _patched(schema_dict: Any, *args: Any, **kwargs: Any) -> Any:
-            return _orig(_sanitize(schema_dict), *args, **kwargs)
-
-        _fu._dict_to_genai_schema = _patched
-        logger.debug("Patched Gemini schema converter: int enums → strings.")
-    except Exception as e:
-        logger.warning("Could not patch Gemini schema converter: %s", e)
-
-
-ChatGoogleGenerativeAI = None  # type: ignore[assignment]
+ChatOpenAI = None  # type: ignore[assignment]
 HumanMessage           = None  # type: ignore[assignment]
 SystemMessage          = None  # type: ignore[assignment]
 AIMessage              = None  # type: ignore[assignment]
@@ -522,7 +476,7 @@ async def _build_agent(platform: str):
         bound_tools = filtered or tools
         _tool_names_cache[cache_key] = [getattr(t, "name", str(t)) for t in bound_tools]
 
-        api_key = os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
+        api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
         llm = _build_llm_with_fallbacks(api_key)
 
         agent = create_react_agent(llm, bound_tools)

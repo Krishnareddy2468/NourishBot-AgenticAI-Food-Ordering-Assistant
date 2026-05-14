@@ -3,7 +3,7 @@ Language persistence — detects language from user message and saves to
 Customer.language_pref so it sticks across sessions.
 
 Uses persona.detect_language (word-based, fast, no API call) for the
-initial detection, then Gemini for confirmation on high-confidence signals.
+initial detection, then OpenAI for confirmation on high-confidence signals.
 """
 
 from __future__ import annotations

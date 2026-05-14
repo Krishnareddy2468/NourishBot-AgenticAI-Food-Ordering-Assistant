@@ -2,8 +2,8 @@
 python-dotenv==1.0.1
 pandas==2.2.2
 
-# Gemini AI
-google-generativeai>=0.8.0
+# OpenAI
+openai>=1.0.0
 
 # Telegram
 python-telegram-bot==21.0.1
@@ -53,12 +53,12 @@ celery[redis]>=5.4
 # azure-storage-blob>=12.0.0   # for Azure
 
 # ── LangGraph + MCP (Zomato / Swiggy ordering via Model Context Protocol) ──
-# stdio MCP client + LangGraph ReAct agent that binds MCP tools to Gemini.
+# stdio MCP client + LangGraph ReAct agent that binds MCP tools to OpenAI.
 # mcp-remote (Node/npx) is spawned as a subprocess to bridge HTTP MCP → stdio
 # and handle OAuth on its own loopback callback (no public callback needed).
 langchain>=0.3.0
 langchain-core>=0.3.0
-langchain-google-genai>=2.0.0
+langchain-openai>=0.2.0
 langchain-mcp-adapters>=0.1.0
 langgraph>=0.2.0
 mcp>=1.0.0
