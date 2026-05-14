@@ -3,7 +3,7 @@ Dzukku Agent — LangGraph ReAct agent for in-house Dzukku Restaurant orders.
 ============================================================================
 
 Uses PostgreSQL-backed CRUD helpers for sessions, orders, and reservations,
-exposed as LangChain tools bound to a Gemini-backed LangGraph create_react_agent.
+exposed as LangChain tools bound to an OpenAI-backed LangGraph create_react_agent.
 """
 
 from __future__ import annotations
@@ -71,21 +71,21 @@ def _persist(updates: dict) -> None:
 
 _LC_READY = False
 
-ChatGoogleGenerativeAI = None  # type: ignore[assignment]
-HumanMessage           = None  # type: ignore[assignment]
-SystemMessage          = None  # type: ignore[assignment]
-AIMessage              = None  # type: ignore[assignment]
-create_react_agent     = None  # type: ignore[assignment]
-tool                   = None  # type: ignore[assignment]
+ChatOpenAI       = None  # type: ignore[assignment]
+HumanMessage     = None  # type: ignore[assignment]
+SystemMessage    = None  # type: ignore[assignment]
+AIMessage        = None  # type: ignore[assignment]
+create_react_agent = None  # type: ignore[assignment]
+tool             = None  # type: ignore[assignment]
 
 
 def _ensure_imports() -> None:
-    global _LC_READY, ChatGoogleGenerativeAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
+    global _LC_READY, ChatOpenAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
     global create_react_agent, tool  # noqa: PLW0603
     if _LC_READY:
         return
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI as _Gemini
+        from langchain_openai import ChatOpenAI as _ChatOpenAI
         from langchain_core.messages import (
             HumanMessage as _H,
             SystemMessage as _S,
@@ -96,14 +96,14 @@ def _ensure_imports() -> None:
     except Exception as e:  # pragma: no cover
         raise RuntimeError(
             "Dzukku ReAct agent stack not installed. "
-            "Run: pip install -r requirements.txt (langchain, langgraph, langchain-google-genai)"
+            "Run: pip install -r requirements.txt (langchain, langgraph, langchain-openai)"
         ) from e
-    ChatGoogleGenerativeAI = _Gemini
-    HumanMessage           = _H
-    SystemMessage          = _S
-    AIMessage              = _A
-    create_react_agent     = _agent
-    tool                   = _tool
+    ChatOpenAI       = _ChatOpenAI
+    HumanMessage     = _H
+    SystemMessage    = _S
+    AIMessage        = _A
+    create_react_agent = _agent
+    tool             = _tool
     _LC_READY = True
 
 
@@ -347,22 +347,22 @@ async def _get_agent() -> Any:
             return _agent_cache
         _ensure_imports()
         tools = _build_tools()
-        api_key = os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
+        api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
         if not api_key:
-            raise RuntimeError("GEMINI_API_KEY not set; cannot build Dzukku ReAct agent.")
+            raise RuntimeError("OPENAI_API_KEY not set; cannot build Dzukku ReAct agent.")
 
         def _llm(model: str) -> Any:
-            return ChatGoogleGenerativeAI(
+            return ChatOpenAI(
                 model=model,
-                google_api_key=api_key,
+                api_key=api_key,
                 temperature=0.4,
-                max_output_tokens=settings.GEMINI_MAX_TOKENS,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
             )
 
-        # Fallback chain: 2.5-flash → 2.0-flash → 1.5-flash
-        llm = _llm(settings.GEMINI_PRIMARY).with_fallbacks([
-            _llm(settings.GEMINI_FALLBACK),
-            _llm(settings.GEMINI_FALLBACK_2),
+        # Fallback chain: gpt-4o → gpt-4o-mini → gpt-3.5-turbo
+        llm = _llm(settings.OPENAI_PRIMARY).with_fallbacks([
+            _llm(settings.OPENAI_FALLBACK),
+            _llm(settings.OPENAI_FALLBACK_2),
         ])
         _agent_cache = create_react_agent(llm, tools)
         logger.info("Dzukku ReAct agent built with %d tools.", len(tools))

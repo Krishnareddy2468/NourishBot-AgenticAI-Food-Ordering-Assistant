@@ -10,7 +10,7 @@
         { "name": "PORT", "value": "8000" },
         { "name": "WEBSITES_PORT", "value": "8000" },
         { "name": "TELEGRAM_TOKEN", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/telegram-token/)" },
-        { "name": "GEMINI_API_KEY", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/gemini-api-key/)" },
+        { "name": "OPENAI_API_KEY", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/openai-api-key/)" },
         { "name": "DATABASE_URL", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/database-url/)" },
         { "name": "DATABASE_URL_SYNC", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/database-url-sync/)" },
         { "name": "REDIS_URL", "value": "@Microsoft.KeyVault(SecretUri=https://${KEY_VAULT_NAME}.vault.azure.net/secrets/redis-url/)" },

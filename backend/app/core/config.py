@@ -40,12 +40,12 @@ class Settings:
     # ── Telegram ───────────────────────────────────────────────────────────────
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
 
-    # ── Gemini AI ──────────────────────────────────────────────────────────────
-    GEMINI_API_KEY:      str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_PRIMARY:      str = os.getenv("GEMINI_PRIMARY_MODEL",    "gemini-2.5-flash")
-    GEMINI_FALLBACK:     str = os.getenv("GEMINI_FALLBACK_MODEL",   "gemini-2.0-flash")
-    GEMINI_FALLBACK_2:   str = os.getenv("GEMINI_FALLBACK_2_MODEL", "gemini-1.5-flash")
-    GEMINI_MAX_TOKENS:   int = 1024
+    # ── OpenAI LLM ──────────────────────────────────────────────────────────────
+    OPENAI_API_KEY:      str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_PRIMARY:      str = os.getenv("OPENAI_PRIMARY_MODEL",    "gpt-4o")
+    OPENAI_FALLBACK:     str = os.getenv("OPENAI_FALLBACK_MODEL",   "gpt-4o-mini")
+    OPENAI_FALLBACK_2:   str = os.getenv("OPENAI_FALLBACK_2_MODEL", "gpt-3.5-turbo")
+    OPENAI_MAX_TOKENS:   int = 1024
     AGENT_MAX_ITERATIONS: int = 6
 
     # ── Razorpay (vNext) ────────────────────────────────────────────────────
@@ -114,8 +114,8 @@ class Settings:
         missing = []
         if not self.TELEGRAM_TOKEN:
             missing.append("TELEGRAM_TOKEN")
-        if not self.GEMINI_API_KEY:
-            missing.append("GEMINI_API_KEY")
+        if not self.OPENAI_API_KEY:
+            missing.append("OPENAI_API_KEY")
         if missing:
             raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 
