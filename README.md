@@ -1,4 +1,4 @@
-# Dzukku — Agentic AI Food Ordering Assistant
+# NourishBot — Agentic AI Food Ordering Assistant
 
 A restaurant operating system built around a conversational agent. Guests order through
 Telegram; staff run the floor, kitchen, and admin desk through a Next.js web app. Both
