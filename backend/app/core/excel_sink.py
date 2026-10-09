@@ -1,5 +1,5 @@
 """
-Append confirmed orders / reservations directly to data/Project_Dzukku.xlsx.
+Append confirmed orders / reservations directly to data/Project_NourishBot.xlsx.
 
 Best-effort, file-locked, never raises (failures only logged) so an
 Excel-write hiccup never blocks an order from being saved to PostgreSQL.

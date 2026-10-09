@@ -9,7 +9,7 @@ def run_whatsapp():
     subprocess.run([sys.executable, "whatsapp_bot.py"])
 
 if __name__ == "__main__":
-    print("🚀 Starting ALL Dzukku Bots...")
+    print("🚀 Starting ALL NourishBot Bots...")
 
     t1 = threading.Thread(target=run_telegram)
     t2 = threading.Thread(target=run_whatsapp)

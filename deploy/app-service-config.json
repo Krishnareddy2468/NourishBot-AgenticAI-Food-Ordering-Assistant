@@ -1,9 +1,9 @@
 {
-  "_comment": "Sample Azure App Service configuration for DzukkuBot container deployment.",
-  "name": "dzukku-backend",
+  "_comment": "Sample Azure App Service configuration for NourishBotBot container deployment.",
+  "name": "nourishbot-backend",
   "properties": {
     "httpsOnly": true,
-    "linuxFxVersion": "DOCKER|${ACR_NAME}/dzukku-bot:latest",
+    "linuxFxVersion": "DOCKER|${ACR_NAME}/nourishbot-bot:latest",
     "siteConfig": {
       "alwaysOn": true,
       "appSettings": [

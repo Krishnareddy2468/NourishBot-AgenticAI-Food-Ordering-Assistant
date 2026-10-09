@@ -1,5 +1,5 @@
 """
-Dzukku Agent — LangGraph ReAct agent for in-house Dzukku Restaurant orders.
+NourishBot Agent — LangGraph ReAct agent for in-house NourishBot Restaurant orders.
 ============================================================================
 
 Uses PostgreSQL-backed CRUD helpers for sessions, orders, and reservations,
@@ -45,8 +45,8 @@ def _sync_await(coro):
 
 # ── Per-chat context (threaded into every tool call) ────────────────────────
 
-_chat_ctx:      contextvars.ContextVar[int | None] = contextvars.ContextVar("dzukku_chat_id",   default=None)
-_user_name_ctx: contextvars.ContextVar[str]        = contextvars.ContextVar("dzukku_user_name", default="")
+_chat_ctx:      contextvars.ContextVar[int | None] = contextvars.ContextVar("nourishbot_chat_id",   default=None)
+_user_name_ctx: contextvars.ContextVar[str]        = contextvars.ContextVar("nourishbot_user_name", default="")
 
 
 def _current_chat_id() -> int | None:
@@ -95,7 +95,7 @@ def _ensure_imports() -> None:
         from langgraph.prebuilt import create_react_agent as _agent
     except Exception as e:  # pragma: no cover
         raise RuntimeError(
-            "Dzukku ReAct agent stack not installed. "
+            "NourishBot ReAct agent stack not installed. "
             "Run: pip install -r requirements.txt (langchain, langgraph, langchain-openai)"
         ) from e
     ChatOpenAI       = _ChatOpenAI
@@ -117,7 +117,7 @@ def _build_tools() -> list:
     @tool
     def get_menu(filter_type: str = "All", filter_category: str = "") -> list[dict]:
         """
-        Fetch the Dzukku Restaurant menu from the PostgreSQL database.
+        Fetch the NourishBot Restaurant menu from the PostgreSQL database.
         Each item has: item_no, item_name, description, type ("Veg" or "Non-Veg"), category,
         price (INR), available ("Yes"/"No"), and optional special_price.
 
@@ -349,7 +349,7 @@ async def _get_agent() -> Any:
         tools = _build_tools()
         api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY not set; cannot build Dzukku ReAct agent.")
+            raise RuntimeError("OPENAI_API_KEY not set; cannot build NourishBot ReAct agent.")
 
         def _llm(model: str) -> Any:
             return ChatOpenAI(
@@ -365,7 +365,7 @@ async def _get_agent() -> Any:
             _llm(settings.OPENAI_FALLBACK_2),
         ])
         _agent_cache = create_react_agent(llm, tools)
-        logger.info("Dzukku ReAct agent built with %d tools.", len(tools))
+        logger.info("NourishBot ReAct agent built with %d tools.", len(tools))
         return _agent_cache
 
 
@@ -392,7 +392,7 @@ def _system_prompt(user_name: str, session: dict) -> str:
     known_name  = customer_name  or "(not collected yet)"
     known_phone = customer_phone or "(not collected yet)"
 
-    return f"""You are Dzukku — the warm, witty restaurant assistant for Dzukku Restaurant ("Where every bite hits different ❤️"). You are running as a ReAct agent: you can call local tools (get_menu, add_to_cart, view_cart, place_order, make_reservation, etc.) and you reason between tool calls.
+    return f"""You are NourishBot — the warm, witty restaurant assistant for NourishBot Restaurant ("Where every bite hits different ❤️"). You are running as a ReAct agent: you can call local tools (get_menu, add_to_cart, view_cart, place_order, make_reservation, etc.) and you reason between tool calls.
 
 CONTEXT
 - Time: {time_label} ({now.strftime('%I:%M %p')})
@@ -431,16 +431,16 @@ Off-topic:
 
 # ── Public entry point ──────────────────────────────────────────────────────
 
-async def get_dzukku_response(user_message: str, chat_id: int, user_name: str = "") -> str | None:
+async def get_nourishbot_response(user_message: str, chat_id: int, user_name: str = "") -> str | None:
     """
-    Run a single ReAct turn for the in-house Dzukku flow.
+    Run a single ReAct turn for the in-house NourishBot flow.
     Returns the assistant text, or None if the agent can't be built (so the
     caller can fall back to the legacy orchestrator).
     """
     try:
         agent = await _get_agent()
     except Exception as e:
-        logger.error("Dzukku ReAct agent build failed: %s", e, exc_info=True)
+        logger.error("NourishBot ReAct agent build failed: %s", e, exc_info=True)
         return None
 
     _ensure_imports()
@@ -470,10 +470,10 @@ async def get_dzukku_response(user_message: str, chat_id: int, user_name: str = 
                 timeout=60,
             )
         except asyncio.TimeoutError:
-            logger.warning("Dzukku ReAct agent: timeout for chat_id=%s", chat_id)
+            logger.warning("NourishBot ReAct agent: timeout for chat_id=%s", chat_id)
             return "Hmm, that took a moment 🐢 — could you try again?"
         except Exception as e:
-            logger.error("Dzukku ReAct agent: invoke failed: %s", e, exc_info=True)
+            logger.error("NourishBot ReAct agent: invoke failed: %s", e, exc_info=True)
             return None
 
         # Extract final assistant text

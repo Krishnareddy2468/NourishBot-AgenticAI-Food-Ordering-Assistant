@@ -1,5 +1,5 @@
 """
-Alembic env.py — async PostgreSQL migrations for Dzukku vNext.
+Alembic env.py — async PostgreSQL migrations for NourishBot vNext.
 
 Uses DATABASE_URL_SYNC (psycopg2) for migration runs because Alembic
 does not natively support async engines without this wiring.

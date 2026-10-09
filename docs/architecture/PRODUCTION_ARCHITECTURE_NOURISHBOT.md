@@ -1,4 +1,4 @@
-# Dzukku Production Architecture and Product Design
+# NourishBot Production Architecture and Product Design
 
 Version: 1.0  
 Date: 2026-04-06  
@@ -6,7 +6,7 @@ Status: Architecture Blueprint (Build-Ready)
 
 ## 1) Executive Summary
 
-Dzukku should be positioned as a direct restaurant commerce and digital identity platform running on WhatsApp, with an agentic AI layer that handles discovery, ordering, identity trust, and settlement.
+NourishBot should be positioned as a direct restaurant commerce and digital identity platform running on WhatsApp, with an agentic AI layer that handles discovery, ordering, identity trust, and settlement.
 
 Core business principle:
 - Customer pays restaurant directly (or escrow then direct settlement)
@@ -17,7 +17,7 @@ This architecture is designed for production from day one, with clear boundaries
 
 ## 2) Product Vision
 
-Dzukku is not just a chatbot. It is:
+NourishBot is not just a chatbot. It is:
 - A Digital Identity + Commerce Layer for local restaurants
 - A WhatsApp-native ordering and service agent
 - A trust and settlement orchestration platform
@@ -25,7 +25,7 @@ Dzukku is not just a chatbot. It is:
 Primary actors:
 - Customer (WhatsApp user)
 - Restaurant (merchant identity owner)
-- Dzukku Platform (identity, AI orchestration, settlement logic)
+- NourishBot Platform (identity, AI orchestration, settlement logic)
 - Payment Provider (UPI/cards/wallets)
 - Delivery Partner (optional, future phase)
 
@@ -36,7 +36,7 @@ Today:
 - Restaurants pay high commissions
 - Customers face fragmented loyalty and identity
 
-Dzukku opportunity:
+NourishBot opportunity:
 - Give restaurants direct access to customers on WhatsApp
 - Reduce commission by removing heavy marketplace overhead
 - Create a portable digital identity for users and merchants
@@ -298,7 +298,7 @@ flowchart TB
 
 ## 6) Digital Identity Architecture
 
-Digital identity is strategic IP for Dzukku.
+Digital identity is strategic IP for NourishBot.
 
 ## 6.1 Identity Objects
 
@@ -442,7 +442,7 @@ Goal: transparent, low-cut commission while guaranteeing payouts.
 
 Option A (recommended): direct-to-restaurant payment with platform fee invoice
 - Customer pays restaurant account or merchant gateway
-- Dzukku generates periodic fee reconciliation
+- NourishBot generates periodic fee reconciliation
 - Lowest compliance burden for handling customer funds
 
 Option B: split settlement through payment gateway
@@ -456,13 +456,13 @@ Option B: split settlement through payment gateway
 flowchart TB
     subgraph A ["Option A — Recommended (Direct to Restaurant)"] 
         CA([Customer]) -->|"Pays full amount"| RA([Restaurant Payment Account])
-        RA -->|"Periodic fee invoice (monthly/weekly)"| DZA(["Dzukku Platform\nFee Collection"])
+        RA -->|"Periodic fee invoice (monthly/weekly)"| DZA(["NourishBot Platform\nFee Collection"])
         DZA -->|"Net settlement to restaurant"| BKA([Restaurant Bank Account])
     end
 
     subgraph B ["Option B — Split Settlement (via Gateway)"]
         CB([Customer]) -->|"Full payment captured"| PGW(["Payment Gateway\n(Razorpay / Stripe)"])
-        PGW -->|"Instant platform fee split"| DZB(["Dzukku Platform\nWallet/Ledger"])
+        PGW -->|"Instant platform fee split"| DZB(["NourishBot Platform\nWallet/Ledger"])
         PGW -->|"Instant restaurant share"| BKB([Restaurant Bank Account])
     end
 ```
@@ -939,7 +939,7 @@ Phase 3: Scale and intelligence (16-32 weeks)
 
 ```mermaid
 gantt
-    title DzukkuBot — Phased Rollout Plan
+    title NourishBotBot — Phased Rollout Plan
     dateFormat  YYYY-MM-DD
     section Phase 1 — Foundation
     FastAPI monolith setup           :p1a, 2026-04-07, 14d
@@ -1048,7 +1048,7 @@ Simple export options:
 - Or convert via pandoc if available in your environment
 
 Suggested output file name:
-- Dzukku_Production_Architecture_v1.pdf
+- NourishBot_Production_Architecture_v1.pdf
 
 ## 20) Final Recommendation to Your Question
 

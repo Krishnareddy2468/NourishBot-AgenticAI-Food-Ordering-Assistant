@@ -1,8 +1,8 @@
-# Dzukku Bot — Architecture & Workflow
+# NourishBot Bot — Architecture & Workflow
 
 ## 1. System Overview
 
-Dzukku Bot is a Telegram-based AI restaurant assistant for **Dzukku Restaurant (Hyderabad)**. It lets users:
+NourishBot Bot is a Telegram-based AI restaurant assistant for **NourishBot Restaurant (Hyderabad)**. It lets users:
 - Order food in-chat via the bot (Excel menu + SQLite backend)
 - Order via Zomato / Swiggy using live LLM → MCP integration
 - Book table reservations
@@ -20,8 +20,8 @@ Dzukku Bot is a Telegram-based AI restaurant assistant for **Dzukku Restaurant (
 | Agent framework | LangGraph `create_react_agent` |
 | LLM integration | `langchain-google-genai` |
 | MCP bridge | `langchain-mcp-adapters` + `npx mcp-remote` |
-| Database | SQLite (`storage/dzukku.db`) |
-| Menu source | Excel (`data/Project_Dzukku.xlsx` → Master_Menu sheet) |
+| Database | SQLite (`storage/nourishbot.db`) |
+| Menu source | Excel (`data/Project_NourishBot.xlsx` → Master_Menu sheet) |
 | Orders sink | Excel (Orders sheet) + Google Sheets (best-effort) |
 | Language | Python 3.11 (venv at `env/`) |
 | Node.js | v22 (required for `npx mcp-remote`) |
@@ -49,12 +49,12 @@ Telegram User
        ┌───────┴────────────────────────┐
        │                                │
        ▼                                ▼
-Zomato / Swiggy                    Dzukku Bot
+Zomato / Swiggy                    NourishBot Bot
 (MCP_ENABLED=true)            (in-house ordering)
        │                                │
        ▼                                ▼
 ┌──────────────┐              ┌──────────────────────┐
-│  mcp_agent   │              │   dzukku_agent        │
+│  mcp_agent   │              │   nourishbot_agent        │
 │  (LangGraph  │              │   (LangGraph ReAct)   │
 │   ReAct)     │              │   8 local tools        │
 └──────┬───────┘              └──────────┬────────────┘
@@ -82,14 +82,14 @@ User sends /start or greets ("hi", "hello", "namaste", ...)
         ▼
 Bot sends welcome + inline keyboard:
   ┌─────────────────────────────┐
-  │  🍽️ Order via Dzukku Bot    │
+  │  🍽️ Order via NourishBot Bot    │
   │  🟥 Zomato  │  🟧 Swiggy   │
   └─────────────────────────────┘
         │
-        ├── Clicks "Dzukku Bot"
-        │       └─ session.ordering_platform = "Dzukku"
+        ├── Clicks "NourishBot Bot"
+        │       └─ session.ordering_platform = "NourishBot"
         │          → Quick-action keyboard shown
-        │          → All text goes to dzukku_agent
+        │          → All text goes to nourishbot_agent
         │
         ├── Clicks "Zomato"  (MCP_ENABLED=true)
         │       └─ session.ordering_platform = "Zomato"
@@ -106,13 +106,13 @@ Bot sends welcome + inline keyboard:
 
 ---
 
-## 5. Dzukku Bot Flow (In-House Ordering)
+## 5. NourishBot Bot Flow (In-House Ordering)
 
 ```
 User: "I want 2 Chicken Biryani and a Mango Lassi"
                 │
                 ▼
-        dzukku_agent.get_dzukku_response()
+        nourishbot_agent.get_nourishbot_response()
                 │
                 ▼
      LangGraph ReAct loop:
@@ -156,14 +156,14 @@ User: "I want 2 Chicken Biryani and a Mango Lassi"
       Calls: place_order()
               │
               ├─ save_order()          → SQLite
-              ├─ excel_append_order()  → data/Project_Dzukku.xlsx (Orders sheet)
+              ├─ excel_append_order()  → data/Project_NourishBot.xlsx (Orders sheet)
               └─ sync_order_to_sheet() → Google Sheets (best-effort)
                 │
                 ▼
       Reply: "🧾 Order Confirmed! #DZK-XXXX ..."
 ```
 
-### Dzukku Agent Tools (8 total)
+### NourishBot Agent Tools (8 total)
 
 | Tool | Purpose |
 |------|---------|
@@ -250,9 +250,9 @@ AND MCP_ENABLED = true
         └─▶  mcp_agent.get_mcp_response()
                   └─ fallback: legacy orchestrator (if agent returns None)
 
-platform = "Dzukku" (or empty)
+platform = "NourishBot" (or empty)
         │
-        └─▶  dzukku_agent.get_dzukku_response()
+        └─▶  nourishbot_agent.get_nourishbot_response()
                   └─ fallback: legacy orchestrator (if LangGraph unavailable)
 
 Any agent returns None
@@ -304,7 +304,7 @@ GEMINI_FALLBACK_2_MODEL=gemini-1.5-flash
 | `cart` | JSON | `[{item_name, qty, price, type}]` |
 | `customer_name` | TEXT | Name for orders/reservations |
 | `customer_phone` | TEXT | Phone for orders/reservations |
-| `ordering_platform` | TEXT | `"Dzukku"` / `"Zomato"` / `"Swiggy"` |
+| `ordering_platform` | TEXT | `"NourishBot"` / `"Zomato"` / `"Swiggy"` |
 | `updated_at` | DATETIME | Last activity |
 
 ---
@@ -312,7 +312,7 @@ GEMINI_FALLBACK_2_MODEL=gemini-1.5-flash
 ## 10. File Structure
 
 ```
-DzukkuBot/
+NourishBotBot/
 ├── main.py                        # Uvicorn entrypoint
 ├── requirements.txt               # Python deps (Python 3.11+)
 ├── Dockerfile                     # Python 3.11 + Node 20 image
@@ -332,7 +332,7 @@ DzukkuBot/
 │   ├── agent/
 │   │   ├── mcp_clients.py         # Per-platform MultiServerMCPClient (lazy, cached)
 │   │   ├── mcp_agent.py           # LangGraph ReAct agent — Zomato/Swiggy via MCP
-│   │   ├── dzukku_agent.py        # LangGraph ReAct agent — in-house Dzukku tools
+│   │   ├── nourishbot_agent.py        # LangGraph ReAct agent — in-house NourishBot tools
 │   │   └── orchestrator.py        # Legacy Gemini function-calling loop (fallback)
 │   │
 │   └── core/
@@ -343,13 +343,13 @@ DzukkuBot/
 │       └── logging_config.py      # Rotating file + console logger
 │
 ├── data/
-│   └── Project_Dzukku.xlsx        # Master_Menu, Orders, Reservations sheets
+│   └── Project_NourishBot.xlsx        # Master_Menu, Orders, Reservations sheets
 │
 ├── config/
 │   └── credentials.json           # Google service account key (not in git)
 │
 └── storage/
-    └── dzukku.db                  # SQLite database (auto-created)
+    └── nourishbot.db                  # SQLite database (auto-created)
 ```
 
 ---
@@ -359,7 +359,7 @@ DzukkuBot/
 ### Local Development
 
 ```bash
-cd DzukkuBot
+cd NourishBotBot
 source env/bin/activate            # Python 3.11 venv
 python main.py
 ```

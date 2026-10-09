@@ -1,5 +1,5 @@
 """
-Object storage abstraction for Dzukku vNext.
+Object storage abstraction for NourishBot vNext.
 
 Supports: local filesystem, S3, GCS, Azure Blob.
 Configure via STORAGE_PROVIDER env var.

@@ -12,7 +12,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-RUN pnpm --filter @dzukku/frontend build
+RUN pnpm --filter @nourishbot/frontend build
 
 FROM node:20-alpine AS runner
 WORKDIR /app

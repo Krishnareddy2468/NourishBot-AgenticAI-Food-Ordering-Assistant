@@ -2,7 +2,7 @@ import './globals.css'
 import Providers from './providers'
 
 export const metadata = {
-  title: 'Dzukku POS',
+  title: 'NourishBot POS',
   description: 'Restaurant operations platform',
 }
 

@@ -1,14 +1,14 @@
 #!/bin/bash
-# keep_alive.sh — restarts DzukkuBot on crash, runs for 24 hours
+# keep_alive.sh — restarts NourishBotBot on crash, runs for 24 hours
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG="$SCRIPT_DIR/logs/dzukku.log"
+LOG="$SCRIPT_DIR/logs/nourishbot.log"
 VENV="$SCRIPT_DIR/env/bin/python3"
 DEADLINE=$(( $(date +%s) + 86400 ))  # now + 24 hours
 
 echo "[keep_alive] Started at $(date). Will run until $(date -r $DEADLINE)." >> "$LOG"
 
 while [ $(date +%s) -lt $DEADLINE ]; do
-    echo "[keep_alive] Launching DzukkuBot at $(date)" >> "$LOG"
+    echo "[keep_alive] Launching NourishBotBot at $(date)" >> "$LOG"
     cd "$SCRIPT_DIR"
     "$VENV" main.py >> "$LOG" 2>&1
     EXIT_CODE=$?

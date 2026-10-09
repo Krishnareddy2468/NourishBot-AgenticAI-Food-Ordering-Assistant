@@ -119,7 +119,7 @@ export default function TablesView() {
           <div style={{ fontWeight: 700, color: '#EF4444', marginBottom: 4 }}>Failed to load tables</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>{error}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Make sure the backend is running: <code style={{ background: 'var(--bg-overlay)', padding: '1px 6px', borderRadius: 4 }}>cd DzukkuBot && python main.py</code>
+            Make sure the backend is running: <code style={{ background: 'var(--bg-overlay)', padding: '1px 6px', borderRadius: 4 }}>cd NourishBotBot && python main.py</code>
           </div>
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} onClick={() => load()}>
             <RefreshCw size={13} /> Retry

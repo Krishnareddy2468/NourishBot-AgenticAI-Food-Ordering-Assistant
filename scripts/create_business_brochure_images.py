@@ -90,7 +90,7 @@ def login():
     d = ImageDraw.Draw(img)
     box = (520, 120, 1080, 780)
     d.rounded_rectangle(box, radius=34, fill=PANEL, outline="#38364f", width=2)
-    d.text((735, 230), "Dzukku POS", fill=TEXT, font=F["xl"])
+    d.text((735, 230), "NourishBot POS", fill=TEXT, font=F["xl"])
     d.text((640, 304), "Restaurant operations, floor service,", fill=MUTED, font=F["m"])
     d.text((690, 348), "and kitchen execution.", fill=MUTED, font=F["m"])
     labels = [("Admin control", 590), ("Waiter workflow", 740), ("Kitchen realtime", 890)]
@@ -99,7 +99,7 @@ def login():
         d.text((x + 18, 438), label, fill=MUTED, font=F["xs"])
     d.text((590, 526), "Email", fill=MUTED, font=F["bold"])
     d.rounded_rectangle((590, 565, 1010, 625), radius=16, fill="#2a2945", outline="#4d4b69")
-    d.text((615, 580), "staff@dzukku.com", fill="#807b91", font=F["s"])
+    d.text((615, 580), "staff@nourishbot.com", fill="#807b91", font=F["s"])
     d.text((590, 660), "Password", fill=MUTED, font=F["bold"])
     d.rounded_rectangle((590, 700, 1010, 760), radius=16, fill="#2a2945", outline="#4d4b69")
     d.rounded_rectangle((590, 790, 1010, 850), radius=18, fill=ORANGE)
@@ -111,7 +111,7 @@ def dashboard():
     img = gradient((1600, 900))
     d = ImageDraw.Draw(img)
     d.rectangle((0, 0, 230, 900), fill="#14111c")
-    d.text((42, 32), "Dzukku", fill=TEXT, font=F["l"])
+    d.text((42, 32), "NourishBot", fill=TEXT, font=F["l"])
     nav = ["Dashboard", "Orders", "Deliveries", "KDS", "Tables", "Reservations", "Menu", "Employees", "Invoices", "Analytics"]
     y = 112
     for i, item in enumerate(nav):
@@ -210,14 +210,14 @@ def chat(name: str, channel: str):
     d.text((335, 140), "bot", fill=MUTED, font=F["s"])
     y = 220
     messages = [
-        ("Hello Krishna! Welcome to Dzukku Restaurant", 560),
-        ("Where would you like to order from?\n\n• Dzukku Bot — chat & order right here\n• Zomato / Swiggy — order via delivery app", 660),
+        ("Hello Krishna! Welcome to NourishBot Restaurant", 560),
+        ("Where would you like to order from?\n\n• NourishBot Bot — chat & order right here\n• Zomato / Swiggy — order via delivery app", 660),
     ]
     for text, w in messages:
         d.rounded_rectangle((55, y, w, y + 150), radius=22, fill="#302838")
         d.text((80, y + 25), text, fill=TEXT, font=F["s"], spacing=8)
         y += 175
-    buttons = ["Order via Dzukku Bot", "Zomato", "Swiggy"]
+    buttons = ["Order via NourishBot Bot", "Zomato", "Swiggy"]
     for label in buttons:
         d.rounded_rectangle((60, y, 700, y + 75), radius=16, fill="#3b3742")
         d.text((120, y + 20), label, fill=TEXT, font=F["s"])
@@ -245,7 +245,7 @@ def main():
     dashboard()
     waiter()
     kitchen()
-    chat("06-telegram-dzukku.png", "")
+    chat("06-telegram-nourishbot.png", "")
     chat("07-swiggy-assistant.png", "Swiggy")
     chat("08-zomato-assistant.png", "Zomato")
     print(f"Generated brochure images in {OUT.relative_to(ROOT)}")

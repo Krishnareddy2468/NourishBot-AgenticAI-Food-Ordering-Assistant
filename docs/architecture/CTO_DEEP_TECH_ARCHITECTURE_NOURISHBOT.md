@@ -1,4 +1,4 @@
-# Dzukku CTO Deep-Tech Architecture
+# NourishBot CTO Deep-Tech Architecture
 
 Version: 1.0  
 Date: 2026-04-06  
@@ -17,7 +17,7 @@ This document extends the production architecture with:
 
 ## 2.1 Product Context
 
-Dzukku is a direct restaurant commerce platform on WhatsApp with an agentic AI layer and low-commission settlement design.
+NourishBot is a direct restaurant commerce platform on WhatsApp with an agentic AI layer and low-commission settlement design.
 
 ## 2.2 Non-Functional Targets
 

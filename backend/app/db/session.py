@@ -1,5 +1,5 @@
 """
-Async PostgreSQL session factory for Dzukku vNext.
+Async PostgreSQL session factory for NourishBot vNext.
 
 Provides:
   - async_engine / AsyncSessionLocal: for the main FastAPI event loop

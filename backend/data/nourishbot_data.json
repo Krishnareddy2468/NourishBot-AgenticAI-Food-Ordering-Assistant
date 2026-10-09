@@ -1,6 +1,6 @@
 {
   "restaurant": {
-    "name": "Dzukku",
+    "name": "NourishBot",
     "location": "Your Address Here",
     "phone": "+91XXXXXXXXXX",
     "hours": "6:00 AM - 11:00 PM, Mon-Sun",
@@ -17,7 +17,7 @@
     {
       "category": "Main Course",
       "items": [
-        { "name": "Dzukku Special Thali", "price": 350, "description": "Full meal with rice, dal, 3 curries", "veg": false }
+        { "name": "NourishBot Special Thali", "price": 350, "description": "Full meal with rice, dal, 3 curries", "veg": false }
       ]
     }
   ],

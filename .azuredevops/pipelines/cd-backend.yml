@@ -25,6 +25,6 @@ jobs:
 
       - template: templates/docker-build.yml@templates
         parameters:
-          imageName: 'dzukku-backend'
+          imageName: 'nourishbot-backend'
           dockerfile: 'infra/docker/Dockerfile.backend'
           buildContext: '.'

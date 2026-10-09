@@ -1,5 +1,5 @@
 """
-Agent Orchestrator v2 — Dzukku Restaurant Bot
+Agent Orchestrator v2 — NourishBot Restaurant Bot
 ==============================================
 Uses OpenAI GPT-4o with function-calling tools.
 
@@ -205,7 +205,7 @@ RAW_TOOLS = [
     {
         "name": "get_external_ordering_links",
         "description": (
-            "Return the public Zomato and Swiggy listing URLs for Dzukku Restaurant. "
+            "Return the public Zomato and Swiggy listing URLs for NourishBot Restaurant. "
             "Call this whenever the customer asks to order via Zomato or Swiggy, "
             "or wants the link to the restaurant on those platforms."
         ),
@@ -215,7 +215,7 @@ RAW_TOOLS = [
         "name": "set_ordering_platform",
         "description": (
             "Record which ordering platform the customer chose for THIS conversation. "
-            "Valid values: 'Dzukku' (order directly via this bot), 'Zomato', 'Swiggy'. "
+            "Valid values: 'NourishBot' (order directly via this bot), 'Zomato', 'Swiggy'. "
             "Call this after the customer picks a platform from the welcome prompt."
         ),
         "parameters": {
@@ -223,7 +223,7 @@ RAW_TOOLS = [
             "properties": {
                 "platform": {
                     "type": "string",
-                    "enum": ["Dzukku", "Zomato", "Swiggy"],
+                    "enum": ["NourishBot", "Zomato", "Swiggy"],
                 },
             },
             "required": ["platform"],
@@ -536,7 +536,7 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
 
     if tool_name == "get_restaurant_info":
         return {
-            "name":        "Dzukku Restaurant",
+            "name":        "NourishBot Restaurant",
             "tagline":     "Where every bite hits different",
             "timings":     "6:00 AM - 11:00 PM, all days",
             "location":    "Hyderabad, Telangana",
@@ -554,14 +554,14 @@ def execute_tool(tool_name: str, tool_args: dict, session: dict) -> tuple[Any, d
             "swiggy_url": settings.SWIGGY_URL,
             "note": (
                 "Send these clickable links to the customer. The order will be "
-                "placed on the external app - Dzukku bot only provides the link."
+                "placed on the external app - NourishBot bot only provides the link."
             ),
         }, session_updates
 
     if tool_name == "set_ordering_platform":
         choice = (tool_args.get("platform") or "").strip()
-        if choice not in ("Dzukku", "Zomato", "Swiggy"):
-            return {"error": "platform must be one of 'Dzukku', 'Zomato', 'Swiggy'"}, session_updates
+        if choice not in ("NourishBot", "Zomato", "Swiggy"):
+            return {"error": "platform must be one of 'NourishBot', 'Zomato', 'Swiggy'"}, session_updates
         session_updates["ordering_platform"] = choice
         return {
             "saved":     True,
@@ -909,7 +909,7 @@ def build_system_prompt(session: dict) -> str:
 
     is_open = default_policy.is_within_operating_hours()
 
-    return f"""You are Dzukku — the warm, witty, and intelligent restaurant assistant for Dzukku Restaurant ("Where every bite hits different").
+    return f"""You are NourishBot — the warm, witty, and intelligent restaurant assistant for NourishBot Restaurant ("Where every bite hits different").
 
 CURRENT CONTEXT:
 - Time of day: {time_label} ({now.strftime('%I:%M %p')})
@@ -954,21 +954,21 @@ TOOLS (always prefer tools over guessing)
 - Use close_table_session when the customer asks for the bill at a table.
 - NEVER make up prices or menu items — use the tool.
 
-PLATFORM SELECTION (Zomato / Swiggy / Dzukku)
+PLATFORM SELECTION (Zomato / Swiggy / NourishBot)
 - The Telegram bot UI offers a platform-selection prompt at the very start of
-  every new chat (Order via Dzukku Bot / Zomato / Swiggy).
+  every new chat (Order via NourishBot Bot / Zomato / Swiggy).
 - "Ordering platform chosen" in the context above tells you which one the
   customer picked. If it is "(not chosen yet)" and the customer is greeting you,
   politely ask them where they'd like to order from.
 - If they pick Zomato or Swiggy, share the relevant URL via
   `get_external_ordering_links` and let them know they'll continue on that app.
-- If they pick Dzukku, proceed with the normal in-bot ordering flow.
+- If they pick NourishBot, proceed with the normal in-bot ordering flow.
 
 CONVERSATION FLOW
 
 GREETING (first message or /start):
-  "Hey {user_name}! Welcome to Dzukku - where every bite hits different
-   Quick question - would you like to order through *Dzukku Bot* (right here),
+  "Hey {user_name}! Welcome to NourishBot - where every bite hits different
+   Quick question - would you like to order through *NourishBot Bot* (right here),
    or via *Zomato* or *Swiggy*?"
 
 TIME-AWARE SUGGESTIONS:
@@ -1009,7 +1009,7 @@ ORDER BILL FORMAT:
   ----------------
   Total: ₹[total]
   ETA: ~20-30 mins
-  Thank you for choosing Dzukku
+  Thank you for choosing NourishBot
 
 RESERVATION FLOW:
   1. Ask preferred date

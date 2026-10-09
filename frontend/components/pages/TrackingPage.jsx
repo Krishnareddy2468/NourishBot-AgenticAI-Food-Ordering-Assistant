@@ -110,7 +110,7 @@ export default function TrackingPage({ orderRef }) {
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
           <UtensilsCrossed size={20} style={{ display: 'inline', marginRight: 8 }} />
-          Dzukku Restaurant
+          NourishBot Restaurant
         </div>
         <div style={{ fontSize: 13, color: '#888' }}>
           Order #{orderRef}

@@ -102,7 +102,7 @@ class Session(Base, RestaurantMixin):
     channel_id = Column(BigInteger, ForeignKey("channels.id"), nullable=False, index=True)
     state = Column(Text, nullable=False, default="IDLE")
     cart_id = Column(BigInteger, ForeignKey("carts.id"), index=True)
-    ordering_platform = Column(Text, default="")  # Dzukku | Zomato | Swiggy
+    ordering_platform = Column(Text, default="")  # NourishBot | Zomato | Swiggy
     history_json = Column(JSONB, default=[])  # last N turns
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

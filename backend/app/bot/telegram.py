@@ -1,5 +1,5 @@
 """
-Telegram Bot — Dzukku Restaurant
+Telegram Bot — NourishBot Restaurant
 =================================
 Agentic bot using OpenAI GPT-4o via agent_orchestrator.
 Features:
@@ -91,11 +91,11 @@ def quick_actions_inline() -> InlineKeyboardMarkup:
     ])
 
 
-# ── Platform selection (Dzukku / Zomato / Swiggy) ─────────────────────────────
+# ── Platform selection (NourishBot / Zomato / Swiggy) ─────────────────────────────
 
 def platform_selection_inline() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍽️ Order via Dzukku Bot", callback_data="platform_dzukku")],
+        [InlineKeyboardButton("🍽️ Order via NourishBot Bot", callback_data="platform_nourishbot")],
         [
             InlineKeyboardButton("🟥 Zomato",  callback_data="platform_zomato"),
             InlineKeyboardButton("🟧 Swiggy",  callback_data="platform_swiggy"),
@@ -120,7 +120,7 @@ def rating_inline_keyboard(order_ref: str) -> InlineKeyboardMarkup:
 
 PLATFORM_PROMPT_TEXT = (
     "Where would you like to order from? 🍽️\n\n"
-    "• *Dzukku Bot* — chat & order right here\n"
+    "• *NourishBot Bot* — chat & order right here\n"
     "• *Zomato* / *Swiggy* — order via the delivery app"
 )
 
@@ -163,7 +163,7 @@ CALLBACK_INTENT_MAP = {
 
 
 PLATFORM_CALLBACKS = {
-    "platform_dzukku": "Dzukku",
+    "platform_nourishbot": "NourishBot",
     "platform_zomato": "Zomato",
     "platform_swiggy": "Swiggy",
 }
@@ -200,7 +200,7 @@ async def _do_think_and_reply(
 
     # Routing matrix:
     #   ordering_platform = Zomato/Swiggy + MCP_ENABLED → mcp_agent (LangGraph + MCP)
-    #   ordering_platform = Dzukku (or unset)           → deterministic DB pipeline
+    #   ordering_platform = NourishBot (or unset)           → deterministic DB pipeline
     #   external MCP unavailable                        → legacy link fallback
     reply: str | None = None
     sess = await get_session(chat_id)
@@ -219,7 +219,7 @@ async def _do_think_and_reply(
             reply = None
 
     if reply is None and platform_choice not in ("Zomato", "Swiggy"):
-        # In-house Dzukku flow: 5-stage deterministic pipeline.
+        # In-house NourishBot flow: 5-stage deterministic pipeline.
         try:
             reply = await pipeline_process(
                 message=user_message,
@@ -264,7 +264,7 @@ async def _do_think_and_reply(
 # ── /start ────────────────────────────────────────────────────────────────────
 
 async def _send_platform_prompt(update: Update):
-    """Send the Dzukku / Zomato / Swiggy platform-selection prompt."""
+    """Send the NourishBot / Zomato / Swiggy platform-selection prompt."""
     await update.effective_message.reply_text(
         PLATFORM_PROMPT_TEXT,
         parse_mode=ParseMode.MARKDOWN,
@@ -280,7 +280,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reset_session(chat_id, user_name)
 
     welcome = (
-        f"👋 Hey *{user_name}*! Welcome to *Dzukku Restaurant* 🍽️\n\n"
+        f"👋 Hey *{user_name}*! Welcome to *NourishBot Restaurant* 🍽️\n\n"
         f"_Where every bite hits different ❤️_\n\n"
         f"I'm your AI-powered restaurant assistant — I can help you with "
         f"our menu, take your order, or book a table."
@@ -457,8 +457,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🟥 Open Zomato", url=settings.ZOMATO_URL)],
                 [InlineKeyboardButton(
-                    "↩️ Order via Dzukku Bot instead",
-                    callback_data="platform_dzukku",
+                    "↩️ Order via NourishBot Bot instead",
+                    callback_data="platform_nourishbot",
                 )],
             ])
             await query.message.reply_text(
@@ -473,8 +473,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🟧 Open Swiggy", url=settings.SWIGGY_URL)],
                 [InlineKeyboardButton(
-                    "↩️ Order via Dzukku Bot instead",
-                    callback_data="platform_dzukku",
+                    "↩️ Order via NourishBot Bot instead",
+                    callback_data="platform_nourishbot",
                 )],
             ])
             await query.message.reply_text(
@@ -485,7 +485,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Dzukku → continue inside the bot
+        # NourishBot → continue inside the bot
         await query.message.reply_text(
             "🍽️ *Awesome — let's get you sorted right here!* ❤️",
             parse_mode=ParseMode.MARKDOWN,
@@ -510,7 +510,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text or ""
 
     # Greeting → show the platform-selection prompt only before a platform is
-    # chosen. External MCP carts live on Zomato/Swiggy, not in the local Dzukku
+    # chosen. External MCP carts live on Zomato/Swiggy, not in the local NourishBot
     # cart, so using the local cart as the only "mid-flow" signal breaks MCP
     # conversations by re-opening the picker on a simple "hi".
     if _is_greeting(raw) and raw not in BUTTON_INTENT_MAP:
@@ -526,7 +526,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user      = update.effective_user
             user_name = (user.first_name if user else "") or sess.get("user_name") or "there"
 
-            greeting_line = f"👋 Hey *{user_name}*! Welcome to *Dzukku Restaurant* 🍽️"
+            greeting_line = f"👋 Hey *{user_name}*! Welcome to *NourishBot Restaurant* 🍽️"
             await update.message.reply_text(
                 greeting_line,
                 parse_mode=ParseMode.MARKDOWN,

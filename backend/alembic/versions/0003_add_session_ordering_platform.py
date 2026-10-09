@@ -1,7 +1,7 @@
 """add_session_ordering_platform
 
 Adds ordering_platform column to sessions table so the Telegram bot
-can persist the user's platform choice (Dzukku / Zomato / Swiggy).
+can persist the user's platform choice (NourishBot / Zomato / Swiggy).
 
 Revision ID: 0003
 Revises: 0002

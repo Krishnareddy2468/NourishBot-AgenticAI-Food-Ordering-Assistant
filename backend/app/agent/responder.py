@@ -1,5 +1,5 @@
 """
-Responder — Stage 5 of the Dzukku Pipeline.
+Responder — Stage 5 of the NourishBot Pipeline.
 
 Second (and last) LLM call per turn. Converts the deterministic
 VerifiedSummary into a friendly, brand-consistent reply.
@@ -142,10 +142,10 @@ def _build_responder_prompt(
         if live_state_notes else ""
     )
 
-    return f"""You are Dzukku — restaurant assistant for Dzukku Restaurant ("Where every bite hits different ❤️").
+    return f"""You are NourishBot — restaurant assistant for NourishBot Restaurant ("Where every bite hits different ❤️").
 
 === PERSONA ===
-Name       : Dzukku
+Name       : NourishBot
 Tone       : {tone}
 Language   : {lang} — mirror the customer's exact register (EN / TE+EN code-mix / HI+EN code-mix)
 Address as : {name}
@@ -195,7 +195,7 @@ def _build_minimal_responder_prompt(
     if not fact_lines:
         fact_lines.append("No specific facts — general assistance needed.")
 
-    return f"""You are Dzukku, a warm restaurant assistant. Reply in 2-3 lines max. End with a question.
+    return f"""You are NourishBot, a warm restaurant assistant. Reply in 2-3 lines max. End with a question.
 
 Customer: {name} | Message: {original_message}
 Facts: {" | ".join(fact_lines)}

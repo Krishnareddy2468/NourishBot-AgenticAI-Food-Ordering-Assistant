@@ -10,8 +10,8 @@
   },
   "cdn": {
     "_comment": "Optional: Azure CDN profile for custom domain + SSL.",
-    "profileName": "dzukku-pos-cdn",
-    "endpointName": "dzukku-pos",
-    "customDomain": "pos.dzukku.com"
+    "profileName": "nourishbot-pos-cdn",
+    "endpointName": "nourishbot-pos",
+    "customDomain": "pos.nourishbot.com"
   }
 }

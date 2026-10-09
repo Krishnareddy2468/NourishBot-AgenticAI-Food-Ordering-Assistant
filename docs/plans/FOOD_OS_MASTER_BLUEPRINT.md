@@ -1,10 +1,10 @@
-# DZUKKU → FOOD OPERATING SYSTEM
+# NOURISHBOT → FOOD OPERATING SYSTEM
 
 ## Master Blueprint — Agentic AI Food OS for India
 
 > **Document Type:** Strategic + Technical Blueprint
 > **Status:** Planning Phase
-> **Built on:** Current Dzukku stack (FastAPI + Gemini 2.5 + Telegram + PostgreSQL)
+> **Built on:** Current NourishBot stack (FastAPI + Gemini 2.5 + Telegram + PostgreSQL)
 > **Vision horizon:** 18–36 months
 
 ---
@@ -33,13 +33,13 @@
 ## 1. EXECUTIVE SUMMARY
 
 **What we are building:**
-Dzukku is not a food delivery app. It is the Operating System for how India thinks about, orders, and experiences food — running natively through WhatsApp and Telegram, powered by agentic AI that learns, remembers, negotiates, and acts on behalf of the user.
+NourishBot is not a food delivery app. It is the Operating System for how India thinks about, orders, and experiences food — running natively through WhatsApp and Telegram, powered by agentic AI that learns, remembers, negotiates, and acts on behalf of the user.
 
 **The core shift:**
 From a restaurant bot (current) → to a personal AI food concierge that serves millions of users across thousands of restaurants, home chefs, cloud kitchens, and local vendors.
 
 **The single sentence:**
-"Dzukku is the AI food brain in your phone — it knows what you want before you do, finds the best deal, orders it, and makes you healthier while doing it."
+"NourishBot is the AI food brain in your phone — it knows what you want before you do, finds the best deal, orders it, and makes you healthier while doing it."
 
 **Why now:**
 
@@ -47,13 +47,13 @@ From a restaurant bot (current) → to a personal AI food concierge that serves 
 - WhatsApp Business API is now available at scale in India
 - UPI is ubiquitous — payment friction is solved
 - India has 500M+ smartphone users with no truly intelligent food layer
-- The current Dzukku stack (Gemini + FastAPI + PostgreSQL + Telegram pipeline) is the exact foundation to build this on
+- The current NourishBot stack (Gemini + FastAPI + PostgreSQL + Telegram pipeline) is the exact foundation to build this on
 
 ---
 
 ## 2. CURRENT STATE AUDIT
 
-### What exists today (Dzukku v1)
+### What exists today (NourishBot v1)
 
 ```
 Telegram Bot (single restaurant)
@@ -106,7 +106,7 @@ The user never opens a menu. The AI surfaces the right options at the right time
 
 ### 3.2 Differentiation Matrix
 
-| Dimension       | Zomato/Swiggy           | Dzukku Food OS                         |
+| Dimension       | Zomato/Swiggy           | NourishBot Food OS                         |
 | --------------- | ----------------------- | -------------------------------------- |
 | Interface       | App (browse-first)      | WhatsApp/Telegram (conversation-first) |
 | Memory          | Order history only      | Full behavioral + nutritional memory   |
@@ -132,10 +132,10 @@ The user never opens a menu. The AI surfaces the right options at the right time
 ### 3.4 Strategic Moats
 
 **Moat 1 — User Memory**
-Every interaction deepens the user model. After 30 orders, Dzukku knows more about your food preferences than any app ever will. This is a compounding, proprietary data asset.
+Every interaction deepens the user model. After 30 orders, NourishBot knows more about your food preferences than any app ever will. This is a compounding, proprietary data asset.
 
 **Moat 2 — Vendor Intelligence Network**
-Aggregated demand signals across thousands of users give Dzukku negotiating power with restaurants that no individual user has.
+Aggregated demand signals across thousands of users give NourishBot negotiating power with restaurants that no individual user has.
 
 **Moat 3 — Conversational UI Lock-in**
 Once users experience frictionless AI ordering, going back to scrolling a menu feels like regression. The behavior change is the moat.
@@ -157,15 +157,15 @@ User trusts AI more ← order satisfaction increases ←
 ```
 Savings agent finds deal → user saves money → user orders again sooner
      ↑                                              ↓
-Dzukku earns commission ← higher order frequency ←
+NourishBot earns commission ← higher order frequency ←
 ```
 
 ### 3.6 Virality Loops
 
-- Group ordering: one user invites friends → Dzukku handles split orders
+- Group ordering: one user invites friends → NourishBot handles split orders
 - Referral: "My AI food agent saved me ₹800 this month" → organic sharing
 - Streak sharing: "I've hit my protein goal 14 days in a row" → WhatsApp status
-- Restaurant-side: vendors share "Order via Dzukku for 15% off" → user acquisition
+- Restaurant-side: vendors share "Order via NourishBot for 15% off" → user acquisition
 
 ---
 
@@ -175,7 +175,7 @@ Dzukku earns commission ← higher order frequency ←
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    DZUKKU AGENT ORCHESTRATOR                    │
+│                    NOURISHBOT AGENT ORCHESTRATOR                    │
 │                    (LangGraph state machine)                     │
 └──────────────────────┬──────────────────────────────────────────┘
                        │
@@ -235,7 +235,7 @@ Long-term memory (persistent, per user):
 - Given intent + memory snapshot → produce an action plan
 - Outputs: `{goal, slots_needed, proposed_actions[], confidence}`
 - Constrained: can only propose, never execute directly
-- Current Dzukku Planner is the foundation — extend with memory injection
+- Current NourishBot Planner is the foundation — extend with memory injection
 
 #### D. Nutrition Agent
 
@@ -269,7 +269,7 @@ For each order intent:
 
 #### F. Negotiation Agent (V2)
 
-- Communicates with restaurant-side Dzukku dashboard via API
+- Communicates with restaurant-side NourishBot dashboard via API
 - When demand is low (predicted via ML), proposes dynamic discount offers to users
 - Restaurants set floor prices; agent negotiates above floor
 - Creates win-win: restaurants fill capacity, users get deals
@@ -376,7 +376,7 @@ Updated via a **lightweight feedback loop:**
 ```
 User messages: "Hi" or scans QR code
 
-Dzukku: "Hey! I'm Dzukku, your personal food AI 🍛
+NourishBot: "Hey! I'm NourishBot, your personal food AI 🍛
   Quick setup — takes 30 seconds:
   1. What's your name?
   2. Where are you? [Share Location]
@@ -387,7 +387,7 @@ Dzukku: "Hey! I'm Dzukku, your personal food AI 🍛
 
 [User responds in any order, any language]
 
-Dzukku: "Perfect, [Name]! I'll remember your preferences.
+NourishBot: "Perfect, [Name]! I'll remember your preferences.
   What are you in the mood for today?"
 ```
 
@@ -401,7 +401,7 @@ Do: "Based on your last order and the time, you might want X or Y. Want either, 
 Show a clean summary before any payment action. No surprise charges.
 
 **Principle 3 — Personality consistency**
-Dzukku has a warm, slightly witty, knowledgeable personality. Not robotic. Not over-the-top cheerful. Like a friend who knows food.
+NourishBot has a warm, slightly witty, knowledgeable personality. Not robotic. Not over-the-top cheerful. Like a friend who knows food.
 
 **Principle 4 — Exit gracefully**
 If user goes quiet, no spam. One gentle follow-up after 10 min, then silence.
@@ -436,7 +436,7 @@ User sends voice note: "Ek biryani aur raita bhejo, 30 minute mein chahiye"
 ↓ Slot fill: quantity=1, items=[biryani, raita], delivery_time=30min
 ↓ Check restaurants with ≤25 min ETA
 
-Dzukku (in Hindi): "Samajh gaya! Paradise Biryani se 1 Chicken Biryani + Raita 
+NourishBot (in Hindi): "Samajh gaya! Paradise Biryani se 1 Chicken Biryani + Raita 
   ₹320 mein, 22 min mein. ₹40 coupon bhi laga diya. 
   Total: ₹280. Order karun?"
 ```
@@ -579,7 +579,7 @@ The AI acts as a **financial optimizer for food spend.** It tracks the user's fo
 For every order intent:
 
 1. Platform comparison
-   → Query same item on Zomato, Swiggy, Dzukku direct
+   → Query same item on Zomato, Swiggy, NourishBot direct
    → Pick cheapest after all discounts
 
 2. Coupon auto-apply
@@ -600,7 +600,7 @@ For every order intent:
    → Quality filter: only suggest if rating ≥ user's threshold
 
 6. Wallet / loyalty stacking
-   → Auto-apply Dzukku wallet balance
+   → Auto-apply NourishBot wallet balance
    → Stack bank cashback offers (HDFC, SBI, etc.)
    → Apply restaurant loyalty points
 
@@ -610,10 +610,10 @@ For every order intent:
 
 ### 7.3 Monthly Savings Report
 
-Every month, Dzukku sends users a summary:
+Every month, NourishBot sends users a summary:
 
 ```
-"Your Dzukku Savings Report — April 2026
+"Your NourishBot Savings Report — April 2026
 
 Total spent on food: ₹6,420
 Savings found by AI: ₹1,840 (22% saved!)
@@ -642,7 +642,7 @@ This month's streak: 8 days healthy + budget meals 🎯"
 ### 8.1 Health Profile Setup (Conversational)
 
 ```
-Dzukku: "Want me to help with healthier choices? Tell me a bit about yourself:"
+NourishBot: "Want me to help with healthier choices? Tell me a bit about yourself:"
   → "What's your rough goal?" [Lose weight] [Build muscle] [Eat healthier] [Diabetic-friendly] [No specific goal]
   → "Are you vegetarian?" [Yes] [No] [Vegan]
   → "Any food allergies?" (optional)
@@ -720,10 +720,10 @@ All self-reported. No medical diagnosis. Clearly positioned as suggestions, not 
 
 ### 9.1 Vendor Ecosystem
 
-Dzukku serves a wider vendor universe than current apps:
+NourishBot serves a wider vendor universe than current apps:
 
 ```
-Tier 1: Established restaurants (current Dzukku focus)
+Tier 1: Established restaurants (current NourishBot focus)
 Tier 2: Cloud kitchens (direct integration)
 Tier 3: Home chefs (onboarded via WhatsApp)
 Tier 4: Local tiffin services (per-order model)
@@ -738,7 +738,7 @@ Home chef / small vendor onboarding via WhatsApp:
 ```
 Vendor: "I want to list my tiffin service"
 
-Dzukku (Vendor Bot):
+NourishBot (Vendor Bot):
   "Great! Let's set you up:
   1. Business name?
   2. What do you serve? (send photos + menu)
@@ -753,16 +753,16 @@ The AI extracts menu from photos using Gemini Vision. No complex forms.
 
 ### 9.3 AI Negotiation with Vendors
 
-**Problem:** Individual users can't negotiate with restaurants. But Dzukku can, on behalf of thousands of users.
+**Problem:** Individual users can't negotiate with restaurants. But NourishBot can, on behalf of thousands of users.
 
 **Mechanism:**
 
 ```
-Dzukku Demand Signal: "200 users in Banjara Hills want biryani tonight"
-→ Dzukku proposes to 3 restaurants: "Offer 15% off tonight, I'll send you orders"
+NourishBot Demand Signal: "200 users in Banjara Hills want biryani tonight"
+→ NourishBot proposes to 3 restaurants: "Offer 15% off tonight, I'll send you orders"
 → Restaurant accepts (fills capacity during slow hour)
-→ Dzukku routes orders to accepting restaurant
-→ Users get deal, restaurant gets volume, Dzukku earns commission
+→ NourishBot routes orders to accepting restaurant
+→ Users get deal, restaurant gets volume, NourishBot earns commission
 ```
 
 This is **demand aggregation as negotiating power** — a moat that grows with user scale.
@@ -771,16 +771,16 @@ This is **demand aggregation as negotiating power** — a moat that grows with u
 
 **Problem restaurants have:** Food prepared but not sold → waste.
 
-**Dzukku solution:**
+**NourishBot solution:**
 
 ```
 Restaurant signals: "50 portions of dal makhani left, expires in 2 hours"
-→ Dzukku AI: "Flash deal! Dal Makhani from [Restaurant] — 40% off, next 2 hours"
+→ NourishBot AI: "Flash deal! Dal Makhani from [Restaurant] — 40% off, next 2 hours"
 → Sent to users within 3km who have ordered dal makhani before
-→ Restaurant recovers cost, reduces waste, Dzukku earns share
+→ Restaurant recovers cost, reduces waste, NourishBot earns share
 ```
 
-### 9.5 Restaurant CRM (Dzukku Dashboard)
+### 9.5 Restaurant CRM (NourishBot Dashboard)
 
 The existing POS frontend evolves into a full vendor intelligence dashboard:
 
@@ -791,7 +791,7 @@ What the restaurant sees:
   - Customer lifetime value by segment
   - AI-suggested pricing adjustments
   - Inventory alerts
-  - Auto-generated offers to push to Dzukku users
+  - Auto-generated offers to push to NourishBot users
   - WhatsApp order notifications
 ```
 
@@ -803,7 +803,7 @@ What the restaurant sees:
 
 **Stream 1: Commission on orders (core)**
 
-- Direct orders via Dzukku: **2–5% commission** (vs Zomato/Swiggy at 18–30%)
+- Direct orders via NourishBot: **2–5% commission** (vs Zomato/Swiggy at 18–30%)
 - This is a deliberate strategic choice: far lower friction for restaurant onboarding
 - Volume + loyalty drives revenue, not margin extraction
 - Restaurants keep more, pass savings to users via better prices/deals — virtuous cycle
@@ -817,7 +817,7 @@ What the restaurant sees:
 
 **Stream 3: Embedded finance**
 
-- "Dzukku Pay Later" — order now, pay after salary
+- "NourishBot Pay Later" — order now, pay after salary
 - Partner with NBFC, earn interest share
 - "Food wallet" with cashback incentives (float income)
 - UPI AutoPay for repeat meal plans (no subscription wall — user controls it)
@@ -825,7 +825,7 @@ What the restaurant sees:
 **Stream 4: Nutrition partnerships**
 
 - Partner with fitness apps, gyms, health insurance companies
-- "Order 10 healthy meals from Dzukku, get gym discount"
+- "Order 10 healthy meals from NourishBot, get gym discount"
 - Revenue via referral fee per converted partnership action — no user charge
 
 **Stream 5: B2B office ordering**
@@ -836,8 +836,8 @@ What the restaurant sees:
 
 **Stream 6: Flash deal revenue share**
 
-- When Dzukku AI negotiates a surplus inventory deal with a restaurant, a portion of the discount gap is shared with Dzukku as a placement fee
-- Restaurant keeps 60%, user saves 30%, Dzukku earns 10% of discount value
+- When NourishBot AI negotiates a surplus inventory deal with a restaurant, a portion of the discount gap is shared with NourishBot as a placement fee
+- Restaurant keeps 60%, user saves 30%, NourishBot earns 10% of discount value
 
 ### 10.2 Unit Economics (Estimated)
 
@@ -866,8 +866,8 @@ Scale driver: Volume is the play.
 
 **Why low commission works:**
 
-- Restaurants prefer Dzukku → faster onboarding → more supply → better user experience → more orders → more total commission despite lower rate
-- Zomato/Swiggy's 18–30% drives restaurants to seek alternatives actively — Dzukku is that alternative
+- Restaurants prefer NourishBot → faster onboarding → more supply → better user experience → more orders → more total commission despite lower rate
+- Zomato/Swiggy's 18–30% drives restaurants to seek alternatives actively — NourishBot is that alternative
 
 ### 10.3 Path to Profitability
 
@@ -884,7 +884,7 @@ Phase 3 (24–36 months): Embedded finance, nutrition partnerships, flash deal r
 ### 11.1 UPI Ecosystem
 
 - 14 billion UPI transactions/month (2025)
-- Dzukku integrates UPI collect requests directly in WhatsApp chat
+- NourishBot integrates UPI collect requests directly in WhatsApp chat
 - Zero card friction — most Indians prefer UPI
 - UPI Lite for small orders (< ₹500) — instant, offline capable
 - UPI AutoPay for user-opted repeat meal plans (fully user-controlled, not a subscription)
@@ -900,7 +900,7 @@ Phase 3 (24–36 months): Embedded finance, nutrition partnerships, flash deal r
 ### 11.3 Multilingual Behavior
 
 - India has 22 official languages + hundreds of dialects
-- Dzukku must handle code-switching (Hinglish, Tanglish, etc.)
+- NourishBot must handle code-switching (Hinglish, Tanglish, etc.)
 - Gemini 2.5 handles 100+ languages natively
 - Regional language support = unlock for Tier-2/3 cities
 - Telugu food market (Hyderabad base) is underserved and large
@@ -912,7 +912,7 @@ Tier-1 cities (Delhi, Mumbai, Bangalore): Saturated by Zomato/Swiggy
 Tier-2 (Hyderabad, Pune, Jaipur, Lucknow): Partial coverage, weak loyalty
 Tier-3 (Vizag, Warangal, Kochi, Indore): Largely unserved
 
-Dzukku strategy:
+NourishBot strategy:
   Start Hyderabad (home turf, Telugu speaking) →
   Expand to Telugu-belt Tier-2 cities →
   Expand to Hindi-belt Tier-2 →
@@ -923,14 +923,14 @@ Dzukku strategy:
 
 - India's street food market: ₹1,60,000 Cr (2025)
 - Currently entirely cash-based and undiscoverable
-- Dzukku can onboard street vendors with WhatsApp + UPI QR
-- User says "Find good pani puri near me" → Dzukku surfaces nearby vendors with ratings
+- NourishBot can onboard street vendors with WhatsApp + UPI QR
+- User says "Find good pani puri near me" → NourishBot surfaces nearby vendors with ratings
 - Creates entirely new inventory that incumbents don't have
 
 ### 11.6 Creator-Led Commerce
 
 - Food influencers on Instagram/YouTube recommend specific dishes
-- Dzukku can integrate: "Order the [influencer]'s recommended dish from [restaurant]"
+- NourishBot can integrate: "Order the [influencer]'s recommended dish from [restaurant]"
 - Influencer earns referral commission per order
 - Creates a new user acquisition channel that is completely unique
 
@@ -983,8 +983,8 @@ Dzukku strategy:
 1. Referral: ₹50 credit per friend (both get ₹50)
 2. Group ordering: "Order with friends, get free delivery"
 3. Streak sharing: WhatsApp status auto-draft for health streaks
-4. Savings share: "My AI saved me ₹1,200 this month — try Dzukku"
-5. Restaurant sharing: Restaurants share QR → "Order via Dzukku, get 10% off"
+4. Savings share: "My AI saved me ₹1,200 this month — try NourishBot"
+5. Restaurant sharing: Restaurants share QR → "Order via NourishBot, get 10% off"
 6. Influencer API: Food creators get tracked referral links + commission
 ```
 
@@ -1025,10 +1025,10 @@ Dzukku strategy:
 ONDC (Open Network for Digital Commerce) is India's government-backed open commerce protocol. Rather than competing with it:
 
 ```
-Dzukku strategy for ONDC:
+NourishBot strategy for ONDC:
   - Become a Buyer App on ONDC
   - Access all ONDC-listed restaurants without onboarding each one
-  - Layer Dzukku's AI + personalization on top of ONDC inventory
+  - Layer NourishBot's AI + personalization on top of ONDC inventory
   - Offer the best UX on the open network
   - This gives national inventory without national sales team
 ```
@@ -1152,7 +1152,7 @@ Maps / Geo:
 - [ ] Redis session store (replace in-memory)
 - [ ] pgvector setup for future embeddings
 
-**Exit criteria:** Dzukku Restaurant running stably on production
+**Exit criteria:** NourishBot Restaurant running stably on production
 
 ---
 
@@ -1279,7 +1279,7 @@ Maps / Geo:
 
 ### 16.2 Autonomous Food Purchasing
 
-The end state: users set a weekly meal plan preference + budget. Dzukku:
+The end state: users set a weekly meal plan preference + budget. NourishBot:
 
 - Plans the week's meals based on nutrition goals
 - Places recurring orders automatically
@@ -1311,7 +1311,7 @@ The end state: users set a weekly meal plan preference + budget. Dzukku:
 TODAY:
   User → opens app → browses → decides → orders
 
-DZUKKU FUTURE:
+NOURISHBOT FUTURE:
   Context (time + health + budget + mood + history)
        ↓
   AI decides (or proposes with one-tap confirm)
@@ -1346,7 +1346,7 @@ The AI's job becomes: everything else.
 **Market:** India food delivery — ₹8,00,000 Cr total market, ₹45,000 Cr organized delivery
 **Problem:** Existing apps are menu browsers, not intelligent food assistants
 **Solution:** Agentic AI Food OS on WhatsApp — the food brain Indians don't know they need yet
-**Traction:** Dzukku v1 proves the agent pipeline, POS, and restaurant operations
+**Traction:** NourishBot v1 proves the agent pipeline, POS, and restaurant operations
 **Moat:** User memory + vendor intelligence network + conversational UI lock-in
 **Business model:** Low-commission (2–5%) + Promoted placements (CPO) + Embedded finance + B2B
 **Why us:** Built the agentic pipeline from scratch; deep India food + AI expertise; Hyderabad base for Telugu-belt launch
@@ -1367,7 +1367,7 @@ This section is the engineering execution guide — one concrete task at a time,
 
 ### SPRINT 0 — Stabilize Current Stack (Week 1–2)
 
-**Goal:** Get production-grade on the existing Dzukku single-restaurant system before adding anything new.
+**Goal:** Get production-grade on the existing NourishBot single-restaurant system before adding anything new.
 
 ---
 
@@ -1451,7 +1451,7 @@ This section is the engineering execution guide — one concrete task at a time,
    from app.core.config import settings
 
    celery_app = Celery(
-       "dzukku",
+       "nourishbot",
        broker=settings.REDIS_URL,
        backend=settings.REDIS_URL,
        include=["app.workers.notification_worker"],
@@ -1572,7 +1572,7 @@ This section is the engineering execution guide — one concrete task at a time,
    ```python
    WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
    WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
-   WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "dzukku-webhook-verify")
+   WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "nourishbot-webhook-verify")
    ```
 
 **Verify:** Webhook verification URL responds correctly to Meta's GET challenge
@@ -1734,7 +1734,7 @@ This section is the engineering execution guide — one concrete task at a time,
        async def find_alternatives(self, item: MenuItem, max_price: int) -> list[MenuItem]
        async def get_monthly_savings(self, user_id: str) -> MonthlySavings
    ```
-2. `find_best_price()`: queries Dzukku direct price + Zomato/Swiggy via MCP bridge; returns cheapest
+2. `find_best_price()`: queries NourishBot direct price + Zomato/Swiggy via MCP bridge; returns cheapest
 3. `apply_coupons()`: maintain `coupons` table (restaurant_id, code, discount_type, value, expiry); auto-apply best valid coupon
 4. `find_alternatives()`: use pgvector similarity search on menu item embeddings to find semantically similar cheaper items
 5. Monthly savings tracking: `savings_log` table — record every coupon applied, every alternative suggested
@@ -1789,7 +1789,7 @@ This section is the engineering execution guide — one concrete task at a time,
 
 ### SPRINT 4 — Multi-Vendor Platform (Weeks 15–24)
 
-**Goal:** Open Dzukku to multiple restaurants, home chefs, and cloud kitchens.
+**Goal:** Open NourishBot to multiple restaurants, home chefs, and cloud kitchens.
 
 ---
 
@@ -1816,7 +1816,7 @@ This section is the engineering execution guide — one concrete task at a time,
 
 **What to do:**
 
-1. Create a separate WhatsApp number / bot persona for vendor onboarding: "Dzukku Partner"
+1. Create a separate WhatsApp number / bot persona for vendor onboarding: "NourishBot Partner"
 2. Add `app/api/routes/vendor_onboarding.py` — dedicated webhook for vendor messages
 3. Build a WhatsApp-native onboarding state machine:
    - Collect: business name, vendor type, menu (photos OK), service area, timings, UPI ID
@@ -1883,13 +1883,13 @@ This section is the engineering execution guide — one concrete task at a time,
 
 **What to do:**
 
-1. Register Dzukku as a Buyer Network Participant (BNP) on ONDC
+1. Register NourishBot as a Buyer Network Participant (BNP) on ONDC
 2. Implement ONDC protocol APIs: `search`, `select`, `init`, `confirm`, `track`, `cancel`
 3. Create `app/agent/ondc_client.py` — wraps ONDC HTTP API
 4. Add ONDC as a vendor source in `discover_nearby_vendors()` — ONDC results appear alongside native vendors
-5. Orders placed via ONDC are tracked in Dzukku's order table with `source = "ondc"`
+5. Orders placed via ONDC are tracked in NourishBot's order table with `source = "ondc"`
 
-**Verify:** Search for "biryani near Kondapur" → ONDC results appear in bot recommendations alongside Dzukku-native vendors
+**Verify:** Search for "biryani near Kondapur" → ONDC results appear in bot recommendations alongside NourishBot-native vendors
 
 ---
 
@@ -1932,9 +1932,9 @@ This section is the engineering execution guide — one concrete task at a time,
 
 1. Add `corporate_accounts` table: `company_name, billing_email, gst_number, monthly_budget_inr, contact_person, whatsapp_group_id`
 2. Build a group ordering flow:
-   - Company admin adds Dzukku to a WhatsApp group
+   - Company admin adds NourishBot to a WhatsApp group
    - Employees message the group with their orders
-   - Dzukku collects all orders for a slot (e.g., lunch 12–1 PM)
+   - NourishBot collects all orders for a slot (e.g., lunch 12–1 PM)
    - Consolidates into a single order to the vendor
    - Generates a GST invoice for the company
 3. Commission on B2B orders: 3–4% (within 2–5% band)

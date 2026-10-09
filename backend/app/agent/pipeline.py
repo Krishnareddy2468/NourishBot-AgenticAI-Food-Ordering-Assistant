@@ -1,7 +1,7 @@
 """
-Dzukku Pipeline — Main Entry Point.
+NourishBot Pipeline — Main Entry Point.
 
-Replaces dzukku_agent.py. Implements the 5-stage architecture:
+Replaces nourishbot_agent.py. Implements the 5-stage architecture:
 
   [1] ContextBuilder  — DB read, full snapshot
   [2] Planner (LLM)  — JSON plan: goal, slots, proposed_actions

@@ -204,7 +204,7 @@ export default function AdminPage() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <UtensilsCrossed size={18} />
-          <span>Dzukku</span>
+          <span>NourishBot</span>
         </div>
         <nav className="sidebar-nav">
           {NAV.map((item) => {

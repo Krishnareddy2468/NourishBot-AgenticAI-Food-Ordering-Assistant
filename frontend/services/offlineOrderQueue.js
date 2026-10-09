@@ -1,8 +1,8 @@
 const CACHE_KEYS = {
-  tables: 'dzukku_waiter_tables_cache',
-  sessions: 'dzukku_waiter_sessions_cache',
-  menu: 'dzukku_waiter_menu_cache',
-  queue: 'dzukku_waiter_offline_queue_v1',
+  tables: 'nourishbot_waiter_tables_cache',
+  sessions: 'nourishbot_waiter_sessions_cache',
+  menu: 'nourishbot_waiter_menu_cache',
+  queue: 'nourishbot_waiter_offline_queue_v1',
 }
 
 function readJson(key, fallback) {

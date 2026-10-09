@@ -2,7 +2,7 @@
 Central logging configuration.
 Logs go to:
   - stdout (so Railway/Procfile capture them)
-  - logs/dzukku.log (rotating file, 5 MB x 5 backups)
+  - logs/nourishbot.log (rotating file, 5 MB x 5 backups)
 
 Call setup_logging() once at process startup (main.py / app.api.main).
 """

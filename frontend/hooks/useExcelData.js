@@ -72,7 +72,7 @@ export function useExcelData() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/Project_Dzukku.xlsx?t=' + Date.now())
+      const res = await fetch('/Project_NourishBot.xlsx?t=' + Date.now())
       if (!res.ok) throw new Error(`Failed to fetch Excel: ${res.status}`)
       const arrayBuffer = await res.arrayBuffer()
       const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })

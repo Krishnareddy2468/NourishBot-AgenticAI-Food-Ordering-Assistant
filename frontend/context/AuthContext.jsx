@@ -8,8 +8,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const AuthContext = createContext(null)
 
-const TOKEN_KEY = 'dzukku_token'
-const USER_KEY = 'dzukku_user'
+const TOKEN_KEY = 'nourishbot_token'
+const USER_KEY = 'nourishbot_user'
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => {
@@ -49,8 +49,8 @@ export function AuthProvider({ children }) {
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(USER_KEY)
     }
-    window.addEventListener('dzukku-auth-expired', handleExpired)
-    return () => window.removeEventListener('dzukku-auth-expired', handleExpired)
+    window.addEventListener('nourishbot-auth-expired', handleExpired)
+    return () => window.removeEventListener('nourishbot-auth-expired', handleExpired)
   }, [])
 
   return (

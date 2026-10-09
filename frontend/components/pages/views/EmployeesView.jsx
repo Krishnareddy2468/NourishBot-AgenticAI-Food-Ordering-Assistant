@@ -96,7 +96,7 @@ export default function EmployeesView() {
             </div>
             <div className="form-group">
               <label className="form-label">Email</label>
-              <input className="form-input" type="email" required value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="ravi@dzukku.com" />
+              <input className="form-input" type="email" required value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="ravi@nourishbot.com" />
             </div>
             <div className="form-group">
               <label className="form-label">Phone</label>
