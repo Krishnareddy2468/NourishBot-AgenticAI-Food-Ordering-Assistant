@@ -339,7 +339,7 @@ async def get_menu_text() -> str:
     if not items:
         return "Menu not loaded yet."
 
-    lines = ["DZUKKU RESTAURANT MENU:"]
+    lines = ["NOURISHBOT RESTAURANT MENU:"]
     current_cat = None
     for item in items:
         cat = item.get("category", "Main Course") or "Main Course"

@@ -1,5 +1,5 @@
 """
-JWT authentication for Dzukku vNext staff portal.
+JWT authentication for NourishBot vNext staff portal.
 
 Generates and verifies HS256 JWTs for staff login.
 """
@@ -11,7 +11,7 @@ from typing import Optional
 import jwt
 
 # Config
-JWT_SECRET = os.getenv("JWT_SECRET", "dzukku-dev-secret-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET", "nourishbot-dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = int(os.getenv("JWT_EXPIRY_MINUTES", "480"))  # 8 hours default
 

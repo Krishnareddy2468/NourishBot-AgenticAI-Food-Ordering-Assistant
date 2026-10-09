@@ -1,15 +1,15 @@
-# Dzukku — Implemented Features & Testing Guide
+# NourishBot — Implemented Features & Testing Guide
 
 ---
 
 ## Part 1: Implemented Features
 
-### 1. Telegram Bot (Dzukku Bot)
+### 1. Telegram Bot (NourishBot Bot)
 
 **Commands**
 | Command | What it does |
 |---------|-------------|
-| `/start` | Resets session, greets user, shows platform picker (Dzukku / Zomato / Swiggy) |
+| `/start` | Resets session, greets user, shows platform picker (NourishBot / Zomato / Swiggy) |
 | `/menu` | Shows full menu with prices |
 | `/order` | Initiates an order flow |
 | `/reserve` | Initiates a table reservation flow |
@@ -20,7 +20,7 @@
 **Keyboards & UI**
 - Persistent reply keyboard: Menu, Specials, Order, Reserve a Table, My Cart, Info
 - Inline quick-action buttons (same set as above, callback-driven)
-- Platform selection inline keyboard: Dzukku Bot / Zomato / Swiggy
+- Platform selection inline keyboard: NourishBot Bot / Zomato / Swiggy
 - Post-order star rating keyboard (1–5 stars per order)
 - Typing indicator while the agent thinks
 
@@ -31,7 +31,7 @@
 
 ---
 
-### 2. Dzukku In-House Ordering (5-Stage Pipeline)
+### 2. NourishBot In-House Ordering (5-Stage Pipeline)
 
 **Stage 1 — Context Builder**
 - Loads customer profile (name, phone, language, marketing opt-in)
@@ -192,7 +192,7 @@ All endpoints require JWT auth (except login).
 - **Celery** — async task queue (notifications, reports, scheduled jobs)
 - **pgvector** — vector embeddings for semantic menu/preference search
 - **Google Sheets sync** — orders mirrored to spreadsheet (best-effort)
-- **Excel sink** — orders written to `data/Project_Dzukku.xlsx`
+- **Excel sink** — orders written to `data/Project_NourishBot.xlsx`
 - **Razorpay** — payment gateway (intents + webhook)
 - **WebSocket** — real-time push to all frontend dashboards (via `app/realtime`)
 - **Docker** — Python 3.11 + Node 20 image; `docker-compose.yml` included
@@ -207,12 +207,12 @@ All endpoints require JWT auth (except login).
 
 ---
 
-### A. Dzukku Bot — Basic Flow
+### A. NourishBot Bot — Basic Flow
 
 1. Send `/start` — does it greet you by first name and show the platform picker?
-2. Tap "🍽️ Order via Dzukku Bot" — does it show the quick-action keyboard?
+2. Tap "🍽️ Order via NourishBot Bot" — does it show the quick-action keyboard?
 3. Type "hi" before choosing a platform — does it re-show the platform picker?
-4. Type "hi" after choosing Dzukku — does it NOT re-show the picker and instead route to the agent?
+4. Type "hi" after choosing NourishBot — does it NOT re-show the picker and instead route to the agent?
 5. Send `/menu` — do you see a formatted menu with item names and prices in ₹?
 6. Type "show me vegetarian items" — does it filter and show only veg items?
 7. Type "What are today's specials?" — does the bot respond with featured/special items?
@@ -222,7 +222,7 @@ All endpoints require JWT auth (except login).
 
 ---
 
-### B. Dzukku Bot — Ordering Flow
+### B. NourishBot Bot — Ordering Flow
 
 11. Type "I want 2 Chicken Biryani" — does the bot add them to cart and confirm?
 12. Type "add 1 Butter Naan" — does it add to the existing cart without clearing it?
@@ -240,7 +240,7 @@ All endpoints require JWT auth (except login).
 
 ---
 
-### C. Dzukku Bot — Reservation Flow
+### C. NourishBot Bot — Reservation Flow
 
 24. Type "book a table for 4 people on Saturday at 7 PM" — does it collect all missing slots?
 25. Provide only date and time (no guest count) — does it ask for number of guests?
@@ -249,7 +249,7 @@ All endpoints require JWT auth (except login).
 
 ---
 
-### D. Dzukku Bot — Multilingual
+### D. NourishBot Bot — Multilingual
 
 28. Type "నమస్కారం, మీ menu చూపించండి" (Telugu) — does the bot reply in Telugu?
 29. Type "नमस्ते, मुझे menu दिखाओ" (Hindi) — does the bot reply in Hindi?
@@ -257,7 +257,7 @@ All endpoints require JWT auth (except login).
 
 ---
 
-### E. Dzukku Bot — Edge Cases
+### E. NourishBot Bot — Edge Cases
 
 31. Send a message when the restaurant is closed (after hours) — does the bot mention closed status?
 32. Order more than the kitchen capacity limit — does the bot warn about high kitchen load?
@@ -277,7 +277,7 @@ All endpoints require JWT auth (except login).
 41. Ask "what's in my cart?" — does it return the Zomato cart state?
 42. Type "checkout" — does it initiate the Zomato checkout flow?
 43. Repeat steps 38–42 for Swiggy.
-44. Send `/start`, pick Zomato, then type "switch to Dzukku" — does selecting "↩️ Order via Dzukku Bot instead" work?
+44. Send `/start`, pick Zomato, then type "switch to NourishBot" — does selecting "↩️ Order via NourishBot Bot instead" work?
 45. With `MCP_ENABLED=false`: tap Zomato — do you get the "Open Zomato" link button instead of an agent?
 46. Simulate MCP server down (stop the MCP process) — does the bot show the fallback link gracefully?
 

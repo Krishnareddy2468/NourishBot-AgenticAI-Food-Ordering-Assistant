@@ -1,5 +1,5 @@
 """
-Dzukku vNext — SQLAlchemy ORM models + PostgreSQL session management.
+NourishBot vNext — SQLAlchemy ORM models + PostgreSQL session management.
 
 All core tables include `restaurant_id` (multi-tenant ready, default 1).
 """

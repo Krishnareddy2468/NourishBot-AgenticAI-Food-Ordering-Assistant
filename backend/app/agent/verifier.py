@@ -1,5 +1,5 @@
 """
-Verifier — Stage 4 of the Dzukku Pipeline.
+Verifier — Stage 4 of the NourishBot Pipeline.
 
 Deterministic post-execution validation. Never calls LLM.
 

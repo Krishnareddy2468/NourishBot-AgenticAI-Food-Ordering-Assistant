@@ -1,5 +1,5 @@
 """
-Razorpay payment integration for Dzukku vNext.
+Razorpay payment integration for NourishBot vNext.
 
 Handles:
   - Creating payment orders (intents)

@@ -1,5 +1,5 @@
 """
-SQLAlchemy declarative base for all Dzukku models.
+SQLAlchemy declarative base for all NourishBot models.
 """
 
 from sqlalchemy.orm import DeclarativeBase

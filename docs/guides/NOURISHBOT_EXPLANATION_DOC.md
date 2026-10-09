@@ -1,4 +1,4 @@
-# Dzukku — Full System Explanation
+# NourishBot — Full System Explanation
 ### From Frontend to Backend: Architecture, Ordering Flows, and Agentic Bot
 
 ---
@@ -24,7 +24,7 @@
 
 ## 1. Project Overview
 
-**Dzukku** is a full-stack restaurant operations platform for a Hyderabad cloud kitchen. It has three interconnected systems running together:
+**NourishBot** is a full-stack restaurant operations platform for a Hyderabad cloud kitchen. It has three interconnected systems running together:
 
 | System | Technology | Purpose |
 |---|---|---|
@@ -46,7 +46,7 @@ The bot is **agentic** — it does not follow a script. It reasons, calls tools,
                       │ Telegram message
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               DZUKKU TELEGRAM BOT                           │
+│               NOURISHBOT TELEGRAM BOT                           │
 │   ┌──────────┐  ┌──────────────┐  ┌─────────────────────┐  │
 │   │ /start   │  │ Platform     │  │ Text Handler         │  │
 │   │ /menu    │  │ Selection    │  │ (greeting detection) │  │
@@ -56,7 +56,7 @@ The bot is **agentic** — it does not follow a script. It reasons, calls tools,
 │         ▼               ▼                    ▼               │
 │   ┌─────────────────────────────────────────────────────┐   │
 │   │              ROUTING MATRIX                         │   │
-│   │  platform = Dzukku  → 5-Stage Pipeline (in-house)  │   │
+│   │  platform = NourishBot  → 5-Stage Pipeline (in-house)  │   │
 │   │  platform = Zomato  → LangGraph MCP Agent          │   │
 │   │  platform = Swiggy  → LangGraph MCP Agent          │   │
 │   └─────────────────────────────────────────────────────┘   │
@@ -65,7 +65,7 @@ The bot is **agentic** — it does not follow a script. It reasons, calls tools,
           ┌───────────┴──────────────┐
           ▼                          ▼
 ┌──────────────────┐      ┌──────────────────────┐
-│  DZUKKU PIPELINE │      │  MCP AGENT (LangGraph)│
+│  NOURISHBOT PIPELINE │      │  MCP AGENT (LangGraph)│
 │  Stage 1: Context│      │  Gemini 2.5-flash LLM │
 │  Stage 2: Planner│      │  Zomato MCP tools     │
 │  Stage 3: Executor│     │  Swiggy MCP tools     │
@@ -164,7 +164,7 @@ Auto-refreshes every 15 seconds. Shows driver name, vehicle, and proof of delive
 All API calls go through a central client that:
 - Reads the JWT token from `localStorage`
 - Adds `Authorization: Bearer <token>` to every request
-- On 401 response → dispatches `dzukku-auth-expired` event → auto-logout
+- On 401 response → dispatches `nourishbot-auth-expired` event → auto-logout
 - Generates idempotency keys for orders and payments (using `crypto.randomUUID()`)
 - Normalises backend order shape into a consistent frontend model
 
@@ -254,7 +254,7 @@ When an order is placed, an `OutboxEvent` row is written in the same transaction
 
 ## 5. Agentic Bot — 5-Stage Pipeline
 
-This is the core of the Dzukku in-house ordering experience. When a Telegram message arrives, it goes through five deterministic + LLM stages:
+This is the core of the NourishBot in-house ordering experience. When a Telegram message arrives, it goes through five deterministic + LLM stages:
 
 ```
 Customer message
@@ -433,7 +433,7 @@ The frontend WebSocket hook handles all of this transparently. Components just c
 
 ## 8. Full Ordering Flow: Scenario-Based Bot Conversations
 
-These are real conversation scenarios showing how the Dzukku bot handles natural, human-like ordering using context, emotion, and intelligence.
+These are real conversation scenarios showing how the NourishBot bot handles natural, human-like ordering using context, emotion, and intelligence.
 
 ---
 
@@ -443,14 +443,14 @@ These are real conversation scenarios showing how the Dzukku bot handles natural
 
 ---
 
-**Customer:** Hey Dzukku!
+**Customer:** Hey NourishBot!
 
-**Bot:** 👋 Hey Krishna! Welcome to Dzukku Restaurant 🍽️
+**Bot:** 👋 Hey Krishna! Welcome to NourishBot Restaurant 🍽️
 _Where every bite hits different ❤️_
 
-Quick question — would you like to order through **Dzukku Bot** (right here), or via **Zomato** or **Swiggy**?
+Quick question — would you like to order through **NourishBot Bot** (right here), or via **Zomato** or **Swiggy**?
 
-**Customer:** *(taps "Order via Dzukku Bot")*
+**Customer:** *(taps "Order via NourishBot Bot")*
 
 **Bot:** 🍽️ Awesome — let's get you sorted right here! ❤️
 
@@ -847,7 +847,7 @@ From customer tapping "yes" to food being delivered:
 ### Authentication
 - Staff login: `POST /api/v1/auth/login` → bcrypt password verify → HS256 JWT (8-hour expiry)
 - JWT contains: `user_id`, `restaurant_id`, `role`, `email`
-- Frontend auto-clears token on 401 response (via `dzukku-auth-expired` event)
+- Frontend auto-clears token on 401 response (via `nourishbot-auth-expired` event)
 
 ### Payment Security
 - Razorpay order IDs created server-side only — frontend never creates payment amounts
@@ -902,4 +902,4 @@ From customer tapping "yes" to food being delivered:
 
 ---
 
-*Document generated: May 2026 | Dzukku Restaurant Platform v3.0*
+*Document generated: May 2026 | NourishBot Restaurant Platform v3.0*

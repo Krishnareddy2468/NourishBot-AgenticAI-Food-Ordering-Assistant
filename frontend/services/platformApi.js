@@ -1,11 +1,11 @@
 /**
- * Dzukku POS API client — all backend endpoints for vNext.
+ * NourishBot POS API client — all backend endpoints for vNext.
  */
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 
 function buildHeaders(extra = {}) {
-  const token = localStorage.getItem('dzukku_token')
+  const token = localStorage.getItem('nourishbot_token')
   const h = { 'Content-Type': 'application/json', ...extra }
   if (token) h['Authorization'] = `Bearer ${token}`
   return h
@@ -82,9 +82,9 @@ async function parseResponse(res) {
       // Ignore non-JSON error responses and preserve the fallback message.
     }
     if (res.status === 401) {
-      localStorage.removeItem('dzukku_token')
-      localStorage.removeItem('dzukku_user')
-      window.dispatchEvent(new Event('dzukku-auth-expired'))
+      localStorage.removeItem('nourishbot_token')
+      localStorage.removeItem('nourishbot_user')
+      window.dispatchEvent(new Event('nourishbot-auth-expired'))
     }
     throw new Error(message)
   }
@@ -193,7 +193,7 @@ export async function toggleMenuItemAvailability(id, available) {
 }
 
 export async function uploadMenuItemImage(id, formData) {
-  const token = localStorage.getItem('dzukku_token')
+  const token = localStorage.getItem('nourishbot_token')
   const res = await fetch(`${API_BASE}/api/v1/menu/items/${id}/images`, {
     method: 'POST',
     headers: { Authorization: token ? `Bearer ${token}` : '' },

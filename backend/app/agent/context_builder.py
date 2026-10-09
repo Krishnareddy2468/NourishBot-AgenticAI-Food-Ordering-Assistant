@@ -1,5 +1,5 @@
 """
-Context Builder — Stage 1 of the Dzukku Pipeline.
+Context Builder — Stage 1 of the NourishBot Pipeline.
 
 Assembles a complete ContextSnapshot for every incoming message:
   - Customer profile (name, phone, language, opt-in)

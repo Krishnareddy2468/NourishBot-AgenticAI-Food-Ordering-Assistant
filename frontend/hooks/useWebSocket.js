@@ -1,6 +1,6 @@
 'use client'
 /**
- * Real-time WebSocket hook for Dzukku POS.
+ * Real-time WebSocket hook for NourishBot POS.
  * Connects to ws://host/api/v1/ws and dispatches events to callbacks.
  */
 

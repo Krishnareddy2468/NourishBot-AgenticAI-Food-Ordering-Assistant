@@ -1,5 +1,5 @@
 """
-Dzukku vNext — All SQLAlchemy ORM models.
+NourishBot vNext — All SQLAlchemy ORM models.
 
 Organised by domain:
   - Core: Restaurant, User, Customer, Channel, Session

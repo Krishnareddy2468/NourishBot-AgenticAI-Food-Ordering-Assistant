@@ -24,6 +24,6 @@ jobs:
 
       - template: templates/docker-build.yml@templates
         parameters:
-          imageName: 'dzukku-frontend'
+          imageName: 'nourishbot-frontend'
           dockerfile: 'frontend/Dockerfile'
           buildContext: 'frontend'

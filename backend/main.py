@@ -1,5 +1,5 @@
 """
-Dzukku Bot — Top-level entrypoint.
+NourishBot Bot — Top-level entrypoint.
 Delegates to app.api.main, which boots FastAPI + Telegram bot together.
 """
 

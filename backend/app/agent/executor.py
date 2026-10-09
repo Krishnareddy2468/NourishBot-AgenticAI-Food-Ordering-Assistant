@@ -1,5 +1,5 @@
 """
-Executor — Stage 3 of the Dzukku Pipeline.
+Executor — Stage 3 of the NourishBot Pipeline.
 
 Deterministic tool runner. The LLM proposes actions; the executor:
   1. Validates every input (schema, ranges, policy)

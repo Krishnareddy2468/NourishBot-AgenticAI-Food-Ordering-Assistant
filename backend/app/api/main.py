@@ -1,5 +1,5 @@
 """
-Dzukku Bot — Main Entrypoint
+NourishBot Bot — Main Entrypoint
 ============================
 Runs:
   1. Telegram bot (python-telegram-bot polling, same event loop as FastAPI)
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
 
 
 api = FastAPI(
-    title="Dzukku Backend API",
+    title="NourishBot Backend API",
     version="3.0.0",
     lifespan=lifespan,
 )
@@ -158,14 +158,14 @@ async def websocket_endpoint(websocket: WebSocket, restaurant_id: int = 1):
 
 @api.get("/api/health")
 async def health():
-    return {"ok": True, "service": "dzukku-backend", "version": "3.0.0"}
+    return {"ok": True, "service": "nourishbot-backend", "version": "3.0.0"}
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    logger.info("Starting Dzukku Backend (FastAPI + Telegram)…")
+    logger.info("Starting NourishBot Backend (FastAPI + Telegram)…")
     uvicorn.run(
         "app.api.main:api",
         host="0.0.0.0",

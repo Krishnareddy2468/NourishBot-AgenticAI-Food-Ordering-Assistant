@@ -1,5 +1,5 @@
 """
-Agent v2 operational policies for Dzukku Restaurant.
+Agent v2 operational policies for NourishBot Restaurant.
 
 Enforces business rules that the LLM cannot violate:
   - Delivery radius limits

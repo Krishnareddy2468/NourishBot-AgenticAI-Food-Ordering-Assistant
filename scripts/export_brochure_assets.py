@@ -25,7 +25,7 @@ from reportlab.platypus import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HTML_PATH = ROOT / "docs" / "DZUKKU_PLATFORM_BROCHURE.html"
+DEFAULT_HTML_PATH = ROOT / "docs" / "NOURISHBOT_PLATFORM_BROCHURE.html"
 
 
 def clean_text(value: str) -> str:
@@ -104,7 +104,7 @@ def build_pdf_with_chrome(html_path: Path, pdf_path: Path) -> bool:
     if pdf_path.exists():
         pdf_path.unlink()
 
-    profile = Path(tempfile.mkdtemp(prefix="dzukku-chrome-pdf-"))
+    profile = Path(tempfile.mkdtemp(prefix="nourishbot-chrome-pdf-"))
     cmd = [
         str(chrome),
         "--headless=new",
@@ -312,8 +312,8 @@ def build_pdf(html_path: Path, pdf_path: Path) -> None:
         leftMargin=16 * mm,
         topMargin=16 * mm,
         bottomMargin=16 * mm,
-        title="Dzukku Platform Brochure",
-        author="Project Dzukku",
+        title="NourishBot Platform Brochure",
+        author="Project NourishBot",
     )
     doc.build(story)
 

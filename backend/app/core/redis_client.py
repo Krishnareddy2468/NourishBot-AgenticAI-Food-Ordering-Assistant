@@ -1,5 +1,5 @@
 """
-Async Redis client — shared connection pool for Dzukku.
+Async Redis client — shared connection pool for NourishBot.
 
 Provides a single async Redis instance for:
   - Session state caching (get_session / save_session in crud.py)

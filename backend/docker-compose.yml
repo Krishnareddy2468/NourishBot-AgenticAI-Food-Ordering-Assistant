@@ -1,4 +1,4 @@
-# Dzukku Bot — docker-compose
+# NourishBot Bot — docker-compose
 # ============================
 # Two service profiles:
 #
@@ -38,7 +38,7 @@ services:
 
   bot:
     build: .
-    image: dzukku-bot:latest
+    image: nourishbot-bot:latest
     profiles: ["cloud"]
     restart: unless-stopped
     env_file: .env
@@ -55,7 +55,7 @@ services:
 
   bot-mcp:
     build: .
-    image: dzukku-bot:latest
+    image: nourishbot-bot:latest
     profiles: ["mcp"]
     restart: unless-stopped
     env_file: .env
@@ -79,7 +79,7 @@ services:
   # ── Celery worker (async tasks: notifications, reports, scheduled jobs) ──
   celery-worker:
     build: .
-    image: dzukku-bot:latest
+    image: nourishbot-bot:latest
     profiles: ["cloud"]
     restart: unless-stopped
     env_file: .env
@@ -95,7 +95,7 @@ services:
   # ── Celery beat (scheduler for periodic tasks) ──
   celery-beat:
     build: .
-    image: dzukku-bot:latest
+    image: nourishbot-bot:latest
     profiles: ["cloud"]
     restart: unless-stopped
     env_file: .env

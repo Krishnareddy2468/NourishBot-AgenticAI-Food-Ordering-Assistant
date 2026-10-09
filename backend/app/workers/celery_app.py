@@ -1,5 +1,5 @@
 """
-Celery app — async task queue for Dzukku.
+Celery app — async task queue for NourishBot.
 
 Uses Redis as both broker and result backend.
 
@@ -11,7 +11,7 @@ from celery import Celery
 from app.core.config import settings
 
 celery_app = Celery(
-    "dzukku",
+    "nourishbot",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
     include=["app.workers.notification_worker"],

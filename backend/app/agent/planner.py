@@ -1,5 +1,5 @@
 """
-Planner — Stage 2 of the Dzukku Pipeline.
+Planner — Stage 2 of the NourishBot Pipeline.
 
 One LLM call (OpenAI, JSON mode) that reads the ContextSnapshot +
 user message and outputs a structured PlannerOutput:
@@ -123,7 +123,7 @@ def _build_planner_prompt(message: str, ctx: ContextSnapshot) -> str:
     # State-specific instruction injected into rules
     state_hint = _state_hint(ctx.current_state, ctx)
 
-    return f"""You are the PLANNER for Dzukku Restaurant. Read the context + message. Output ONE JSON object.
+    return f"""You are the PLANNER for NourishBot Restaurant. Read the context + message. Output ONE JSON object.
 
 CONTEXT:
 State: {ctx.current_state.value} | Time: {ctx.time_of_day} ({ctx.now.strftime('%I:%M %p')}) | Open: {ctx.is_open}

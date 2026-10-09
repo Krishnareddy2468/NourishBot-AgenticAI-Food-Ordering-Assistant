@@ -1,5 +1,5 @@
 """
-WebSocket / SSE connection manager for Dzukku vNext.
+WebSocket / SSE connection manager for NourishBot vNext.
 
 Manages live connections from KDS, waiter, admin clients.
 Subscriptions are per-restaurant and optionally filtered by event type.

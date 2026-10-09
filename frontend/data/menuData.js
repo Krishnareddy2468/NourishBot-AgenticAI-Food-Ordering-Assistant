@@ -1,4 +1,4 @@
-// Extracted from Project_Dzukku.xlsx — Master_Menu sheet
+// Extracted from Project_NourishBot.xlsx — Master_Menu sheet
 export const MENU_ITEMS = [
   // Veg Items
   { id: 'V001', category: 'Veg', name: 'Paneer Butter Masala', description: 'Cottage cheese cubes cooked in creamy tomato gravy', price: 180, status: 'Available', isSpecial: false, stock: 1, specialPrice: null, prepTime: '15 mins', emoji: '🧀' },

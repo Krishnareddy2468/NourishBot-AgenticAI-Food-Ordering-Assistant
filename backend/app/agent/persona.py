@@ -1,7 +1,7 @@
 """
 Persona — §3.5 Restaurant Identity Behaviors
 
-Centralises everything that makes the Dzukku agent consistent and realistic:
+Centralises everything that makes the NourishBot agent consistent and realistic:
 
   1. Language mirroring  — detects EN / TE+EN / HI+EN from message + history
   2. Tone calibration    — shifts warmth/urgency by time-of-day and bot state
@@ -62,7 +62,7 @@ _OFF_TOPIC_RE = re.compile("|".join(_OFF_TOPIC_PATTERNS), re.IGNORECASE)
 _FOOD_SIGNALS = {
     "menu", "order", "food", "eat", "drink", "biryani", "pizza", "burger",
     "chicken", "veg", "table", "reserve", "delivery", "pickup", "cart",
-    "price", "items", "restaurant", "dzukku", "bill", "invoice",
+    "price", "items", "restaurant", "nourishbot", "bill", "invoice",
 }
 
 

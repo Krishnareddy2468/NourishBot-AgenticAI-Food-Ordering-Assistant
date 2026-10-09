@@ -40,7 +40,7 @@ export default function LoginPage() {
         <div className="login-hero">
           <div className="login-logo">
             <UtensilsCrossed size={40} />
-            <h1>Dzukku POS</h1>
+            <h1>NourishBot POS</h1>
             <p>Restaurant operations, floor service, and kitchen execution in one workspace.</p>
           </div>
           <div className="login-role-preview">
@@ -65,7 +65,7 @@ export default function LoginPage() {
               className="form-input"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="staff@dzukku.com"
+              placeholder="staff@nourishbot.com"
               required
               autoFocus
             />
@@ -89,7 +89,7 @@ export default function LoginPage() {
         </form>
 
         <div className="login-footer">
-          Demo: admin@dzukku.com / admin123 or waiter@dzukku.com / waiter123
+          Demo: admin@nourishbot.com / admin123 or waiter@nourishbot.com / waiter123
         </div>
       </div>
     </div>

@@ -19,7 +19,7 @@ google-auth==2.35.0
 # Utilities
 requests==2.32.3
 
-# Excel loader (Master_Menu sheet in data/Project_Dzukku.xlsx)
+# Excel loader (Master_Menu sheet in data/Project_NourishBot.xlsx)
 openpyxl>=3.1.0
 
 # ── PostgreSQL + ORM + Migrations (vNext) ──────────────────────────────────

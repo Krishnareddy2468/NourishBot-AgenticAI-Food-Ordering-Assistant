@@ -1,17 +1,17 @@
-# Project Dzukku — Product & Engineering Documentation
+# Project NourishBot — Product & Engineering Documentation
 
 > *"Where every bite hits different ❤️"*
 
-A conversational, agentic restaurant operating system that turns a chat window into a full ordering, reservation, and POS experience. Dzukku replaces the cluttered scroll-and-tap journey of Swiggy and Zomato with a single, friendly assistant that *understands* the customer and a clean operations dashboard for the restaurant.
+A conversational, agentic restaurant operating system that turns a chat window into a full ordering, reservation, and POS experience. NourishBot replaces the cluttered scroll-and-tap journey of Swiggy and Zomato with a single, friendly assistant that *understands* the customer and a clean operations dashboard for the restaurant.
 
 ---
 
 ## 1. Executive Summary
 
-Project Dzukku is composed of two cooperating products:
+Project NourishBot is composed of two cooperating products:
 
-1. **DzukkuBot** — a Python (FastAPI + Telegram + WhatsApp) backend powered by Google Gemini 2.5 Flash with function-calling tools. It is the customer-facing **AI restaurant agent**.
-2. **Dzukku POS Frontend** — a React 19 + Vite dashboard for the restaurant team: live order board, KDS (Kitchen Display System), table map, reservations, menu, analytics, employees, and invoices.
+1. **NourishBotBot** — a Python (FastAPI + Telegram + WhatsApp) backend powered by Google Gemini 2.5 Flash with function-calling tools. It is the customer-facing **AI restaurant agent**.
+2. **NourishBot POS Frontend** — a React 19 + Vite dashboard for the restaurant team: live order board, KDS (Kitchen Display System), table map, reservations, menu, analytics, employees, and invoices.
 
 The customer never opens an app, picks a delivery partner, or browses 40 visually identical dishes. They simply chat — in English, Telugu+English, or Hindi+English — and the bot guides them through menu, ordering, and reservations. Behind the scenes, Gemini orchestrates a tool loop (`get_menu`, `add_to_cart`, `update_customer_info`, `place_order`, `make_reservation`, …) backed by SQLite, an Excel master sheet, and Google Sheets sync.
 
@@ -19,7 +19,7 @@ The customer never opens an app, picks a delivery partner, or browses 40 visuall
 
 ## 2. What the Application Does — Feature List
 
-### 2.1 Customer-facing (DzukkuBot)
+### 2.1 Customer-facing (NourishBotBot)
 - **Multi-channel chat**: Telegram (polling) and WhatsApp (Twilio webhook).
 - **Natural-language menu browsing** — "what's good for dinner?", "show me veg starters under 200".
 - **Time-aware suggestions** — morning → dosa/chai, lunch → biryani/thali, dinner → butter chicken, late-night → comfort food.
@@ -41,15 +41,15 @@ The customer never opens an app, picks a delivery partner, or browses 40 visuall
 - **Kitchen Display System (KDS)** — column board (Pending → Accepted → Preparing → Ready → Delivered) with status transitions wired to the backend.
 - **Table map** — table state and walk-in management.
 - **Reservations** — view, accept, cancel; synced from chat bookings.
-- **Menu** — browse and edit items loaded from `Project_Dzukku.xlsx` (Master_Menu sheet).
+- **Menu** — browse and edit items loaded from `Project_NourishBot.xlsx` (Master_Menu sheet).
 - **Employees & Shifts**, **Invoices**, **Settlements** & payment intents.
 - **n8n integration** — POS events (`order.created`, `order.status_updated`) can publish to an n8n webhook for downstream automations.
-- **Excel-driven historical data** — analytics reads from `public/Project_Dzukku.xlsx`.
+- **Excel-driven historical data** — analytics reads from `public/Project_NourishBot.xlsx`.
 
 ### 2.3 Cross-cutting
-- **Single source of truth** in SQLite (`storage/dzukku.db`), seeded from the Excel master sheet, mirrored to Google Sheets for non-tech operators.
+- **Single source of truth** in SQLite (`storage/nourishbot.db`), seeded from the Excel master sheet, mirrored to Google Sheets for non-tech operators.
 - **Idempotency keys** on order creation.
-- **Structured logging** to `logs/dzukku.log`.
+- **Structured logging** to `logs/nourishbot.log`.
 - **CORS-friendly REST API** at `/api/*` for the frontend.
 
 ---
@@ -57,7 +57,7 @@ The customer never opens an app, picks a delivery partner, or browses 40 visuall
 ## 3. Agentic Style — How the Bot Thinks
 
 ### 3.1 Architecture: Tool-using LLM, not a scripted FAQ
-DzukkuBot is **not** a finite-state chatbot with `if/elif` intent rules. It is an **agent loop**:
+NourishBotBot is **not** a finite-state chatbot with `if/elif` intent rules. It is an **agent loop**:
 
 ```
 User message
@@ -104,9 +104,9 @@ Key properties:
 
 ---
 
-## 4. How Dzukku Differs from Swiggy / Zomato
+## 4. How NourishBot Differs from Swiggy / Zomato
 
-| Dimension | Swiggy / Zomato | Dzukku |
+| Dimension | Swiggy / Zomato | NourishBot |
 |---|---|---|
 | **Entry point** | Install app, sign up, OTP, share location, pick restaurant | Send a Telegram or WhatsApp message — that's it. |
 | **Discovery UX** | Infinite scroll of cards, ratings, photos, ads | Conversational: "what's good right now?" → 3 contextual suggestions. |
@@ -118,7 +118,7 @@ Key properties:
 | **Customer data** | Owned by the aggregator | Owned by the restaurant (SQLite + Sheets). |
 | **Onboarding for the restaurant** | Listing fees, photo shoots, ad credits | Drop a menu Excel, point a Telegram bot, you're live. |
 | **Languages** | English / Hindi UI labels | Free-form code-mix (Tenglish, Hinglish) handled natively by the LLM. |
-| **Delivery** | Owned fleet | Configurable — Dzukku still surfaces Swiggy/Zomato as a delivery channel when needed. |
+| **Delivery** | Owned fleet | Configurable — NourishBot still surfaces Swiggy/Zomato as a delivery channel when needed. |
 | **Operations** | Aggregator dashboard, partner app | Built-in POS + KDS + reservations + analytics + invoicing in one React app. |
 
 The product is **not** trying to out-Swiggy Swiggy at scale. It is a **direct-to-customer ordering layer** for a restaurant, removing the marketplace middle layer for the 60–80% of customers who already know which restaurant they want.
@@ -128,7 +128,7 @@ The product is **not** trying to out-Swiggy Swiggy at scale. It is a **direct-to
 ## 5. User Interaction & Usability
 
 ### 5.1 What the customer experiences
-1. They scan a QR or tap a link → opens Telegram/WhatsApp chat with Dzukku.
+1. They scan a QR or tap a link → opens Telegram/WhatsApp chat with NourishBot.
 2. First message: a warm, name-personalized greeting + 6 quick-action buttons (Menu, Specials, Order, Reserve, Cart, Info).
 3. They type or tap. Replies are **2–4 lines for chat, longer only for menu listings or bills**.
 4. Every reply ends with a **clear next action** — no dead ends.
@@ -144,7 +144,7 @@ Order ID: #DZK-A1B2C3
 ────────────────
 Total: ₹600
 ETA: ~20-30 mins
-Thank you for choosing Dzukku 🙏❤️
+Thank you for choosing NourishBot 🙏❤️
 ```
 
 ### 5.2 Usability principles baked into the system prompt
@@ -167,7 +167,7 @@ Thank you for choosing Dzukku 🙏❤️
 ### 6.1 Repository layout
 ```
 Project-Duzukku/
-├── DzukkuBot/                        # Python backend + AI agent
+├── NourishBotBot/                        # Python backend + AI agent
 │   ├── main.py                       # uvicorn entrypoint (FastAPI + Telegram thread)
 │   ├── requirements.txt
 │   ├── app/
@@ -178,25 +178,25 @@ Project-Duzukku/
 │   │   ├── bot/whatsapp.py           # Flask + Twilio webhook
 │   │   ├── core/config.py            # Settings (env-driven)
 │   │   ├── core/database.py          # SQLite schema, CRUD, sessions, menu seed
-│   │   ├── core/excel_sink.py        # Append rows to Project_Dzukku.xlsx
+│   │   ├── core/excel_sink.py        # Append rows to Project_NourishBot.xlsx
 │   │   ├── core/sheets.py            # Google Sheets sync
 │   │   └── core/logging_config.py
-│   ├── data/Project_Dzukku.xlsx      # Master menu + historical data
-│   ├── storage/dzukku.db             # SQLite runtime DB
+│   ├── data/Project_NourishBot.xlsx      # Master menu + historical data
+│   ├── storage/nourishbot.db             # SQLite runtime DB
 │   ├── docs/                         # Architecture deep-dives (CTO, Production)
-│   └── logs/dzukku.log
+│   └── logs/nourishbot.log
 └── restaurant-pos-frontend/          # React 19 + Vite POS dashboard
     ├── src/App.jsx                   # Single-file dashboard (≈1.4k LOC)
     ├── src/services/platformApi.js   # Backend REST client
     ├── src/services/n8nService.js    # n8n webhook publisher
     ├── src/hooks/useExcelData.js     # XLSX loader for historical data
-    ├── public/Project_Dzukku.xlsx
+    ├── public/Project_NourishBot.xlsx
     └── package.json
 ```
 
 ### 6.2 Tech stack
 
-**Backend (DzukkuBot)**
+**Backend (NourishBotBot)**
 - Python 3.9+
 - FastAPI + uvicorn (REST API for the POS)
 - python-telegram-bot 21 (polling)
@@ -221,7 +221,7 @@ Project-Duzukku/
 ### 6.3 Runtime topology
 ```
                  ┌──────────────────────────────────────────────┐
-                 │            DzukkuBot process (Python)        │
+                 │            NourishBotBot process (Python)        │
    Telegram      │                                              │
    ──────────►   │  Telegram polling thread ─┐                  │
                  │                            ├─► agent.orchestrator
@@ -296,7 +296,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 Backend:
 ```bash
-cd DzukkuBot
+cd NourishBotBot
 python3 -m venv env && source env/bin/activate
 pip install -r requirements.txt
 python main.py            # FastAPI on :8000 + Telegram polling
@@ -350,13 +350,13 @@ npm run lint && npm run build
 1. Open POS dashboard → see live KPIs and inbound orders.
 2. KDS columns auto-populate from chat orders; staff click to advance status.
 3. Reservations view shows the day's bookings with guest count.
-4. Manager edits `Project_Dzukku.xlsx` to add/remove items or change prices; the menu reseeds.
+4. Manager edits `Project_NourishBot.xlsx` to add/remove items or change prices; the menu reseeds.
 5. Settlements & invoices roll up at end of shift.
 
 **Configuration**
-- Menu: edit `data/Project_Dzukku.xlsx` → `Master_Menu` sheet.
+- Menu: edit `data/Project_NourishBot.xlsx` → `Master_Menu` sheet.
 - Restaurant info: `app/core/config.py` (`RESTAURANT_*` constants) — easily moved to env.
-- Bot persona: `build_system_prompt` in `app/agent/orchestrator.py` and `docs/DZUKKU_BOT_SYSTEM_PROMPT.txt`.
+- Bot persona: `build_system_prompt` in `app/agent/orchestrator.py` and `docs/NOURISHBOT_BOT_SYSTEM_PROMPT.txt`.
 
 ### 7.3 Failure modes & fallbacks
 
@@ -371,11 +371,11 @@ npm run lint && npm run build
 
 ---
 
-## 8. Head-to-Head: Zomato vs Swiggy vs Dzukku
+## 8. Head-to-Head: Zomato vs Swiggy vs NourishBot
 
 ### 8.1 Side-by-side comparison
 
-| Capability | Zomato | Swiggy | **Dzukku** |
+| Capability | Zomato | Swiggy | **NourishBot** |
 |---|---|---|---|
 | **Primary surface** | Native mobile app | Native mobile app | Telegram / WhatsApp chat (no install) |
 | **Onboarding** | Sign-up, OTP, address, payment setup | Sign-up, OTP, address, payment setup | Send a message — done |
@@ -400,17 +400,17 @@ npm run lint && npm run build
 ### 8.2 Where each model wins
 
 - **Zomato / Swiggy win when:** the customer doesn't yet know which restaurant they want, wants to compare ratings, or needs ultra-broad geographic reach.
-- **Dzukku wins when:** the customer already trusts a restaurant, wants speed, wants conversation, wants their order remembered, and the restaurant wants to keep its margin and customer relationship.
+- **NourishBot wins when:** the customer already trusts a restaurant, wants speed, wants conversation, wants their order remembered, and the restaurant wants to keep its margin and customer relationship.
 
 ### 8.3 Why this matters strategically
-Aggregators have trained customers to scroll. Dzukku flips it back to a relationship: the **restaurant talks to its customer directly**, in the channel they already use 50 times a day (Telegram/WhatsApp), with an agent that is warm, multilingual, and never forgets. Aggregators stay useful for discovery; Dzukku captures repeat business — which is 70%+ of any healthy restaurant's revenue.
+Aggregators have trained customers to scroll. NourishBot flips it back to a relationship: the **restaurant talks to its customer directly**, in the channel they already use 50 times a day (Telegram/WhatsApp), with an agent that is warm, multilingual, and never forgets. Aggregators stay useful for discovery; NourishBot captures repeat business — which is 70%+ of any healthy restaurant's revenue.
 
 ---
 
 ## 9. Phase-wise Software Development Plan (Agile + RAD)
 
 ### 9.1 Methodology choice
-Project Dzukku uses a **hybrid Agile + RAD (Rapid Application Development)** model:
+Project NourishBot uses a **hybrid Agile + RAD (Rapid Application Development)** model:
 
 - **RAD** for the customer-facing bot and POS UI — these are highly visual / interactive and benefit from rapid prototyping, demoing to the restaurant owner, and immediate feedback.
 - **Scrum (Agile)** for backend, data, and integration work — clear sprint boundaries, backlog grooming, retrospectives.
@@ -528,4 +528,4 @@ Project Dzukku uses a **hybrid Agile + RAD (Rapid Application Development)** mod
 ---
 
 ## 11. One-line pitch
-**Dzukku replaces a marketplace app with a conversation. The customer chats once; the restaurant gets the order, the cash, the data, and a dashboard that runs the kitchen.**
+**NourishBot replaces a marketplace app with a conversation. The customer chats once; the restaurant gets the order, the cash, the data, and a dashboard that runs the kitchen.**

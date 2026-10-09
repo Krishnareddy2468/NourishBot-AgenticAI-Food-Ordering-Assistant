@@ -13,11 +13,11 @@ Mirrors the architecture of the previous Zomatobot LangGraph backend:
         -> Final assistant text returned to Telegram
 
 The agent itself is per-message stateless; the rolling conversation history
-is replayed into the prompt the same way as the Dzukku orchestrator already
+is replayed into the prompt the same way as the NourishBot orchestrator already
 does, so the same PostgreSQL session table works without schema changes.
 
 If MCP is not enabled or the tools fail to load, get_mcp_response() returns
-None and Telegram falls back to the existing Dzukku orchestrator + redirect
+None and Telegram falls back to the existing NourishBot orchestrator + redirect
 links.
 """
 
@@ -322,7 +322,7 @@ def _system_prompt(platform: str, user_name: str) -> str:
         "dinner time"if 18 <= hour < 23 else
         "late night"
     )
-    return f"""You are Dzukku — a warm, witty restaurant assistant helping a Telegram user place a real order on {plat_label} via the {plat_label} MCP server.
+    return f"""You are NourishBot — a warm, witty restaurant assistant helping a Telegram user place a real order on {plat_label} via the {plat_label} MCP server.
 
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                          CRITICAL SAFETY RULES                           ║
@@ -499,7 +499,7 @@ async def get_mcp_response(
     """
     Run a single agent turn for a Telegram chat. Returns the assistant text
     on success, or None when MCP is unavailable so the caller can fall back
-    to the legacy redirect-link / Dzukku-bot flow.
+    to the legacy redirect-link / NourishBot-bot flow.
     """
     if not settings.MCP_ENABLED:
         return None
@@ -535,7 +535,7 @@ async def get_mcp_response(
     _ensure_imports()
 
     # Replay rolling conversation history (last 8 turns) so the model has
-    # continuity, just like the Dzukku orchestrator does.
+    # continuity, just like the NourishBot orchestrator does.
     session = await get_session(chat_id)
     full_history = list(session.get("history") or [])
     history = _visible_history(full_history, limit=8)

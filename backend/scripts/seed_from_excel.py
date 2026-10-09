@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Seed PostgreSQL from data/Project_Dzukku.xlsx.
+Seed PostgreSQL from data/Project_NourishBot.xlsx.
 
 Reads every sheet and inserts rows into the corresponding PostgreSQL tables
 using the SQLAlchemy ORM models.  Run AFTER alembic upgrade head.
 
 Usage:
-    cd DzukkuBot && python scripts/seed_from_excel.py
+    cd NourishBotBot && python scripts/seed_from_excel.py
 """
 
 import asyncio
@@ -46,7 +46,7 @@ engine = create_async_engine(settings.DATABASE_URL, echo=False, pool_size=5)
 SessionFactory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 # ── Load workbook ────────────────────────────────────────────────────────────
-XLSX = ROOT / "data" / "Project_Dzukku.xlsx"
+XLSX = ROOT / "data" / "Project_NourishBot.xlsx"
 wb = openpyxl.load_workbook(XLSX, read_only=True, data_only=True)
 
 
@@ -157,7 +157,7 @@ async def seed():
         rest = result.scalar_one_or_none()
         if not rest:
             rest = Restaurant(
-                name="Dzukku Restaurant",
+                name="NourishBot Restaurant",
                 phone="9876543301",
                 address="HSR Layout, Bangalore",
                 timezone="Asia/Kolkata",
@@ -268,7 +268,7 @@ async def seed():
                 continue
             if email in user_map:
                 continue  # skip existing
-            pw_hash = _hash("dzukku123")  # default password for all seeded staff
+            pw_hash = _hash("nourishbot123")  # default password for all seeded staff
             u = User(
                 restaurant_id=rid,
                 name=name,
@@ -574,7 +574,7 @@ async def seed():
             status = _ORDER_STATUS_MAP.get(raw_status, "CREATED")
 
             platform = str(r.get("Platform", "") or "").strip()
-            order_type = "DINE_IN" if platform in ("Dine-In", "Offline", "Dzukku Restaurant") else "DELIVERY"
+            order_type = "DINE_IN" if platform in ("Dine-In", "Offline", "NourishBot Restaurant") else "DELIVERY"
 
             dt_val = r.get("Date/Time")
             created_at = dt_val if isinstance(dt_val, datetime) else None

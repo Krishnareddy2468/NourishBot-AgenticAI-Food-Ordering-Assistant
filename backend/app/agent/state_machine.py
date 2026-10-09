@@ -1,5 +1,5 @@
 """
-Dzukku Bot State Machine — §3.3 v2
+NourishBot Bot State Machine — §3.3 v2
 
 States are stored in Session.state (DB) and propagated through ContextSnapshot.
 Transitions are event-driven: each committed tool call emits an event that

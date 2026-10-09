@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 #
-# Dzukku Bot — production image
+# NourishBot Bot — production image
 # =============================
 # - Python 3.11 slim base
 # - Node 20 added so `npx mcp-remote` can run when MCP_ENABLED=true
@@ -8,8 +8,8 @@
 # - Non-root user
 # - Optional MCP_AUTH_DIR mount point at /run/mcp-auth (read-only secret volume)
 #
-# Build:    docker build -t dzukku-bot .
-# Run:      docker run --env-file .env -p 8000:8000 dzukku-bot
+# Build:    docker build -t nourishbot-bot .
+# Run:      docker run --env-file .env -p 8000:8000 nourishbot-bot
 # With MCP: see docker-compose.yml (mounts ~/.mcp-auth as a secret volume)
 
 FROM python:3.11-slim AS base
@@ -32,7 +32,7 @@ RUN apt-get update \
 
 # Non-root user
 ARG APP_UID=10001
-RUN useradd --uid ${APP_UID} --create-home --shell /usr/sbin/nologin dzukku
+RUN useradd --uid ${APP_UID} --create-home --shell /usr/sbin/nologin nourishbot
 
 WORKDIR /app
 
@@ -48,9 +48,9 @@ COPY config ./config
 
 # Runtime dirs
 RUN mkdir -p /app/logs /app/storage /run/mcp-auth \
-    && chown -R dzukku:dzukku /app /run/mcp-auth
+    && chown -R nourishbot:nourishbot /app /run/mcp-auth
 
-USER dzukku
+USER nourishbot
 
 # Sensible defaults — override at deploy time:
 #   MCP_ENABLED=false  → cloud uses redirect-link UX (recommended)

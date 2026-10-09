@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Locate the project root (DzukkuBot/) regardless of where Python is invoked from
+# Locate the project root (NourishBotBot/) regardless of where Python is invoked from
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
 load_dotenv(ROOT_DIR / ".env")
@@ -19,7 +19,7 @@ class Settings:
     STORAGE_DIR:  Path = ROOT_DIR / "storage"
     DATA_DIR:     Path = ROOT_DIR / "data"
     LOGS_DIR:     Path = ROOT_DIR / "logs"
-    LOG_FILE:     Path = ROOT_DIR / "logs" / "dzukku.log"
+    LOG_FILE:     Path = ROOT_DIR / "logs" / "nourishbot.log"
     LOG_LEVEL:    str  = os.getenv("LOG_LEVEL", "INFO").upper()
     CREDS_PATH:   Path = ROOT_DIR / "config" / "credentials.json"
 
@@ -54,17 +54,17 @@ class Settings:
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
     # ── JWT Auth (vNext) ────────────────────────────────────────────────────
-    JWT_SECRET:          str = os.getenv("JWT_SECRET", "dzukku-dev-secret-change-in-production")
+    JWT_SECRET:          str = os.getenv("JWT_SECRET", "nourishbot-dev-secret-change-in-production")
     JWT_EXPIRY_MINUTES:  int = int(os.getenv("JWT_EXPIRY_MINUTES", "480"))
 
     # ── External Ordering Platforms (Zomato / Swiggy) ──────────────────────────
     ZOMATO_URL: str = os.getenv(
         "ZOMATO_URL",
-        "https://www.zomato.com/hyderabad/dzukku-restaurant",
+        "https://www.zomato.com/hyderabad/nourishbot-restaurant",
     )
     SWIGGY_URL: str = os.getenv(
         "SWIGGY_URL",
-        "https://www.swiggy.com/restaurants/dzukku-restaurant",
+        "https://www.swiggy.com/restaurants/nourishbot-restaurant",
     )
 
     # ── MCP (Model Context Protocol) — Zomato / Swiggy ordering ─────────────────
@@ -103,7 +103,7 @@ class Settings:
     ]
 
     # ── Restaurant static info ─────────────────────────────────────────────────
-    RESTAURANT_NAME:     str = "Dzukku Restaurant"
+    RESTAURANT_NAME:     str = "NourishBot Restaurant"
     RESTAURANT_TAGLINE:  str = "Where every bite hits different ❤️"
     RESTAURANT_TIMINGS:  str = "6:00 AM – 11:00 PM, all days"
     RESTAURANT_LOCATION: str = "Hyderabad, Telangana"

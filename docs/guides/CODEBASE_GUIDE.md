@@ -1,10 +1,10 @@
-# DzukkuBot Codebase Guide
+# NourishBotBot Codebase Guide
 
 This document explains what this project does, how messages move through the system, where data is stored, and what each file is responsible for.
 
 ## 1) What this project is
 
-DzukkuBot is a restaurant assistant chatbot for two channels:
+NourishBotBot is a restaurant assistant chatbot for two channels:
 - Telegram
 - WhatsApp (via Twilio webhook)
 
@@ -34,7 +34,7 @@ Message flow:
 
 Storage flow:
 - Menu source starts in data/restaurant_dataset.csv
-- database_setup.py imports CSV into database/dzukku.db table menu
+- database_setup.py imports CSV into database/nourishbot.db table menu
 - orders/reservations are appended by bot_brain.py through database_setup.py
 - sheets_sync.py mirrors orders/reservations into Google Sheets tabs
 
@@ -93,7 +93,7 @@ Google Sheets integration.
 ### data/restaurant_dataset.csv
 Menu seed data used to populate SQLite menu table.
 
-### database/dzukku.db
+### database/nourishbot.db
 SQLite database file created and used at runtime.
 
 ### run_all.py
@@ -117,7 +117,7 @@ Python dependencies required by this project.
 ### start.bat
 Windows helper script to start Telegram bot, WhatsApp bot, and ngrok in separate command windows.
 
-### dzukku_data.json
+### nourishbot_data.json
 Legacy/static restaurant JSON sample data. Not the primary source used by runtime bot flow.
 
 ## 4) Environment variables required
@@ -164,7 +164,7 @@ Create a .env file with values like:
 
 ### Menu looks wrong
 - Recheck CSV columns and run database_setup.py again.
-- Confirm menu table contains updated rows in database/dzukku.db.
+- Confirm menu table contains updated rows in database/nourishbot.db.
 
 ## 8) Suggested next improvements
 

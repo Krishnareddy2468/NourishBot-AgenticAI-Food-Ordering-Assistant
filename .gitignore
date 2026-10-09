@@ -81,3 +81,8 @@ coverage.xml
 # ── Misc ────────────────────────────────────────────────────────────────────
 *.bak
 *.tmp
+
+# ── Brochures (kept local, not pushed) ───────────────────────────────────────
+docs/*BROCHURE*.doc
+docs/*BROCHURE*.html
+docs/*BROCHURE*.pdf

@@ -1,5 +1,5 @@
 """
-Real-time event publishing for Dzukku vNext.
+Real-time event publishing for NourishBot vNext.
 
 Publishes events to the WebSocket/SSE manager so connected clients
 (KDS, waiter view, admin dashboard) receive live updates.
