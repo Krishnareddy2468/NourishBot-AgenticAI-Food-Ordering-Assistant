@@ -1,8 +1,74 @@
-# NourishBot V2.0 — Product Upgrade and Implementation Plan
+hgit add 
 
-**Product:** NourishBot — Your AI Meal Planning & Scheduling Companion  
-**Plan status:** Approved for phased development  
-**Created:** 2026-10-15  
+
+git add 
+  README.md 
+  backend/.env.example 
+  backend/alembic/versions/0005_enable_pgvector.py 
+  backend/alembic/versions/0010_add_website_auth.py 
+  backend/app/api/main.py 
+  backend/app/api/routes/auth.py 
+  backend/app/api/routes/deliveries.py 
+  backend/app/api/routes/invoices.py 
+  backend/app/api/routes/menu.py 
+  backend/app/api/routes/orders.py 
+  backend/app/api/routes/payments.py 
+  backend/app/api/routes/reservations.py 
+  backend/app/api/routes/staff.py 
+  backend/app/api/routes/tables.py 
+  backend/app/auth/deps.py 
+  backend/app/auth/jwt.py 
+  backend/app/core/config.py 
+  backend/app/db/models/__init__.py 
+  backend/app/db/models/core.py 
+  backend/requirements.txt 
+  backend/tests/unit/test_auth_security.py 
+  frontend/app/workspace/page.jsx 
+  frontend/components/pages/LoginPage.jsx 
+  frontend/components/shared/RoleSelector.jsx 
+  frontend/context/AuthContext.jsx 
+  frontend/services/platformApi.js
+
+  README.md 
+
+
+gc
+
+  backend/.env.example 
+
+
+
+  bdackend/alembic/versions/0005_enable_pgvector.py 
+
+
+
+  backend/alembic/versions/0010_add_website_auth.py 
+  backend/app/api/main.py 
+  backend/app/api/routes/auth.py 
+  backend/app/api/routes/deliveries.py 
+  backend/app/api/routes/invoices.py 
+  backend/app/api/routes/menu.py 
+  backend/app/api/routes/orders.py 
+  backend/app/api/routes/payments.py 
+  backend/app/api/routes/reservations.py 
+  backend/app/api/routes/staff.py 
+  backend/app/api/routes/tables.py 
+  backend/app/auth/deps.py 
+  backend/app/auth/jwt.py 
+  backend/app/core/config.py 
+  backend/app/db/models/__init__.py 
+  backend/app/db/models/core.py 
+  backend/requirements.txt 
+  backend/tests/unit/test_auth_security.py 
+  frontend/app/workspace/page.jsx 
+  frontend/components/pages/LoginPage.jsx 
+  frontend/components/shared/RoleSelector.jsx 
+  frontend/context/AuthContext.jsx 
+  frontend/services/platformApi.js# NourishBot V2.0 — Product Upgrade and Implementation Plan
+
+**Product:** NourishBot — Your AI Meal Planning & Scheduling Companion
+**Plan status:** Approved for phased development
+**Created:** 2026-10-15
 **Release posture:** Not ready for public transactional use until the Phase 0 release gate passes
 
 ## 1. Product Direction
@@ -67,25 +133,25 @@ The project already follows a valuable safety principle: the LLM proposes action
 
 ### 3.1 Existing capabilities
 
-| Capability | Status | Notes |
-|---|---|---|
-| Scheduled in-house orders | Partial | Orders persist as `SCHEDULED` and activate later |
-| Telegram ordering | Implemented | Main conversational channel |
-| WhatsApp ordering | Partial | Signed webhook and duplicate-message protection exist |
-| Meal periods | Partial | Conversational concept, not a structured meal-plan domain |
-| Dietary preferences | Partial | Preference fields exist but lack complete management APIs |
-| Home delivery | Partial | Address and delivery objects exist |
-| Pickup and drive-through | Partial | Order types and route discovery exist |
-| Google Maps discovery | Implemented for discovery | Correctly documented as read-only discovery |
-| Swiggy/Zomato integration | Experimental | MCP connections exist; provider capabilities are unverified |
-| Explicit confirmation | Unsafe | Prompt instruction exists, deterministic proof does not |
-| Staff dashboard | Implemented | Orders, kitchen, menu, team, deliveries, basic analytics |
-| Customer dashboard | Missing | No planner/calendar/templates/budgets/routines |
-| Recurring meal routines | Missing | No recurrence engine or persisted routine model |
-| Budget controls | Missing | Accumulated spend is not a budget system |
-| Consent-based memory | Missing | Preferences are learned automatically |
-| Durable provider retries | Missing | No provider attempt or reconciliation ledger |
-| Production observability | Partial | Logs/readiness exist; operational metrics and alerts do not |
+| Capability                | Status                    | Notes                                                       |
+| ------------------------- | ------------------------- | ----------------------------------------------------------- |
+| Scheduled in-house orders | Partial                   | Orders persist as `SCHEDULED` and activate later          |
+| Telegram ordering         | Implemented               | Main conversational channel                                 |
+| WhatsApp ordering         | Partial                   | Signed webhook and duplicate-message protection exist       |
+| Meal periods              | Partial                   | Conversational concept, not a structured meal-plan domain   |
+| Dietary preferences       | Partial                   | Preference fields exist but lack complete management APIs   |
+| Home delivery             | Partial                   | Address and delivery objects exist                          |
+| Pickup and drive-through  | Partial                   | Order types and route discovery exist                       |
+| Google Maps discovery     | Implemented for discovery | Correctly documented as read-only discovery                 |
+| Swiggy/Zomato integration | Experimental              | MCP connections exist; provider capabilities are unverified |
+| Explicit confirmation     | Unsafe                    | Prompt instruction exists, deterministic proof does not     |
+| Staff dashboard           | Implemented               | Orders, kitchen, menu, team, deliveries, basic analytics    |
+| Customer dashboard        | Missing                   | No planner/calendar/templates/budgets/routines              |
+| Recurring meal routines   | Missing                   | No recurrence engine or persisted routine model             |
+| Budget controls           | Missing                   | Accumulated spend is not a budget system                    |
+| Consent-based memory      | Missing                   | Preferences are learned automatically                       |
+| Durable provider retries  | Missing                   | No provider attempt or reconciliation ledger                |
+| Production observability  | Partial                   | Logs/readiness exist; operational metrics and alerts do not |
 
 ### 3.2 Release-blocking findings
 
@@ -159,31 +225,31 @@ Webhook events do not have a replay/idempotency ledger, and all events other tha
 
 ## 4. Gap Analysis
 
-| V2 requirement | Current status | Required result |
-|---|---|---|
-| Identity across Telegram, WhatsApp, and web | Partial | Verified identity linking and account ownership |
-| Consent-based memory | Missing | Consent, enable/disable, export/delete, retention |
-| Daily and weekly planner | Missing | Plans, days, meal slots, and plan items |
-| Saved meal templates | Missing | Template CRUD and conversational actions |
-| Meal modification | Partial | Persisted plan and order-draft modification |
-| Reminders | Missing | Durable reminder jobs and delivery receipts |
-| Provider Mode A: discovery | Partial | Formal capability registry and safe UI messaging |
-| Provider Mode B: handoff | Missing | Signed handoff flow with user-controlled checkout |
-| Provider Mode C: transaction | Unsafe/unverified | Verified scheduling, fulfillment, receipt, and recovery |
-| Provider capability registry | Missing | Versioned capability snapshots and health state |
-| Scheduled delivery | Partial | Desired time, provider slot, submission time, ready-by time |
-| Route-aware pickup | Partial | Eligibility verification and consented route persistence |
-| Restaurant search | Partial | Dietary, budget, route, and availability scoring |
-| Explicit confirmation | Unsafe | Snapshot-bound deterministic confirmation |
-| Cancellation/rescheduling | Partial | Provider-aware workflows and audit events |
-| Reliable retry behavior | Missing | Leases, backoff, reconciliation, and dead-letter state |
-| Uncertain outcomes | Missing | `UNKNOWN` state and status-before-retry |
-| Customer dashboard | Missing | Calendar, history, templates, preferences, spending |
-| Budget controls | Missing | Periods, limits, estimates, and actual spending ledger |
-| Recurring routines | Missing | Recurrence, pause, skip, edit, and materialized schedules |
-| Analytics | Partial | Correct time semantics and operational/business metrics |
-| Security and privacy | Incomplete | Tenant isolation, tracking privacy, consent, audit trail |
-| Comprehensive tests | Missing | Unit, integration, E2E, security, provider contract tests |
+| V2 requirement                              | Current status    | Required result                                             |
+| ------------------------------------------- | ----------------- | ----------------------------------------------------------- |
+| Identity across Telegram, WhatsApp, and web | Partial           | Verified identity linking and account ownership             |
+| Consent-based memory                        | Missing           | Consent, enable/disable, export/delete, retention           |
+| Daily and weekly planner                    | Missing           | Plans, days, meal slots, and plan items                     |
+| Saved meal templates                        | Missing           | Template CRUD and conversational actions                    |
+| Meal modification                           | Partial           | Persisted plan and order-draft modification                 |
+| Reminders                                   | Missing           | Durable reminder jobs and delivery receipts                 |
+| Provider Mode A: discovery                  | Partial           | Formal capability registry and safe UI messaging            |
+| Provider Mode B: handoff                    | Missing           | Signed handoff flow with user-controlled checkout           |
+| Provider Mode C: transaction                | Unsafe/unverified | Verified scheduling, fulfillment, receipt, and recovery     |
+| Provider capability registry                | Missing           | Versioned capability snapshots and health state             |
+| Scheduled delivery                          | Partial           | Desired time, provider slot, submission time, ready-by time |
+| Route-aware pickup                          | Partial           | Eligibility verification and consented route persistence    |
+| Restaurant search                           | Partial           | Dietary, budget, route, and availability scoring            |
+| Explicit confirmation                       | Unsafe            | Snapshot-bound deterministic confirmation                   |
+| Cancellation/rescheduling                   | Partial           | Provider-aware workflows and audit events                   |
+| Reliable retry behavior                     | Missing           | Leases, backoff, reconciliation, and dead-letter state      |
+| Uncertain outcomes                          | Missing           | `UNKNOWN` state and status-before-retry                   |
+| Customer dashboard                          | Missing           | Calendar, history, templates, preferences, spending         |
+| Budget controls                             | Missing           | Periods, limits, estimates, and actual spending ledger      |
+| Recurring routines                          | Missing           | Recurrence, pause, skip, edit, and materialized schedules   |
+| Analytics                                   | Partial           | Correct time semantics and operational/business metrics     |
+| Security and privacy                        | Incomplete        | Tenant isolation, tracking privacy, consent, audit trail    |
+| Comprehensive tests                         | Missing           | Unit, integration, E2E, security, provider contract tests   |
 
 ## 5. Target Architecture
 
@@ -317,21 +383,21 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 ### Work
 
-- [x] Enforce tenant filters on all staff reads and writes.
-- [x] Centralize authenticated tenant extraction and reject missing tenant scope.
-- [x] Allowlist customer-chat tools so prompt injection cannot reach staff mutations.
-- [x] Authenticate WebSocket connections and derive tenant from the HttpOnly staff session.
-- [x] Authenticate driver GPS/location updates.
-- [x] Restrict delivery status/proof actions to the assigned driver or authorized manager.
-- [x] Replace public numeric tracking with high-entropy, revocable tracking tokens.
-- [x] Redact driver phone, exact location history, address, and proof data by audience.
-- [x] Add an immutable confirmation snapshot and one-time confirmation challenge.
-- [x] Derive idempotency keys from the stable confirmation/request identifier.
-- [x] Replace false-success MCP responses with durable `UNKNOWN` outcome handling.
-- [x] Default Swiggy/Zomato to non-transactional discovery until capability verification exists.
-- [x] Enable scheduler services in all relevant deployment profiles.
-- [x] Add security regression tests before changing public behavior.
-- [x] Move staff JWTs out of browser storage into HttpOnly cookies with origin/CSRF checks.
+- [X] Enforce tenant filters on all staff reads and writes.
+- [X] Centralize authenticated tenant extraction and reject missing tenant scope.
+- [X] Allowlist customer-chat tools so prompt injection cannot reach staff mutations.
+- [X] Authenticate WebSocket connections and derive tenant from the HttpOnly staff session.
+- [X] Authenticate driver GPS/location updates.
+- [X] Restrict delivery status/proof actions to the assigned driver or authorized manager.
+- [X] Replace public numeric tracking with high-entropy, revocable tracking tokens.
+- [X] Redact driver phone, exact location history, address, and proof data by audience.
+- [X] Add an immutable confirmation snapshot and one-time confirmation challenge.
+- [X] Derive idempotency keys from the stable confirmation/request identifier.
+- [X] Replace false-success MCP responses with durable `UNKNOWN` outcome handling.
+- [X] Default Swiggy/Zomato to non-transactional discovery until capability verification exists.
+- [X] Enable scheduler services in all relevant deployment profiles.
+- [X] Add security regression tests before changing public behavior.
+- [X] Move staff JWTs out of browser storage into HttpOnly cookies with origin/CSRF checks.
 
 ### Primary files
 
@@ -355,13 +421,13 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 ### Acceptance criteria
 
-- [x] Cross-tenant reads and writes return 403 or 404.
-- [x] Anonymous location mutation is impossible.
-- [x] A client cannot subscribe to another tenant's WebSocket stream.
-- [x] A changed cart/address/schedule invalidates prior confirmation.
-- [x] Replayed confirmation creates no duplicate logical order.
-- [x] Unknown provider outcomes never produce a success message.
-- [x] Scheduled activation runs in every supported deployment profile.
+- [X] Cross-tenant reads and writes return 403 or 404.
+- [X] Anonymous location mutation is impossible.
+- [X] A client cannot subscribe to another tenant's WebSocket stream.
+- [X] A changed cart/address/schedule invalidates prior confirmation.
+- [X] Replayed confirmation creates no duplicate logical order.
+- [X] Unknown provider outcomes never produce a success message.
+- [X] Scheduled activation runs in every supported deployment profile.
 
 ### Phase 0 validation evidence
 
@@ -381,14 +447,14 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 ### Work
 
-- [x] Add unified identity records for Telegram, WhatsApp, and web.
-- [x] Add channel identity verification/linking flows.
-- [x] Extend confirmation audit records with actor/channel attribution and invalidation reasons.
-- [x] Add consent purposes for personalization, locations, reminders, and analytics.
-- [x] Add memory enable/disable, export, and deletion operations.
-- [x] Add retention rules for messages, locations, and provider responses.
-- [x] Fix preference updates to use one database transaction/session.
-- [x] Learn implicit preferences only after fulfillment or explicit feedback.
+- [X] Add unified identity records for Telegram, WhatsApp, and web.
+- [X] Add channel identity verification/linking flows.
+- [X] Extend confirmation audit records with actor/channel attribution and invalidation reasons.
+- [X] Add consent purposes for personalization, locations, reminders, and analytics.
+- [X] Add memory enable/disable, export, and deletion operations.
+- [X] Add retention rules for messages, locations, and provider responses.
+- [X] Fix preference updates to use one database transaction/session.
+- [X] Learn implicit preferences only after fulfillment or explicit feedback.
 
 ### Primary files/modules
 
@@ -401,11 +467,11 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 ### Acceptance criteria
 
-- [x] No long-term memory is created without consent.
-- [x] Users can view, disable, export, and delete stored personalization.
-- [x] One customer can securely link multiple channels.
-- [x] Confirmation audit history identifies the actor, channel, and invalidation reason.
-- [x] Cancelled/unfulfilled meals do not count as completed taste signals.
+- [X] No long-term memory is created without consent.
+- [X] Users can view, disable, export, and delete stored personalization.
+- [X] One customer can securely link multiple channels.
+- [X] Confirmation audit history identifies the actor, channel, and invalidation reason.
+- [X] Cancelled/unfulfilled meals do not count as completed taste signals.
 
 ### Phase 1 validation evidence
 
@@ -722,16 +788,15 @@ A phase is complete only when:
 
 ## 11. Decision Log
 
-| Date | Decision | Reason |
-|---|---|---|
-| 2026-10-15 | Keep the NourishBot name and food-ordering niche | Preserves the project identity while separating it from NDA-sensitive startup implementation |
-| 2026-10-15 | Position the product around planning and scheduling | Scheduled meals are the core differentiator; instant ordering is excluded |
-| 2026-10-15 | Support Telegram, WhatsApp, and a customer dashboard | Gives users conversational and visual planning interfaces |
-| 2026-10-15 | Keep home delivery and route-aware pickup/drive-through | Both fulfillment paths remain central to the product |
-| 2026-10-15 | Limit providers to NourishBot, Swiggy, and Zomato | Avoids unsupported or invented MCP provider claims |
-| 2026-10-15 | Treat Google Maps as discovery only | Maps cannot prove provider menu, price, scheduling, or checkout support |
-| 2026-10-15 | Default external providers to Mode A until verified | Prevents unsupported transactional claims and unsafe checkout |
-| 2026-10-15 | Complete the safety foundation before feature expansion | Public ordering requires tenant isolation, confirmation, idempotency, and recovery first |
-| 2026-10-15 | Deploy the Next.js frontend on Vercel, not Azure | Vercel is the selected public web platform; the project root is `frontend` |
+| Date       | Decision                                                                               | Reason                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-15 | Keep the NourishBot name and food-ordering niche                                       | Preserves the project identity while separating it from NDA-sensitive startup implementation                                        |
+| 2026-10-15 | Position the product around planning and scheduling                                    | Scheduled meals are the core differentiator; instant ordering is excluded                                                           |
+| 2026-10-15 | Support Telegram, WhatsApp, and a customer dashboard                                   | Gives users conversational and visual planning interfaces                                                                           |
+| 2026-10-15 | Keep home delivery and route-aware pickup/drive-through                                | Both fulfillment paths remain central to the product                                                                                |
+| 2026-10-15 | Limit providers to NourishBot, Swiggy, and Zomato                                      | Avoids unsupported or invented MCP provider claims                                                                                  |
+| 2026-10-15 | Treat Google Maps as discovery only                                                    | Maps cannot prove provider menu, price, scheduling, or checkout support                                                             |
+| 2026-10-15 | Default external providers to Mode A until verified                                    | Prevents unsupported transactional claims and unsafe checkout                                                                       |
+| 2026-10-15 | Complete the safety foundation before feature expansion                                | Public ordering requires tenant isolation, confirmation, idempotency, and recovery first                                            |
+| 2026-10-15 | Deploy the Next.js frontend on Vercel, not Azure                                       | Vercel is the selected public web platform; the project root is `frontend`                                                        |
 | 2026-10-15 | Keep API, worker, beat, and polling processes on an always-on runtime until refactored | The current long-running processes do not fit request-scoped Vercel Functions without webhook, cron, locking, and lifecycle changes |
-

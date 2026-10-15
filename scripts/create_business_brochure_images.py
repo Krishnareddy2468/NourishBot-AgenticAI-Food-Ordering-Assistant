@@ -195,7 +195,7 @@ def kitchen():
         for n in range(3):
             y = 595 + n * 78
             d.rounded_rectangle((x + 22, y, x + 433, y + 60), radius=14, fill="#0e0f17", outline="#272733")
-            d.text((x + 42, y + 16), f"#DZK-ORD{24+n:03d}", fill=ORANGE, font=F["xs"])
+            d.text((x + 42, y + 16), f"#NB-ORD{24+n:03d}", fill=ORANGE, font=F["xs"])
             item = ["Veg Spring Rolls", "Veg Biryani", "Butter Chicken"][n]
             d.text((x + 190, y + 16), f"1x {item}", fill=TEXT, font=F["s"])
         x += 500
