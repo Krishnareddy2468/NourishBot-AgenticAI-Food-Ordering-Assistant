@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import MenuCategory, MenuItem, MenuItemImage
-from app.auth.deps import require_manager, extract_token, tenant_id
+from app.auth.deps import require_manager, require_staff, tenant_id
 from app.core.storage import upload_image
 
 router = APIRouter(prefix="/api/v1/menu", tags=["menu"])
@@ -52,7 +52,7 @@ class AvailabilityUpdate(BaseModel):
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/items")
-async def list_menu_items(user=Depends(extract_token)):
+async def list_menu_items(user=Depends(require_staff)):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(

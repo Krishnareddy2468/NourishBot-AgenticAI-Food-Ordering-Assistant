@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import Order, OrderItem
-from app.auth.deps import require_role, require_kitchen, require_cashier, extract_token, tenant_id
+from app.auth.deps import require_role, require_kitchen, require_cashier, require_staff, tenant_id
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 require_order_operator = require_role("ADMIN", "MANAGER", "KITCHEN", "WAITER")
@@ -53,7 +53,7 @@ def _serialize_order(order: Order, items: list) -> dict:
 
 
 @router.get("")
-async def list_orders(limit: int = 200, status: Optional[str] = None, user=Depends(extract_token)):
+async def list_orders(limit: int = 200, status: Optional[str] = None, user=Depends(require_staff)):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         query = select(Order).where(Order.restaurant_id == rid).order_by(Order.id.desc()).limit(limit)
@@ -82,7 +82,7 @@ async def list_orders(limit: int = 200, status: Optional[str] = None, user=Depen
 
 
 @router.get("/{order_id}")
-async def get_order(order_id: int, user=Depends(extract_token)):
+async def get_order(order_id: int, user=Depends(require_staff)):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Order).where(Order.id == order_id, Order.restaurant_id == rid))

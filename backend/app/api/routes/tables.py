@@ -15,7 +15,7 @@ from app.db.models import (
     DiningTable, TableSession, TableSessionOrder,
     Order, OrderItem, MenuItem, Invoice,
 )
-from app.auth.deps import require_waiter, require_manager, extract_token, tenant_id
+from app.auth.deps import require_waiter, require_manager, require_staff, tenant_id
 
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
@@ -35,7 +35,7 @@ class UpdateTableRequest(BaseModel):
 # ── Tables ────────────────────────────────────────────────────────────────────
 
 @router.get("")
-async def list_tables(user=Depends(extract_token)):
+async def list_tables(user=Depends(require_staff)):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(DiningTable).where(DiningTable.restaurant_id == tenant_id(user)).order_by(DiningTable.id)
@@ -120,7 +120,7 @@ class OpenSessionRequest(BaseModel):
 
 
 @router.get("/sessions")
-async def list_sessions(status: Optional[str] = None, user=Depends(extract_token)):
+async def list_sessions(status: Optional[str] = None, user=Depends(require_staff)):
     async with AsyncSessionLocal() as session:
         query = select(TableSession).where(TableSession.restaurant_id == tenant_id(user))
         if status:

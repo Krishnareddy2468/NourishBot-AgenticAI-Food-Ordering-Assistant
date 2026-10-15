@@ -7,13 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.db.session import AsyncSessionLocal
 from app.db.models import Payment
 from app.payments.razorpay import create_payment_order, verify_webhook_signature
-from app.auth.deps import extract_token, tenant_id
+from app.auth.deps import require_staff, tenant_id
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 
 
 @router.post("/intents", status_code=201)
-async def create_intent(order_id: int, user=Depends(extract_token)):
+async def create_intent(order_id: int, user=Depends(require_staff)):
     """Create a Razorpay payment order (intent) for the given order."""
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:

@@ -9,13 +9,13 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models.invoices import Invoice
-from app.auth.deps import extract_token, tenant_id
+from app.auth.deps import require_staff, tenant_id
 
 router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
 
 
 @router.get("")
-async def list_invoices(limit: int = 100, user=Depends(extract_token)):
+async def list_invoices(limit: int = 100, user=Depends(require_staff)):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(

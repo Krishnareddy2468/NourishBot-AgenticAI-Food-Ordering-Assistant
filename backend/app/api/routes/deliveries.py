@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import Delivery, Driver, DeliveryLocationEvent, Order, User
-from app.auth.deps import require_manager, require_driver, extract_token, tenant_id
+from app.auth.deps import require_manager, require_driver, require_staff, tenant_id
 
 router = APIRouter(prefix="/api/v1/deliveries", tags=["deliveries"])
 
@@ -46,7 +46,7 @@ class ProofOfDeliveryRequest(BaseModel):
 # ── List active deliveries ───────────────────────────────────────────────────
 
 @router.get("")
-async def list_deliveries(status: Optional[str] = None, user=Depends(extract_token)):
+async def list_deliveries(status: Optional[str] = None, user=Depends(require_staff)):
     """List all deliveries, optionally filtered by status."""
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
@@ -105,7 +105,7 @@ async def list_deliveries(status: Optional[str] = None, user=Depends(extract_tok
 # ── List available drivers ────────────────────────────────────────────────────
 
 @router.get("/drivers")
-async def list_drivers(user=Depends(extract_token)):
+async def list_drivers(user=Depends(require_staff)):
     """List all drivers with their availability status."""
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
@@ -222,7 +222,7 @@ async def assign_driver(body: AssignDriverRequest, user=Depends(require_manager)
 # ── Delivery status update ────────────────────────────────────────────────────
 
 @router.patch("/{delivery_id}/status")
-async def update_delivery_status(delivery_id: int, body: DeliveryStatusUpdateRequest, user=Depends(extract_token)):
+async def update_delivery_status(delivery_id: int, body: DeliveryStatusUpdateRequest, user=Depends(require_staff)):
     """Update delivery status (ASSIGNED → PICKED_UP → EN_ROUTE → DELIVERED/FAILED)."""
     VALID = {"ASSIGNED", "PICKED_UP", "EN_ROUTE", "DELIVERED", "FAILED"}
     if body.status not in VALID:
@@ -377,7 +377,7 @@ async def update_location(delivery_id: int, body: LocationUpdateRequest, user=De
 # ── Delivery tracking ─────────────────────────────────────────────────────────
 
 @router.get("/{delivery_id}/track")
-async def track_delivery(delivery_id: int, user=Depends(extract_token)):
+async def track_delivery(delivery_id: int, user=Depends(require_staff)):
     """Get delivery tracking info with order details, driver info, and last known location."""
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:

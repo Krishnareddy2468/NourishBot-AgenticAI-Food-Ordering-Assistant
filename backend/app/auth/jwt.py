@@ -19,14 +19,16 @@ def create_access_token(
     restaurant_id: int,
     role: str,
     email: Optional[str] = None,
+    name: Optional[str] = None,
 ) -> str:
-    """Generate a JWT access token for a staff user."""
+    """Generate a JWT access token for a website user."""
     payload = {
         "sub": str(user_id),
         "user_id": user_id,
         "restaurant_id": restaurant_id,
         "role": role,
         "email": email,
+        "name": name,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRY_MINUTES),
         "iat": datetime.now(timezone.utc),
     }

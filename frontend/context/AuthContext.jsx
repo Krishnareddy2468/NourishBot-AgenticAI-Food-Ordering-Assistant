@@ -10,6 +10,7 @@ function normalizeUser(data) {
   if (!data) return null
   return {
     id: data.user_id ?? data.id,
+    name: data.name || '',
     email: data.email || '',
     role: data.role || '',
     restaurant_id: data.restaurant_id,

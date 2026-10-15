@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   LogOut,
   ShieldCheck,
-  Sparkles,
   UtensilsCrossed,
 } from 'lucide-react'
 
@@ -72,7 +71,7 @@ export default function RoleSelector({ onSelect }) {
 
       <section className="staff-workspace-shell">
         <div className="staff-workspace-heading">
-          <div className="staff-auth-eyebrow"><Sparkles size={14} /> Scheduled-meal coordination</div>
+          <div className="staff-auth-eyebrow">Scheduled-meal coordination</div>
           <h1>Where are you working today?</h1>
           <p>Choose a workspace. Every view stays connected to the same verified order queue.</p>
         </div>

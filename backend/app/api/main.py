@@ -138,13 +138,18 @@ async def security_headers(request: Request, call_next):
 async def csrf_origin_guard(request: Request, call_next):
     """Cookie-authenticated state changes must originate from an approved frontend."""
     customer_browser_mutation = request.url.path.startswith("/api/v1/customer/")
+    public_auth_mutation = request.url.path in {
+        "/api/v1/auth/login",
+        "/api/v1/auth/signup",
+        "/api/v1/auth/logout",
+    }
     has_cookie_identity = bool(
         request.cookies.get(settings.AUTH_COOKIE_NAME)
         or request.cookies.get(settings.CUSTOMER_IDENTITY_COOKIE_NAME)
     )
     if (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
-        and (has_cookie_identity or customer_browser_mutation)
+        and (has_cookie_identity or customer_browser_mutation or public_auth_mutation)
     ):
         origin = request.headers.get("origin", "")
         if origin not in settings.ALLOWED_ORIGINS:
@@ -159,7 +164,7 @@ async def rate_limit(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    if path == "/api/v1/auth/login":
+    if path in {"/api/v1/auth/login", "/api/v1/auth/signup"}:
         bucket, limit = "login", settings.LOGIN_RATE_LIMIT_PER_MINUTE
     elif "/webhook" in path:
         bucket, limit = "webhook", settings.WEBHOOK_RATE_LIMIT_PER_MINUTE

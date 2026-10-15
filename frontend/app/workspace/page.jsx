@@ -6,14 +6,15 @@ import { useAuth } from '../../context/AuthContext'
 import RoleSelector from '../../components/shared/RoleSelector'
 
 export default function WorkspacePage() {
-  const { isLoggedIn, authLoading } = useAuth()
+  const { isLoggedIn, authLoading, role } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     if (!authLoading && !isLoggedIn) router.replace('/login')
-  }, [authLoading, isLoggedIn, router])
+    else if (!authLoading && role === 'CUSTOMER') router.replace('/account')
+  }, [authLoading, isLoggedIn, role, router])
 
-  if (authLoading || !isLoggedIn) return null
+  if (authLoading || !isLoggedIn || role === 'CUSTOMER') return null
 
   function handleRoleSelect(role) {
     const path = role === 'ADMIN' ? '/admin' : role === 'WAITER' ? '/waiter' : '/kitchen'

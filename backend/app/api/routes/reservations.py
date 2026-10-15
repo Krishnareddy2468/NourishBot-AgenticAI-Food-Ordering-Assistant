@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.db.models.reservations import Reservation
 from app.db.models.core import Customer
-from app.auth.deps import extract_token, require_manager, tenant_id
+from app.auth.deps import require_staff, require_manager, tenant_id
 
 router = APIRouter(prefix="/api/v1/reservations", tags=["reservations"])
 
@@ -24,7 +24,7 @@ class ReservationStatusUpdate(BaseModel):
 async def list_reservations(
     status: Optional[str] = None,
     limit: int = 100,
-    user=Depends(extract_token),
+    user=Depends(require_staff),
 ):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:

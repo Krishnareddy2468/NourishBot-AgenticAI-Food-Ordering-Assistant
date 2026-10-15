@@ -136,8 +136,9 @@ Release-critical controls include:
 | WhatsApp webhook | Customer meal planning through WhatsApp Cloud API |
 | `/api/v1/customer/identity/link` | Link an opaque web identity with a one-time code created on an existing channel |
 | `/api/v1/customer/privacy*` | View consent, change consent, export memory, or permanently delete memory |
-| `/login` | Staff authentication |
-| `/workspace` | Authenticated role selection |
+| `/login` | Customer signup, password sign-in, Google OAuth, and existing staff sign-in |
+| `/account` | Non-privileged customer account home |
+| `/workspace` | Authenticated staff role selection; customer accounts redirect to `/account` |
 | `/admin` | Upcoming schedules, live operations, menu, and staff overview |
 | `/kitchen` | Activated order and item preparation queue |
 | `/waiter` | In-house pickup and drive-through collection coordination |
@@ -203,6 +204,22 @@ cd frontend
 pnpm dev
 ```
 
+### Google sign-in
+
+Create a Google OAuth 2.0 **Web application** client and register the exact callback used by
+your backend, for example `http://localhost:8000/api/v1/auth/oauth/google/callback`. Then set
+these values in `backend/.env`:
+
+```bash
+FRONTEND_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/oauth/google/callback
+```
+
+Run `cd backend && alembic upgrade head` after pulling the authentication migration. Public
+email and Google registrations receive the `CUSTOMER` role and cannot access staff APIs.
+
 Run the scheduler in separate terminals:
 
 ```bash
@@ -247,8 +264,11 @@ Copy [backend/.env.example](backend/.env.example) and configure:
 | `ENVIRONMENT` | Use `production` to enable strict startup validation |
 | `DATABASE_URL` / `DATABASE_URL_SYNC` | Async application and sync worker/migration connections |
 | `REDIS_URL` | Cache, idempotency, Celery broker, and result backend |
-| `JWT_SECRET` | Staff authentication signing secret |
-| `AUTH_COOKIE_NAME` / `AUTH_COOKIE_SAMESITE` | HttpOnly staff-session cookie settings |
+| `JWT_SECRET` | Website authentication signing secret |
+| `AUTH_COOKIE_NAME` / `AUTH_COOKIE_SAMESITE` | HttpOnly website-session cookie settings |
+| `FRONTEND_URL` | Frontend origin used after the Google OAuth callback |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google web OAuth credentials |
+| `GOOGLE_REDIRECT_URI` | Exact Google callback URL registered in Google Cloud |
 | `CUSTOMER_IDENTITY_COOKIE_NAME` | HttpOnly opaque cookie used by the linked customer privacy API |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins; no wildcard in production |
 | `CONFIRMATION_TTL_MINUTES` | Lifetime of a one-time order confirmation challenge |

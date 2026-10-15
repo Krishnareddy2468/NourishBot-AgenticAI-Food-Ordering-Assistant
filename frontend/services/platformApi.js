@@ -106,6 +106,24 @@ export async function loginApi(email, password) {
   return parseResponse(res)
 }
 
+export async function signupApi(name, email, password) {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/signup`, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify({ name, email, password }),
+  })
+  return parseResponse(res)
+}
+
+export async function getOAuthProviders() {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/oauth/providers`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export function getGoogleOAuthUrl() {
+  return `${API_BASE}/api/v1/auth/oauth/google/start`
+}
+
 export async function getCurrentUser() {
   const res = await apiFetch(`${API_BASE}/api/v1/auth/me`, { headers: buildHeaders() })
   return parseResponse(res)

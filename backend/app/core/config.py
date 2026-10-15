@@ -127,6 +127,18 @@ class Settings:
     API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
     LOGIN_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("LOGIN_RATE_LIMIT_PER_MINUTE", "10"))
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("WEBHOOK_RATE_LIMIT_PER_MINUTE", "300"))
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    GOOGLE_REDIRECT_URI: str = os.getenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://localhost:8000/api/v1/auth/oauth/google/callback",
+    ).strip()
+    OAUTH_STATE_COOKIE_NAME: str = os.getenv(
+        "OAUTH_STATE_COOKIE_NAME",
+        "nourishbot_oauth_state",
+    )
+    OAUTH_STATE_TTL_SECONDS: int = int(os.getenv("OAUTH_STATE_TTL_SECONDS", "600"))
     ALLOWED_ORIGINS: list[str] = [
         origin.strip()
         for origin in os.getenv(
@@ -139,6 +151,10 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @property
+    def google_oauth_enabled(self) -> bool:
+        return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET and self.GOOGLE_REDIRECT_URI)
 
     # ── Synthetic canteen information ──────────────────────────────────────────
     RESTAURANT_NAME:     str = "NourishBot Demo Canteen"
@@ -180,6 +196,10 @@ class Settings:
             missing.append("ALLOWED_ORIGINS(explicit production origins)")
         if self.AUTH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
             missing.append("AUTH_COOKIE_SAMESITE(lax|strict|none)")
+        if bool(self.GOOGLE_CLIENT_ID) != bool(self.GOOGLE_CLIENT_SECRET):
+            missing.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (configure both or neither)")
+        if self.OAUTH_STATE_TTL_SECONDS <= 0:
+            missing.append("OAUTH_STATE_TTL_SECONDS(positive integer)")
         if not self.CUSTOMER_IDENTITY_COOKIE_NAME:
             missing.append("CUSTOMER_IDENTITY_COOKIE_NAME")
         if self.IDENTITY_LINK_TTL_MINUTES <= 0:

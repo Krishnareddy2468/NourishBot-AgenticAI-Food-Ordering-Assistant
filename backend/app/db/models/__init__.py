@@ -13,7 +13,7 @@ Organised by domain:
   - Events: OutboxEvent
 """
 
-from app.db.models.core import Restaurant, User, Customer, Channel, Session
+from app.db.models.core import Restaurant, User, OAuthIdentity, Customer, Channel, Session
 from app.db.models.menu import (
     MenuCategory,
     MenuItem,
@@ -41,6 +41,7 @@ from app.db.models.privacy import (
 __all__ = [
     "Restaurant",
     "User",
+    "OAuthIdentity",
     "Customer",
     "Channel",
     "Session",

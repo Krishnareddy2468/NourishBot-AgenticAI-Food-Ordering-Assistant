@@ -19,7 +19,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # Local PostgreSQL installs (especially Windows/macOS) may not package
+    # pgvector. The current preference schema stores embeddings as Text, so
+    # enable the extension when available without blocking all later schema.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') THEN
+                CREATE EXTENSION IF NOT EXISTS vector;
+            END IF;
+        END
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:

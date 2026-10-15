@@ -60,6 +60,7 @@ def require_role(*allowed_roles: str):
 
 # Convenience dependencies
 require_admin = require_role("ADMIN")
+require_staff = require_role("ADMIN", "MANAGER", "CASHIER", "WAITER", "KITCHEN", "DRIVER")
 require_manager = require_role("ADMIN", "MANAGER")
 require_waiter = require_role("ADMIN", "MANAGER", "WAITER")
 require_kitchen = require_role("ADMIN", "MANAGER", "KITCHEN")

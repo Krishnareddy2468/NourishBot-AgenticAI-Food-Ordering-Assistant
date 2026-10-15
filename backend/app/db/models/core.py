@@ -29,7 +29,7 @@ class Restaurant(Base):
     menu_items = relationship("MenuItem", back_populates="restaurant", lazy="selectin")
 
 
-# ── User (staff) ──────────────────────────────────────────────────────────────
+# ── User (staff and customer website accounts) ───────────────────────────────
 
 class User(Base, RestaurantMixin):
     __tablename__ = "users"
@@ -40,12 +40,38 @@ class User(Base, RestaurantMixin):
     phone = Column(Text)
     email = Column(Text, unique=True)
     password_hash = Column(Text, nullable=False)
-    role = Column(Text, nullable=False)  # ADMIN | MANAGER | CASHIER | WAITER | KITCHEN | DRIVER
+    role = Column(Text, nullable=False)  # CUSTOMER | ADMIN | MANAGER | CASHIER | WAITER | KITCHEN | DRIVER
+    email_verified = Column(Boolean, nullable=False, server_default=text("false"))
     active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
     restaurant = relationship("Restaurant", back_populates="users")
+    oauth_identities = relationship(
+        "OAuthIdentity",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class OAuthIdentity(Base):
+    """External sign-in identity linked to one local account."""
+
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_oauth_provider_subject"),
+        UniqueConstraint("user_id", "provider", name="uq_oauth_user_provider"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(Text, nullable=False)
+    provider_subject = Column(Text, nullable=False)
+    email = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="oauth_identities")
 
 
 # ── Customer ──────────────────────────────────────────────────────────────────

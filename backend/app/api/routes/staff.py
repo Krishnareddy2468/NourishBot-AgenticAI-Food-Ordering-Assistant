@@ -10,10 +10,11 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models.core import User
-from app.auth.deps import extract_token, require_admin, tenant_id
+from app.auth.deps import require_staff, require_admin, tenant_id
 from app.api.routes.auth import hash_password
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff"])
+STAFF_ROLES = {"ADMIN", "MANAGER", "CASHIER", "WAITER", "KITCHEN", "DRIVER"}
 
 
 class StaffCreate(BaseModel):
@@ -29,12 +30,12 @@ class StaffToggle(BaseModel):
 
 
 @router.get("")
-async def list_staff(user=Depends(extract_token)):
+async def list_staff(user=Depends(require_staff)):
     rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User)
-            .where(User.restaurant_id == rid)
+            .where(User.restaurant_id == rid, User.role.in_(STAFF_ROLES))
             .order_by(User.role, User.name)
         )
         staff = result.scalars().all()
@@ -55,13 +56,16 @@ async def list_staff(user=Depends(extract_token)):
 @router.post("", status_code=201)
 async def create_staff(body: StaffCreate, user=Depends(require_admin)):
     rid = tenant_id(user)
+    role = body.role.strip().upper()
+    if role not in STAFF_ROLES:
+        raise HTTPException(422, "Invalid staff role")
     async with AsyncSessionLocal() as session:
         new_user = User(
             restaurant_id=rid,
             name=body.name,
-            email=body.email,
+            email=body.email.strip().lower(),
             phone=body.phone,
-            role=body.role,
+            role=role,
             password_hash=hash_password(body.password),
             active=True,
         )
