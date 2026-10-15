@@ -126,6 +126,8 @@ Release-critical controls include:
 - Explicit CORS origins in production
 - Central validated order, schedule, provider, and fulfillment transitions with append-only audit histories
 - Distinct cancellation, fulfillment failure, provider rejection, and expiry outcomes
+- Durable leased scheduling with restart recovery, bounded retries, reminders, and manual review
+- Replica-safe leased outbox processing with retry and dead-letter visibility
 - Readiness checks for PostgreSQL and Redis
 
 ## Application surfaces
@@ -137,6 +139,8 @@ Release-critical controls include:
 | WhatsApp webhook | Customer meal planning through WhatsApp Cloud API |
 | `/api/v1/customer/identity/link` | Link an opaque web identity with a one-time code created on an existing channel |
 | `/api/v1/customer/privacy*` | View consent, change consent, export memory, or permanently delete memory |
+| `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
+| `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
 | `/login` | Customer signup, password sign-in, Google OAuth, and existing staff sign-in |
 | `/account` | Non-privileged customer account home |
 | `/workspace` | Authenticated staff role selection; customer accounts redirect to `/account` |

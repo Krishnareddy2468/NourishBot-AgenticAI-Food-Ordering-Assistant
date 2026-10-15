@@ -32,6 +32,9 @@ from app.db.models import (
     Reservation,
     Invoice,
     OutboxEvent,
+    ScheduledJob,
+    ScheduledJobAttempt,
+    SchedulerHeartbeat,
 )
 
 __all__ = [
@@ -64,4 +67,7 @@ __all__ = [
     "Reservation",
     "Invoice",
     "OutboxEvent",
+    "ScheduledJob",
+    "ScheduledJobAttempt",
+    "SchedulerHeartbeat",
 ]

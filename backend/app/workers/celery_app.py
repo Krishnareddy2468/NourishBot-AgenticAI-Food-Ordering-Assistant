@@ -35,8 +35,8 @@ celery_app.conf.update(
 )
 
 celery_app.conf.beat_schedule = {
-    "activate-scheduled-orders-every-minute": {
-        "task": "app.workers.scheduled_order_worker.activate_due_orders",
+    "run-durable-scheduler-every-minute": {
+        "task": "app.workers.scheduled_order_worker.run_scheduler_tick",
         "schedule": 60.0,
     },
     "enforce-privacy-retention-daily": {

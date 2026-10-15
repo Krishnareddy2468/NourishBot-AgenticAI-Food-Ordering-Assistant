@@ -458,25 +458,38 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Ensure scheduled meals survive restarts and execute exactly once logically.
 
+**Implementation status:** Complete in the working tree on 2026-10-15. Migration `0012` must be applied after Phase 2 migration `0011` before updated API, worker, or Beat processes start.
+
 ### Work
 
-- [ ] Create durable scheduled-job records.
-- [ ] Add worker leases/locks and lease expiry recovery.
-- [ ] Add attempt counts, bounded exponential backoff, and `next_retry_at`.
-- [ ] Add submission deadlines and late-order policy.
-- [ ] Add reminders before confirmation and fulfillment.
-- [ ] Add failed-schedule and reschedule-required notifications.
-- [ ] Add dead-letter and manual-review queues.
-- [ ] Make outbox processing safe across multiple replicas.
-- [ ] Add scheduler health and lag metrics.
+- [X] Create durable scheduled-job records.
+- [X] Add worker leases/locks and lease expiry recovery.
+- [X] Add attempt counts, bounded exponential backoff, and `next_retry_at`.
+- [X] Add submission deadlines and late-order policy.
+- [X] Add reminders before confirmation and fulfillment.
+- [X] Add failed-schedule and reschedule-required notifications.
+- [X] Add dead-letter and manual-review queues.
+- [X] Make outbox processing safe across multiple replicas.
+- [X] Add scheduler health and lag metrics.
 
 ### Acceptance criteria
 
-- [ ] Worker restarts lose no schedules.
-- [ ] Concurrent workers do not duplicate logical execution.
-- [ ] Every failure records a structured reason and next action.
-- [ ] Jobs beyond retry limits enter manual review.
-- [ ] Reminder delivery is auditable.
+- [X] Worker restarts lose no schedules.
+- [X] Concurrent workers do not duplicate logical execution.
+- [X] Every failure records a structured reason and next action.
+- [X] Jobs beyond retry limits enter manual review.
+- [X] Reminder delivery is auditable.
+
+### Phase 3 validation evidence
+
+- Backend tests: 71 passed, including ten dedicated scheduler reliability tests.
+- Python compilation: passed with the bytecode cache redirected outside the source tree.
+- Alembic migration chain: `0012` is the single head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0011 <-> 0012`: passed.
+- Activation and reminder jobs are created atomically with a scheduled order and use unique logical keys.
+- Scheduler and outbox claims use leased `FOR UPDATE SKIP LOCKED` rows for multi-worker safety.
+- Every scheduler outcome appends an immutable attempt record; exhausted work enters the tenant-scoped manual-review queue.
+- Manager health reporting includes heartbeat freshness, scheduling lag, outbox lag, and dead-letter counts.
 
 ## Phase 4 — Provider Capability Registry and Modes
 

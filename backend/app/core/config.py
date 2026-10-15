@@ -121,6 +121,22 @@ class Settings:
     MIN_SCHEDULE_LEAD_MINUTES: int = int(os.getenv("MIN_SCHEDULE_LEAD_MINUTES", "30"))
     MAX_SCHEDULE_DAYS: int = int(os.getenv("MAX_SCHEDULE_DAYS", "14"))
     SCHEDULE_ACTIVATION_LEAD_MINUTES: int = int(os.getenv("SCHEDULE_ACTIVATION_LEAD_MINUTES", "20"))
+    SCHEDULE_CONFIRMATION_REMINDER_MINUTES: int = int(os.getenv("SCHEDULE_CONFIRMATION_REMINDER_MINUTES", "1440"))
+    SCHEDULE_FULFILLMENT_REMINDER_MINUTES: int = int(os.getenv("SCHEDULE_FULFILLMENT_REMINDER_MINUTES", "60"))
+    SCHEDULE_LATE_GRACE_MINUTES: int = int(os.getenv("SCHEDULE_LATE_GRACE_MINUTES", "10"))
+    SCHEDULE_LATE_POLICY: str = os.getenv("SCHEDULE_LATE_POLICY", "MANUAL_REVIEW").strip().upper()
+    SCHEDULE_JOB_MAX_ATTEMPTS: int = int(os.getenv("SCHEDULE_JOB_MAX_ATTEMPTS", "5"))
+    SCHEDULE_JOB_BATCH_SIZE: int = int(os.getenv("SCHEDULE_JOB_BATCH_SIZE", "50"))
+    SCHEDULE_LEASE_SECONDS: int = int(os.getenv("SCHEDULE_LEASE_SECONDS", "120"))
+    SCHEDULE_RETRY_BASE_SECONDS: int = int(os.getenv("SCHEDULE_RETRY_BASE_SECONDS", "30"))
+    SCHEDULE_RETRY_MAX_SECONDS: int = int(os.getenv("SCHEDULE_RETRY_MAX_SECONDS", "1800"))
+    SCHEDULER_HEARTBEAT_STALE_SECONDS: int = int(os.getenv("SCHEDULER_HEARTBEAT_STALE_SECONDS", "180"))
+    OUTBOX_LEASE_SECONDS: int = int(os.getenv("OUTBOX_LEASE_SECONDS", "600"))
+    OUTBOX_BATCH_SIZE: int = int(os.getenv("OUTBOX_BATCH_SIZE", "50"))
+    OUTBOX_CONCURRENCY: int = int(os.getenv("OUTBOX_CONCURRENCY", "10"))
+    OUTBOX_MAX_ATTEMPTS: int = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "8"))
+    OUTBOX_RETRY_BASE_SECONDS: int = int(os.getenv("OUTBOX_RETRY_BASE_SECONDS", "5"))
+    OUTBOX_RETRY_MAX_SECONDS: int = int(os.getenv("OUTBOX_RETRY_MAX_SECONDS", "300"))
 
     # ── FastAPI ────────────────────────────────────────────────────────────────
     PORT:          int = int(os.getenv("PORT", "8000"))
@@ -212,6 +228,20 @@ class Settings:
             self.PROVIDER_RESPONSE_RETENTION_DAYS,
         ) <= 0:
             missing.append("privacy retention periods(positive day counts)")
+        if self.SCHEDULE_LATE_POLICY not in {"MANUAL_REVIEW"}:
+            missing.append("SCHEDULE_LATE_POLICY(MANUAL_REVIEW)")
+        if min(
+            self.SCHEDULE_JOB_MAX_ATTEMPTS,
+            self.SCHEDULE_JOB_BATCH_SIZE,
+            self.SCHEDULE_LEASE_SECONDS,
+            self.SCHEDULE_RETRY_BASE_SECONDS,
+            self.SCHEDULE_RETRY_MAX_SECONDS,
+            self.OUTBOX_LEASE_SECONDS,
+            self.OUTBOX_BATCH_SIZE,
+            self.OUTBOX_CONCURRENCY,
+            self.OUTBOX_MAX_ATTEMPTS,
+        ) <= 0:
+            missing.append("scheduler/outbox limits(positive integers)")
         if self.is_production and self.MCP_TRANSACTIONAL_ENABLED:
             missing.append("MCP_TRANSACTIONAL_ENABLED(false until provider capability verification is implemented)")
         if missing:

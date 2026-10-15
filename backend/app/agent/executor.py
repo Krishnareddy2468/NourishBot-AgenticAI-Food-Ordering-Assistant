@@ -52,6 +52,7 @@ from app.domain.order_state import (
     transition_order,
     transition_schedule,
 )
+from app.domain.scheduling import add_durable_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -667,6 +668,7 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
                 source=ctx.channel_type,
                 reason_code="ORDER_CONFIRMED",
             )
+            add_durable_jobs(db, order, meal_schedule)
 
         if order_type == "DELIVERY":
             db.add(Delivery(

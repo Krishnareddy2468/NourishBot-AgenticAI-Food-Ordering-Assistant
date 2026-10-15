@@ -46,6 +46,7 @@ from app.db.models.planning import (
     OrderEvent,
     ScheduleEvent,
 )
+from app.db.models.scheduling import ScheduledJob, ScheduledJobAttempt, SchedulerHeartbeat
 
 __all__ = [
     "Restaurant",
@@ -88,4 +89,7 @@ __all__ = [
     "MealSchedule",
     "OrderEvent",
     "ScheduleEvent",
+    "ScheduledJob",
+    "ScheduledJobAttempt",
+    "SchedulerHeartbeat",
 ]

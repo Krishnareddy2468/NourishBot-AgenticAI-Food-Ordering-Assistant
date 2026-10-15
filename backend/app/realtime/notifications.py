@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import Order, Customer, Channel
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,10 @@ async def notify_customer(
     async with AsyncSessionLocal() as db:
         # Find order → customer → channel → chat_id
         order = (await db.execute(
-            select(Order).where(Order.order_ref == order_ref)
+            select(Order).where(
+                Order.order_ref == order_ref,
+                Order.restaurant_id == restaurant_id,
+            )
         )).scalar_one_or_none()
         if not order or not order.customer_id:
             logger.warning("notify_customer: order %s not found or no customer", order_ref)
@@ -171,6 +175,9 @@ async def _send_telegram_message(chat_id: int, message: str) -> bool:
     try:
         from app.bot.telegram import get_bot_instance
         bot = get_bot_instance()
+        if not bot and settings.TELEGRAM_TOKEN:
+            from telegram import Bot
+            bot = Bot(token=settings.TELEGRAM_TOKEN)
         if not bot:
             logger.warning("Telegram bot instance not available for notification")
             return False
