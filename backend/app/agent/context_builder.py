@@ -28,7 +28,6 @@ from sqlalchemy import func as sqlfunc
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import (
-    Channel,
     Session as SessionModel,
     Customer,
     Cart,
@@ -37,9 +36,10 @@ from app.db.models import (
     Order,
     ConfirmationChallenge,
 )
-from app.agent.policies import RestaurantPolicy, default_policy
+from app.agent.policies import default_policy
 from app.agent.state_machine import BotState
 from app.agent.memory_agent import get_user_memory_summary, get_top_cravings
+from app.agent.privacy_service import ensure_channel
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -153,14 +153,12 @@ async def build_context(
 
     async with AsyncSessionLocal() as db:
         # ── 1. Channel ────────────────────────────────────────────────────────
-        ch_result = await db.execute(
-            select(Channel).where(
-                Channel.restaurant_id == ctx.restaurant_id,
-                Channel.type == channel_type,
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            db,
+            restaurant_id=ctx.restaurant_id,
+            channel_type=channel_type,
+            external_id=chat_id,
         )
-        channel = ch_result.scalar_one_or_none()
 
         if channel:
             ctx.channel_id = channel.id
@@ -183,8 +181,14 @@ async def build_context(
 
                     # ── Load user memory for personalization (Phase 1) ───
                     try:
-                        ctx.memory_summary = await get_user_memory_summary(ctx.customer_id)
-                        ctx.top_cravings = await get_top_cravings(ctx.customer_id)
+                        ctx.memory_summary = await get_user_memory_summary(
+                            ctx.customer_id,
+                            ctx.restaurant_id,
+                        )
+                        ctx.top_cravings = await get_top_cravings(
+                            ctx.customer_id,
+                            ctx.restaurant_id,
+                        )
                     except Exception:
                         pass  # memory is non-critical
 
@@ -234,6 +238,7 @@ async def build_context(
 
         # ── 6. Menu snapshot ──────────────────────────────────────────────────
         ctx.menu_snapshot = await _load_menu_snapshot(db, ctx.restaurant_id)
+        await db.commit()
 
     return ctx
 
@@ -351,16 +356,12 @@ async def save_session_meta(
 ) -> None:
     """Patch specific keys inside history_json.meta without touching turns."""
     async with AsyncSessionLocal() as db:
-        ch_result = await db.execute(
-            select(Channel).where(
-                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
-                Channel.type == channel_type.upper(),
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            db,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            channel_type=channel_type,
+            external_id=chat_id,
         )
-        channel = ch_result.scalar_one_or_none()
-        if not channel:
-            return
         sess_result = await db.execute(
             select(SessionModel).where(
                 SessionModel.channel_id == channel.id,
@@ -398,22 +399,12 @@ async def save_pipeline_turn(
     """Append the completed turn to session history and save pipeline meta."""
     async with AsyncSessionLocal() as db:
         # Find or create channel
-        ch_result = await db.execute(
-            select(Channel).where(
-                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
-                Channel.type == channel_type.upper(),
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            db,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            channel_type=channel_type,
+            external_id=chat_id,
         )
-        channel = ch_result.scalar_one_or_none()
-        if not channel:
-            channel = Channel(
-                restaurant_id=settings.DEFAULT_RESTAURANT_ID,
-                type=channel_type.upper(),
-                external_id=str(chat_id),
-            )
-            db.add(channel)
-            await db.flush()
 
         # Find or create session
         sess_result = await db.execute(
@@ -439,8 +430,9 @@ async def save_pipeline_turn(
             history_data = {"meta": {}, "turns": history_data}
 
         turns = list(history_data.get("turns") or [])
-        turns.append({"role": "user", "content": user_message})
-        turns.append({"role": "assistant", "content": assistant_reply})
+        recorded_at = datetime.now(pytz.UTC).isoformat()
+        turns.append({"role": "user", "content": user_message, "at": recorded_at})
+        turns.append({"role": "assistant", "content": assistant_reply, "at": recorded_at})
         turns = turns[-16:]  # keep last 8 back-and-forth
 
         session.history_json = {

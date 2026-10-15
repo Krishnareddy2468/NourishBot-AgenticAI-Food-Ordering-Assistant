@@ -66,8 +66,17 @@ class Settings:
     JWT_SECRET:          str = os.getenv("JWT_SECRET", "nourishbot-dev-secret-change-in-production")
     JWT_EXPIRY_MINUTES:  int = int(os.getenv("JWT_EXPIRY_MINUTES", "480"))
     AUTH_COOKIE_NAME: str = os.getenv("AUTH_COOKIE_NAME", "nourishbot_session")
+    CUSTOMER_IDENTITY_COOKIE_NAME: str = os.getenv(
+        "CUSTOMER_IDENTITY_COOKIE_NAME",
+        "nourishbot_customer_identity",
+    )
     AUTH_COOKIE_SAMESITE: str = os.getenv("AUTH_COOKIE_SAMESITE", "lax").lower()
     CONFIRMATION_TTL_MINUTES: int = int(os.getenv("CONFIRMATION_TTL_MINUTES", "15"))
+    IDENTITY_LINK_TTL_MINUTES: int = int(os.getenv("IDENTITY_LINK_TTL_MINUTES", "10"))
+    CONSENT_POLICY_VERSION: str = os.getenv("CONSENT_POLICY_VERSION", "2026-10")
+    MESSAGE_RETENTION_DAYS: int = int(os.getenv("MESSAGE_RETENTION_DAYS", "30"))
+    LOCATION_RETENTION_DAYS: int = int(os.getenv("LOCATION_RETENTION_DAYS", "7"))
+    PROVIDER_RESPONSE_RETENTION_DAYS: int = int(os.getenv("PROVIDER_RESPONSE_RETENTION_DAYS", "30"))
 
     # ── External Ordering Platforms (Zomato / Swiggy) ──────────────────────────
     ZOMATO_URL: str = os.getenv(
@@ -171,6 +180,18 @@ class Settings:
             missing.append("ALLOWED_ORIGINS(explicit production origins)")
         if self.AUTH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
             missing.append("AUTH_COOKIE_SAMESITE(lax|strict|none)")
+        if not self.CUSTOMER_IDENTITY_COOKIE_NAME:
+            missing.append("CUSTOMER_IDENTITY_COOKIE_NAME")
+        if self.IDENTITY_LINK_TTL_MINUTES <= 0:
+            missing.append("IDENTITY_LINK_TTL_MINUTES(positive integer)")
+        if not self.CONSENT_POLICY_VERSION:
+            missing.append("CONSENT_POLICY_VERSION")
+        if min(
+            self.MESSAGE_RETENTION_DAYS,
+            self.LOCATION_RETENTION_DAYS,
+            self.PROVIDER_RESPONSE_RETENTION_DAYS,
+        ) <= 0:
+            missing.append("privacy retention periods(positive day counts)")
         if self.is_production and self.MCP_TRANSACTIONAL_ENABLED:
             missing.append("MCP_TRANSACTIONAL_ENABLED(false until provider capability verification is implemented)")
         if missing:

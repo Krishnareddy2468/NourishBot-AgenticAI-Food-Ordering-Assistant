@@ -28,6 +28,7 @@ from app.agent.responder import Responder
 from app.agent.state_machine import StateMachine, BotState
 from app.core.config import settings
 from app.agent.order_confirmation import is_explicit_confirmation
+from app.agent.privacy_service import handle_customer_account_command
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,14 @@ async def process_message(
     Full pipeline for one incoming Telegram or WhatsApp message.
     Returns the assistant reply string.
     """
+    account_reply = await handle_customer_account_command(
+        message,
+        chat_id=chat_id,
+        channel_type=channel_type,
+    )
+    if account_reply is not None:
+        return account_reply
+
     # ── Stage 1: Context ──────────────────────────────────────────────────────
     t0 = time.monotonic()
     ctx = await build_context(chat_id, user_name, channel_type=channel_type)

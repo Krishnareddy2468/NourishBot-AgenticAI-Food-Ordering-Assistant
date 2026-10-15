@@ -14,6 +14,7 @@ from app.agent.pipeline import process_message
 from app.core.config import settings
 from app.core.redis_client import claim_once
 from app.db.crud import get_session, save_session
+from app.agent.privacy_service import channel_has_consent, handle_customer_account_command
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/channels/whatsapp", tags=["whatsapp"])
@@ -78,6 +79,24 @@ async def _send_text(to: str, text: str) -> None:
 
 async def _process_message(wa_id: str, user_name: str, text: str) -> None:
     try:
+        account_reply = await handle_customer_account_command(
+            text,
+            chat_id=wa_id,
+            channel_type="WHATSAPP",
+        )
+        if account_reply is not None:
+            await _send_text(wa_id, account_reply)
+            return
+        if text.startswith("My current location is ") and not await channel_has_consent(
+            chat_id=wa_id,
+            channel_type="WHATSAPP",
+            purpose="LOCATION",
+        ):
+            await _send_text(
+                wa_id,
+                "Location use is disabled. Send 'enable location' first, then share the location again.",
+            )
+            return
         providers = ["NourishBot", "Swiggy", "Zomato"]
         normalized = text.strip().casefold()
         selected = next(

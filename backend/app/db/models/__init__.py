@@ -31,6 +31,12 @@ from app.db.models.invoices import Invoice
 from app.db.models.outbox import OutboxEvent
 from app.db.models.user_preferences import UserPreferences
 from app.db.models.safety import ConfirmationChallenge, ProviderAttempt
+from app.db.models.privacy import (
+    CustomerConsent,
+    IdentityLinkChallenge,
+    MemoryLearningEvent,
+    PrivacyRequest,
+)
 
 __all__ = [
     "Restaurant",
@@ -61,4 +67,8 @@ __all__ = [
     "UserPreferences",
     "ConfirmationChallenge",
     "ProviderAttempt",
+    "CustomerConsent",
+    "IdentityLinkChallenge",
+    "MemoryLearningEvent",
+    "PrivacyRequest",
 ]

@@ -92,7 +92,11 @@ async def create_challenge(db: AsyncSession, *, ctx: Any, snapshot: dict) -> Con
             ConfirmationChallenge.used_at.is_(None),
             ConfirmationChallenge.invalidated_at.is_(None),
         )
-        .values(invalidated_at=now)
+        .values(
+            invalidated_at=now,
+            invalidated_by_channel_id=ctx.channel_id,
+            invalidation_reason="SUPERSEDED",
+        )
     )
     challenge_id = secrets.token_urlsafe(24)
     challenge = ConfirmationChallenge(
@@ -104,6 +108,9 @@ async def create_challenge(db: AsyncSession, *, ctx: Any, snapshot: dict) -> Con
         snapshot_json=snapshot,
         idempotency_key=f"confirm:{challenge_id}",
         expires_at=now + timedelta(minutes=settings.CONFIRMATION_TTL_MINUTES),
+        created_by_channel_id=ctx.channel_id,
+        created_by_channel_type=ctx.channel_type,
+        confirmation_actor="CUSTOMER",
     )
     db.add(challenge)
     await db.flush()

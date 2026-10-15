@@ -44,6 +44,10 @@ from dotenv import load_dotenv
 from app.agent.pipeline import process_message as pipeline_process
 from app.core.config import settings
 from app.db.crud import get_session, reset_session, save_session, save_order_rating
+from app.agent.privacy_service import (
+    channel_has_consent,
+    handle_customer_account_command,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -188,6 +192,15 @@ async def _do_think_and_reply(
 ) -> None:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
+    account_reply = await handle_customer_account_command(
+        user_message,
+        chat_id=chat_id,
+        channel_type="TELEGRAM",
+    )
+    if account_reply is not None:
+        await update.effective_message.reply_text(account_reply, reply_markup=main_keyboard())
+        return
+
     session = await get_session(chat_id)
     platform = session.get("ordering_platform") or "NourishBot"
 
@@ -308,6 +321,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📦 /pickup — Learn how fulfillment works\n"
         "🛍️ /cart — View your cart\n"
         "🔄 /reset — Start a fresh conversation\n"
+        "🔐 /privacy — View or change memory and consent settings\n"
+        "🔗 /link whatsapp — Link this profile to another channel\n"
         "❓ /help — Show this message\n\n"
         "Or just *chat naturally* — I'll understand! 😊\n"
         "Try: _\"Find vegetarian drive-through restaurants from Madhapur to Hyderabad Airport, then schedule one for tomorrow at 1 PM IST\"_\n\n"
@@ -318,6 +333,24 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=main_keyboard(),
     )
+
+
+async def cmd_privacy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _think_and_reply(update, context, "/privacy")
+
+
+async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _think_and_reply(update, context, "/memory")
+
+
+async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    argument = " ".join(context.args or []).strip()
+    if not argument:
+        await update.message.reply_text(
+            "Use /link whatsapp, /link telegram, or send the one-time link code on this channel."
+        )
+        return
+    await _think_and_reply(update, context, f"link {argument}")
 
 
 # ── Inline callback handler ───────────────────────────────────────────────────
@@ -336,33 +369,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) == 3:
             rating = int(parts[1])
             order_ref = parts[2]
-            ok = await save_order_rating(order_ref, rating)
-            if ok:
+            order_id = await save_order_rating(
+                order_ref,
+                rating,
+                chat_id=chat_id,
+                channel_type="TELEGRAM",
+            )
+            if order_id:
                 try:
-                    from sqlalchemy import select as _sel
-                    from app.db.session import AsyncSessionLocal
-                    from app.db.models import Order as OrderModel, OrderItem
-                    from app.agent.memory_agent import update_taste_vector
-                    async with AsyncSessionLocal() as _db:
-                        _or = (await _db.execute(
-                            _sel(OrderModel).where(OrderModel.order_ref == order_ref)
-                        )).scalar_one_or_none()
-                        if _or and _or.customer_id:
-                            _ir = await _db.execute(
-                                _sel(OrderItem).where(OrderItem.order_id == _or.id)
-                            )
-                            items = [
-                                {"item_name": oi.item_name_snapshot, "qty": oi.qty,
-                                 "price_cents": oi.unit_price_cents}
-                                for oi in _ir.scalars().all()
-                            ]
-                            import asyncio as _aio
-                            _aio.create_task(update_taste_vector(_or.customer_id, items, rating=rating))
+                    from app.agent.memory_agent import learn_from_order
+                    learned = await learn_from_order(
+                        order_id,
+                        signal_type="EXPLICIT_FEEDBACK",
+                        rating=rating,
+                    )
                 except Exception as _e:
+                    learned = False
                     logger.debug("Rating feedback skipped: %s", _e)
                 stars = "⭐" * rating
+                memory_note = (
+                    " Your preferences were updated."
+                    if learned
+                    else " Your rating was saved; memory remains unchanged unless personalization is enabled."
+                )
                 await query.edit_message_text(
-                    f"Thanks! You rated this order {stars}\nYour preferences have been updated.",
+                    f"Thanks! You rated this order {stars}.{memory_note}",
                     reply_markup=None,
                 )
             else:
@@ -426,6 +457,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     location = update.message.location
+    allowed = await channel_has_consent(
+        chat_id=update.effective_chat.id,
+        channel_type="TELEGRAM",
+        purpose="LOCATION",
+    )
+    if not allowed:
+        await update.message.reply_text(
+            "Location use is disabled. Send ‘enable location’ first, then share the location again."
+        )
+        return
     await _think_and_reply(
         update,
         context,
@@ -461,6 +502,9 @@ def build_app():
     app.add_handler(CommandHandler("cart",    cmd_cart))
     app.add_handler(CommandHandler("reset",   cmd_reset))
     app.add_handler(CommandHandler("help",    cmd_help))
+    app.add_handler(CommandHandler("privacy", cmd_privacy))
+    app.add_handler(CommandHandler("memory",  cmd_memory))
+    app.add_handler(CommandHandler("link",    cmd_link))
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.LOCATION, handle_location))

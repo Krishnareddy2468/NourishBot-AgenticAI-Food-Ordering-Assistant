@@ -37,6 +37,7 @@ from app.db.models import (
 from app.agent.context_builder import ContextSnapshot, save_session_meta
 from app.agent.policies import default_policy
 from app.agent.persona import find_alternatives, validate_delivery_address
+from app.agent.privacy_service import ensure_channel
 from app.agent.order_confirmation import (
     build_snapshot,
     create_challenge,
@@ -285,7 +286,9 @@ async def _tool_update_customer(args: dict, ctx: ContextSnapshot, result: Execut
         # Find or create channel
         ch = await _get_or_create_channel(db, ctx)
 
-        # Find or create customer
+        # Find or create customer. A phone match is not proof of account
+        # ownership, so an unlinked channel must never inherit an existing
+        # customer merely because the caller supplied the same number.
         customer = None
         if ch.customer_id:
             customer = (await db.execute(
@@ -296,18 +299,34 @@ async def _tool_update_customer(args: dict, ctx: ContextSnapshot, result: Execut
             )).scalar_one_or_none()
 
         if not customer and phone:
-            customer = (await db.execute(
+            existing_customer = (await db.execute(
                 select(Customer).where(
                     Customer.restaurant_id == ctx.restaurant_id,
                     Customer.phone == phone,
                 )
             )).scalar_one_or_none()
+            if existing_customer:
+                return ActionResult(
+                    "update_customer",
+                    False,
+                    error=(
+                        "That phone is already connected to a NourishBot profile. "
+                        "Open an already linked channel, request a one-time link code, "
+                        "and redeem it here."
+                    ),
+                )
 
         if not customer:
+            if not phone:
+                return ActionResult(
+                    "update_customer",
+                    False,
+                    error="A phone number is required to create your customer profile.",
+                )
             customer = Customer(
                 restaurant_id=ctx.restaurant_id,
                 name=name or ctx.user_name,
-                phone=phone or "UNKNOWN",
+                phone=phone,
                 language_pref=language or "en",
             )
             db.add(customer)
@@ -315,7 +334,21 @@ async def _tool_update_customer(args: dict, ctx: ContextSnapshot, result: Execut
 
         # Apply updates
         if name:     customer.name = name
-        if phone:    customer.phone = phone
+        if phone and phone != customer.phone:
+            duplicate = (await db.execute(
+                select(Customer.id).where(
+                    Customer.restaurant_id == ctx.restaurant_id,
+                    Customer.phone == phone,
+                    Customer.id != customer.id,
+                )
+            )).scalar_one_or_none()
+            if duplicate:
+                return ActionResult(
+                    "update_customer",
+                    False,
+                    error="That phone belongs to another profile and cannot be merged automatically.",
+                )
+            customer.phone = phone
         if language: customer.language_pref = language
 
         # Link channel → customer
@@ -541,6 +574,8 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         }, items=validated_items)
         if snapshot_hash(current_snapshot) != challenge.snapshot_hash:
             challenge.invalidated_at = datetime.now(timezone.utc)
+            challenge.invalidated_by_channel_id = ctx.channel_id
+            challenge.invalidation_reason = "SNAPSHOT_CHANGED"
             await db.commit()
             return ActionResult(
                 "place_order",
@@ -608,6 +643,8 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
                 cart_obj.status = "CONVERTED"
 
         challenge.used_at = datetime.now(timezone.utc)
+        challenge.confirmed_by_channel_id = ctx.channel_id
+        challenge.confirmation_actor = "CUSTOMER"
 
         await db.commit()
 
@@ -617,20 +654,6 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         result.order_ref = order_ref
 
     logger.info("Order placed: %s for customer_id=%s", order_ref, ctx.customer_id)
-
-    # ── Update taste vector after order placement (Phase 1) ──────────────────
-    if ctx.customer_id:
-        try:
-            from app.agent.memory_agent import update_taste_vector
-            item_data = [
-                {"item_name": ci["item_name"], "qty": ci["qty"],
-                 "price_cents": ci["unit_price_cents"]}
-                for ci in cart
-            ]
-            import asyncio as _asyncio
-            _asyncio.create_task(update_taste_vector(ctx.customer_id, item_data))
-        except Exception as _e:
-            logger.debug("Taste vector update skipped: %s", _e)
 
     # ── Auto-chain: create Razorpay payment intent for scheduled in-house orders ──
     payment_data = {}
@@ -1812,22 +1835,12 @@ _TOOL_REGISTRY: dict[str, Any] = {
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 async def _get_or_create_channel(db: AsyncSession, ctx: ContextSnapshot) -> Channel:
-    ch = (await db.execute(
-        select(Channel).where(
-            Channel.restaurant_id == ctx.restaurant_id,
-            Channel.type == ctx.channel_type,
-            Channel.external_id == str(ctx.chat_id),
-        )
-    )).scalar_one_or_none()
-    if not ch:
-        ch = Channel(
-            restaurant_id=ctx.restaurant_id,
-            type=ctx.channel_type,
-            external_id=str(ctx.chat_id),
-        )
-        db.add(ch)
-        await db.flush()
-    return ch
+    return await ensure_channel(
+        db,
+        restaurant_id=ctx.restaurant_id,
+        channel_type=ctx.channel_type,
+        external_id=ctx.chat_id,
+    )
 
 
 async def _get_or_create_cart(db: AsyncSession, ctx: ContextSnapshot) -> Cart:

@@ -270,6 +270,22 @@ async def update_delivery_status(delivery_id: int, body: DeliveryStatusUpdateReq
 
         await session.commit()
 
+        if body.status == "DELIVERED" and delivery.order_id:
+            try:
+                from app.agent.memory_agent import learn_from_order
+                await learn_from_order(
+                    delivery.order_id,
+                    signal_type="FULFILLMENT",
+                    restaurant_id=rid,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Fulfillment learning failed for order %s: %s",
+                    delivery.order_id,
+                    exc,
+                )
+
         # Publish events
         from app.realtime.events import delivery_status_changed, order_status_changed
         from app.realtime.ws_manager import ws_manager

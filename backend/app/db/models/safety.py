@@ -22,6 +22,12 @@ class ConfirmationChallenge(Base, RestaurantMixin):
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
     invalidated_at = Column(DateTime(timezone=True), nullable=True)
+    created_by_channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    created_by_channel_type = Column(Text, nullable=True)
+    confirmed_by_channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    invalidated_by_channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
+    confirmation_actor = Column(Text, nullable=True)
+    invalidation_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

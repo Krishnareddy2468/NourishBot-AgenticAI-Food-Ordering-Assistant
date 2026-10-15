@@ -146,6 +146,18 @@ async def update_order_state(order_id: int, body: OrderStateUpdate, user=Depends
         await session.commit()
         await session.refresh(order)
 
+        if requested_state in {"DELIVERED", "COMPLETED"}:
+            try:
+                from app.agent.memory_agent import learn_from_order
+                await learn_from_order(
+                    order.id,
+                    signal_type="FULFILLMENT",
+                    restaurant_id=rid,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Fulfillment learning failed for order %s: %s", order.id, exc)
+
         from app.realtime.events import order_status_changed
         from app.realtime.ws_manager import ws_manager
         evt = order_status_changed(order_id, order_ref, requested_state, rid)

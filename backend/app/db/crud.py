@@ -28,6 +28,8 @@ from app.db.models import (
     Cart,
     CartItem,
 )
+from app.agent.privacy_service import ensure_channel
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,22 +39,13 @@ logger = logging.getLogger(__name__)
 async def _get_channel(chat_id: int) -> Optional[Channel]:
     """Find or create a channel for the given Telegram chat_id."""
     async with get_session_factory()() as session:
-        result = await session.execute(
-            select(Channel).where(
-                Channel.type == "TELEGRAM",
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            session,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            channel_type="TELEGRAM",
+            external_id=chat_id,
         )
-        channel = result.scalar_one_or_none()
-        if not channel:
-            channel = Channel(
-                restaurant_id=1,
-                type="TELEGRAM",
-                external_id=str(chat_id),
-            )
-            session.add(channel)
-            await session.commit()
-            await session.refresh(channel)
+        await session.commit()
         return channel
 
 
@@ -73,6 +66,7 @@ async def get_session(chat_id: str | int, channel_type: str = "TELEGRAM") -> dic
         # Find channel
         ch_result = await session.execute(
             select(Channel).where(
+                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
                 Channel.type == channel_type,
                 Channel.external_id == str(chat_id),
             )
@@ -94,7 +88,10 @@ async def get_session(chat_id: str | int, channel_type: str = "TELEGRAM") -> dic
 
         # Find session
         s_result = await session.execute(
-            select(SessionModel).where(SessionModel.channel_id == channel.id)
+            select(SessionModel).where(
+                SessionModel.channel_id == channel.id,
+                SessionModel.restaurant_id == channel.restaurant_id,
+            )
         )
         sess = s_result.scalar_one_or_none()
         if not sess:
@@ -115,16 +112,25 @@ async def get_session(chat_id: str | int, channel_type: str = "TELEGRAM") -> dic
         cart_data = []
         if sess.cart_id:
             cart_result = await session.execute(
-                select(Cart).where(Cart.id == sess.cart_id)
+                select(Cart).where(
+                    Cart.id == sess.cart_id,
+                    Cart.restaurant_id == channel.restaurant_id,
+                )
             )
             cart_obj = cart_result.scalar_one_or_none()
             if cart_obj:
                 items_result = await session.execute(
-                    select(CartItem).where(CartItem.cart_id == cart_obj.id)
+                    select(CartItem).where(
+                        CartItem.cart_id == cart_obj.id,
+                        CartItem.restaurant_id == channel.restaurant_id,
+                    )
                 )
                 for ci in items_result.scalars().all():
                     item_result = await session.execute(
-                        select(MenuItem).where(MenuItem.id == ci.item_id)
+                        select(MenuItem).where(
+                            MenuItem.id == ci.item_id,
+                            MenuItem.restaurant_id == channel.restaurant_id,
+                        )
                     )
                     mi = item_result.scalar_one_or_none()
                     cart_data.append({
@@ -138,7 +144,10 @@ async def get_session(chat_id: str | int, channel_type: str = "TELEGRAM") -> dic
         customer_phone = ""
         if channel.customer_id:
             cust_result = await session.execute(
-                select(Customer).where(Customer.id == channel.customer_id)
+                select(Customer).where(
+                    Customer.id == channel.customer_id,
+                    Customer.restaurant_id == channel.restaurant_id,
+                )
             )
             customer = cust_result.scalar_one_or_none()
             if customer:
@@ -178,30 +187,24 @@ async def save_session(
     channel_type = channel_type.upper()
     async with get_session_factory()() as session:
         # Find or create channel
-        ch_result = await session.execute(
-            select(Channel).where(
-                Channel.type == channel_type,
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            session,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            channel_type=channel_type,
+            external_id=chat_id,
         )
-        channel = ch_result.scalar_one_or_none()
-        if not channel:
-            channel = Channel(
-                restaurant_id=1,
-                type=channel_type,
-                external_id=str(chat_id),
-            )
-            session.add(channel)
-            await session.flush()
 
         # Find or create session
         s_result = await session.execute(
-            select(SessionModel).where(SessionModel.channel_id == channel.id)
+            select(SessionModel).where(
+                SessionModel.channel_id == channel.id,
+                SessionModel.restaurant_id == channel.restaurant_id,
+            )
         )
         sess = s_result.scalar_one_or_none()
         if not sess:
             sess = SessionModel(
-                restaurant_id=1,
+                restaurant_id=settings.DEFAULT_RESTAURANT_ID,
                 channel_id=channel.id,
                 state="new",
                 history_json=[],
@@ -233,29 +236,23 @@ async def reset_session(
 ) -> None:
     """Reset session to fresh state."""
     async with get_session_factory()() as session:
-        ch_result = await session.execute(
-            select(Channel).where(
-                Channel.type == channel_type.upper(),
-                Channel.external_id == str(chat_id),
-            )
+        channel = await ensure_channel(
+            session,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            channel_type=channel_type,
+            external_id=chat_id,
         )
-        channel = ch_result.scalar_one_or_none()
-        if not channel:
-            channel = Channel(
-                restaurant_id=1,
-                type=channel_type.upper(),
-                external_id=str(chat_id),
-            )
-            session.add(channel)
-            await session.flush()
 
         s_result = await session.execute(
-            select(SessionModel).where(SessionModel.channel_id == channel.id)
+            select(SessionModel).where(
+                SessionModel.channel_id == channel.id,
+                SessionModel.restaurant_id == channel.restaurant_id,
+            )
         )
         sess = s_result.scalar_one_or_none()
         if not sess:
             sess = SessionModel(
-                restaurant_id=1,
+                restaurant_id=settings.DEFAULT_RESTAURANT_ID,
                 channel_id=channel.id,
             )
             session.add(sess)
@@ -273,42 +270,54 @@ async def reset_session(
 
 async def get_user_preferences(customer_id: int) -> Optional[dict]:
     """Return user preferences as dict, or None if not found."""
-    from app.db.models.user_preferences import UserPreferences
+    from app.agent.memory_agent import get_user_preferences as get_consent_gated_preferences
+    prefs = await get_consent_gated_preferences(customer_id, settings.DEFAULT_RESTAURANT_ID)
+    if prefs is None:
+        return None
+    return {
+        "customer_id": prefs.customer_id,
+        "spice_level": prefs.spice_level,
+        "cuisine_weights": prefs.cuisine_weights,
+        "price_band": prefs.price_band,
+        "order_timing": prefs.order_timing,
+        "dietary_flags": prefs.dietary_flags,
+        "health_goals": prefs.health_goals,
+        "allergies": prefs.allergies,
+        "health_onboarding_done": prefs.health_onboarding_done,
+        "craving_cycles": prefs.craving_cycles,
+        "total_orders": prefs.total_orders,
+        "total_spent_cents": prefs.total_spent_cents,
+    }
+
+
+async def save_order_rating(
+    order_ref: str,
+    rating: int,
+    *,
+    chat_id: str | int,
+    channel_type: str = "TELEGRAM",
+) -> int | None:
+    """Save a rating only when the current channel owns the order; return order id."""
+    if rating < 1 or rating > 5:
+        return None
     async with get_session_factory()() as session:
-        result = await session.execute(
-            select(UserPreferences).where(UserPreferences.customer_id == customer_id)
-        )
-        prefs = result.scalar_one_or_none()
-        if prefs is None:
+        channel = (await session.execute(select(Channel).where(
+            Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
+            Channel.type == channel_type.upper(),
+            Channel.external_id == str(chat_id),
+        ))).scalar_one_or_none()
+        if not channel or not channel.customer_id:
             return None
-        return {
-            "customer_id": prefs.customer_id,
-            "spice_level": prefs.spice_level,
-            "cuisine_weights": prefs.cuisine_weights,
-            "price_band": prefs.price_band,
-            "order_timing": prefs.order_timing,
-            "dietary_flags": prefs.dietary_flags,
-            "health_goals": prefs.health_goals,
-            "allergies": prefs.allergies,
-            "health_onboarding_done": prefs.health_onboarding_done,
-            "craving_cycles": prefs.craving_cycles,
-            "total_orders": prefs.total_orders,
-            "total_spent_cents": prefs.total_spent_cents,
-        }
-
-
-async def save_order_rating(order_ref: str, rating: int) -> bool:
-    """Save a 1–5 star rating to an order. Returns True on success."""
-    async with get_session_factory()() as session:
-        result = await session.execute(
-            select(Order).where(Order.order_ref == order_ref)
-        )
-        order = result.scalar_one_or_none()
+        order = (await session.execute(select(Order).where(
+            Order.order_ref == order_ref,
+            Order.restaurant_id == channel.restaurant_id,
+            Order.customer_id == channel.customer_id,
+        ))).scalar_one_or_none()
         if order is None:
-            return False
+            return None
         order.rating = rating
         await session.commit()
-        return True
+        return order.id
 
 
 # ── Menu helpers ──────────────────────────────────────────────────────────────

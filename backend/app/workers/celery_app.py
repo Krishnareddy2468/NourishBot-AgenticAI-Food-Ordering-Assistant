@@ -17,6 +17,7 @@ celery_app = Celery(
     include=[
         "app.workers.notification_worker",
         "app.workers.scheduled_order_worker",
+        "app.workers.privacy_worker",
     ],
 )
 
@@ -37,5 +38,9 @@ celery_app.conf.beat_schedule = {
     "activate-scheduled-orders-every-minute": {
         "task": "app.workers.scheduled_order_worker.activate_due_orders",
         "schedule": 60.0,
+    },
+    "enforce-privacy-retention-daily": {
+        "task": "app.workers.privacy_worker.enforce_privacy_retention",
+        "schedule": 86400.0,
     },
 }

@@ -78,7 +78,12 @@ class Customer(Base, RestaurantMixin):
 class Channel(Base, RestaurantMixin):
     __tablename__ = "channels"
     __table_args__ = (
-        UniqueConstraint("type", "external_id", name="uq_channel_type_external"),
+        UniqueConstraint(
+            "restaurant_id",
+            "type",
+            "external_id",
+            name="uq_channel_restaurant_type_external",
+        ),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -86,6 +91,10 @@ class Channel(Base, RestaurantMixin):
     type = Column(Text, nullable=False)  # TELEGRAM | WHATSAPP | WEB
     external_id = Column(Text, nullable=False)  # chat_id / wa_id
     customer_id = Column(BigInteger, ForeignKey("customers.id"), index=True)
+    verified_at = Column(DateTime(timezone=True))
+    verification_method = Column(Text)
+    linked_at = Column(DateTime(timezone=True))
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
     customer = relationship("Customer", back_populates="channels")

@@ -137,9 +137,14 @@ async def security_headers(request: Request, call_next):
 @api.middleware("http")
 async def csrf_origin_guard(request: Request, call_next):
     """Cookie-authenticated state changes must originate from an approved frontend."""
+    customer_browser_mutation = request.url.path.startswith("/api/v1/customer/")
+    has_cookie_identity = bool(
+        request.cookies.get(settings.AUTH_COOKIE_NAME)
+        or request.cookies.get(settings.CUSTOMER_IDENTITY_COOKIE_NAME)
+    )
     if (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
-        and request.cookies.get(settings.AUTH_COOKIE_NAME)
+        and (has_cookie_identity or customer_browser_mutation)
     ):
         origin = request.headers.get("origin", "")
         if origin not in settings.ALLOWED_ORIGINS:
@@ -195,6 +200,7 @@ from app.api.routes.reservations import router as reservations_router
 from app.api.routes.staff import router as staff_router
 from app.api.routes.invoices import router as invoices_router
 from app.api.routes.whatsapp import router as whatsapp_router
+from app.api.routes.customer_privacy import router as customer_privacy_router
 
 api.include_router(auth_router)
 api.include_router(menu_router)
@@ -207,6 +213,7 @@ api.include_router(reservations_router)
 api.include_router(staff_router)
 api.include_router(invoices_router)
 api.include_router(whatsapp_router)
+api.include_router(customer_privacy_router)
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────
