@@ -1,11 +1,12 @@
 'use client'
-/** Customer-facing pickup tracking page. Accessible without staff authentication. */
+/** Customer-facing status view authorized by a high-entropy tracking token. */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, ShoppingBag, UtensilsCrossed, Loader2 } from 'lucide-react'
-import { trackDeliveryByOrder } from '../../services/platformApi'
+import { CalendarClock, CheckCircle2, Clock, ShoppingBag, Truck, UtensilsCrossed, Loader2 } from 'lucide-react'
+import { trackDeliveryByToken } from '../../services/platformApi'
 
-const STATUS_STEPS = [
+const COLLECTION_STEPS = [
+  { key: 'SCHEDULED', label: 'Meal scheduled', icon: CalendarClock },
   { key: 'CREATED', label: 'Order placed', icon: Clock },
   { key: 'ACCEPTED', label: 'Canteen confirmed', icon: CheckCircle2 },
   { key: 'PREPARING', label: 'Preparing', icon: UtensilsCrossed },
@@ -13,13 +14,23 @@ const STATUS_STEPS = [
   { key: 'DELIVERED', label: 'Collected', icon: CheckCircle2 },
 ]
 
-function getStepIndex(status) {
+const DELIVERY_STEPS = [
+  { key: 'SCHEDULED', label: 'Meal scheduled', icon: CalendarClock },
+  { key: 'CREATED', label: 'Order placed', icon: Clock },
+  { key: 'ACCEPTED', label: 'Canteen confirmed', icon: CheckCircle2 },
+  { key: 'PREPARING', label: 'Preparing', icon: UtensilsCrossed },
+  { key: 'READY', label: 'Ready for dispatch', icon: ShoppingBag },
+  { key: 'OUT_FOR_DELIVERY', label: 'Out for delivery', icon: Truck },
+  { key: 'DELIVERED', label: 'Delivered', icon: CheckCircle2 },
+]
+
+function getStepIndex(status, steps) {
   const normalized = status === 'PICKED_UP' ? 'DELIVERED' : status
-  const index = STATUS_STEPS.findIndex(step => step.key === normalized)
+  const index = steps.findIndex(step => step.key === normalized)
   return index >= 0 ? index : -1
 }
 
-export default function TrackingPage({ orderRef }) {
+export default function TrackingPage({ trackingToken }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -27,33 +38,33 @@ export default function TrackingPage({ orderRef }) {
   useEffect(() => {
     async function load() {
       try {
-        setData(await trackDeliveryByOrder(orderRef))
+        setData(await trackDeliveryByToken(trackingToken))
       } catch (err) {
-        setError(err.message || 'Failed to load pickup status')
+        setError(err.message || 'Failed to load fulfillment status')
       } finally {
         setLoading(false)
       }
     }
-    if (orderRef) load()
-  }, [orderRef])
+    if (trackingToken) load()
+  }, [trackingToken])
 
   useEffect(() => {
     const id = setInterval(async () => {
-      if (!orderRef) return
+      if (!trackingToken) return
       try {
-        setData(await trackDeliveryByOrder(orderRef))
+        setData(await trackDeliveryByToken(trackingToken))
       } catch {
         // Preserve the most recent verified snapshot during a refresh failure.
       }
     }, 15000)
     return () => clearInterval(id)
-  }, [orderRef])
+  }, [trackingToken])
 
   if (loading) {
     return (
       <main className="tracking-state">
         <Loader2 className="spin" size={32} />
-        <p>Checking your pickup status…</p>
+        <p>Checking your scheduled meal status…</p>
       </main>
     )
   }
@@ -68,26 +79,45 @@ export default function TrackingPage({ orderRef }) {
   }
 
   const legacyDeliveryStatus = data?.delivery?.status
-  const currentStep = getStepIndex(data?.order_status || legacyDeliveryStatus)
+  const isHomeDelivery = data?.order_type === 'DELIVERY'
+  const statusSteps = isHomeDelivery ? DELIVERY_STEPS : COLLECTION_STEPS
+  const currentStep = getStepIndex(data?.order_status || legacyDeliveryStatus, statusSteps)
+  const scheduledLabel = data?.scheduled_for
+    ? new Date(data.scheduled_for).toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Kolkata',
+      })
+    : null
 
   return (
     <main className="pickup-tracking">
       <header className="pickup-tracking-header">
         <span className="tracking-logo"><UtensilsCrossed size={20} /> NourishBot</span>
-        <h1>Your meal is moving through the canteen</h1>
-        <p>Order <strong>#{orderRef}</strong> · Show this reference at collection.</p>
+        <h1>{currentStep === 0 ? 'Your meal is scheduled' : isHomeDelivery ? 'Your meal is being prepared for delivery' : 'Your meal is moving through preparation'}</h1>
+        <p>
+          Order <strong>#{data?.order_ref || 'Scheduled meal'}</strong>
+          {scheduledLabel
+            ? ` · Scheduled for ${scheduledLabel}`
+            : isHomeDelivery
+              ? ' · Keep this reference for delivery tracking.'
+              : ' · Show this reference at collection.'}
+        </p>
       </header>
 
       <section className="pickup-progress" aria-label="Order progress">
-        {STATUS_STEPS.map((step, index) => {
+        {statusSteps.map((step, index) => {
           const Icon = step.icon
           const completed = index <= currentStep
           const current = index === currentStep
+          const label = step.key === 'READY' && data?.order_type === 'DRIVE_THRU'
+            ? 'Ready at drive-through'
+            : step.label
           return (
             <div className={`pickup-step ${completed ? 'completed' : ''} ${current ? 'current' : ''}`} key={step.key}>
               <span className="pickup-step-icon"><Icon size={16} /></span>
               <div>
-                <strong>{step.label}</strong>
+                <strong>{label}</strong>
                 {current && <small>This is the latest verified update.</small>}
               </div>
               {completed && <CheckCircle2 className="pickup-step-check" size={18} />}
@@ -97,10 +127,18 @@ export default function TrackingPage({ orderRef }) {
       </section>
 
       <aside className="pickup-note">
-        <ShoppingBag size={20} />
+        {isHomeDelivery ? <Truck size={20} /> : <ShoppingBag size={20} />}
         <div>
-          <strong>Pickup only</strong>
-          <p>NourishBot will not request a driver or delivery address for this demo order.</p>
+          <strong>{data?.provider || 'NourishBot'} fulfillment</strong>
+          <p>
+            {data?.provider && data.provider !== 'NOURISHBOT'
+              ? 'The connected provider controls fulfillment and sends its verified updates.'
+              : isHomeDelivery
+                ? 'Your meal is prepared near the selected time, assigned to a driver, and tracked through delivery.'
+                : data?.order_type === 'DRIVE_THRU'
+                ? 'Your in-house meal is prepared near the selected time and handed over at the drive-through lane.'
+                : 'Your in-house meal is prepared near the selected time and collected at pickup.'}
+          </p>
         </div>
       </aside>
 

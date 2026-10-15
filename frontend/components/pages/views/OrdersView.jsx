@@ -4,10 +4,11 @@ import { toast } from 'react-hot-toast'
 import { Search } from 'lucide-react'
 import { updateBackendOrderState, mapUiStateToBackend } from '../../../services/platformApi'
 
-const STATUS_OPTIONS = ['Pending', 'Accepted', 'Preparing', 'Ready', 'Delivered', 'Cancelled']
+const STATUS_OPTIONS = ['Scheduled', 'Pending', 'Accepted', 'Preparing', 'Ready', 'Out for delivery', 'Delivered', 'Cancelled']
 const STATUS_COLORS = {
+  Scheduled: '#0F766E',
   Pending: '#F59E0B', Accepted: '#3B82F6', Preparing: '#8B5CF6',
-  Ready: '#1A936F', Delivered: '#22C55E', Cancelled: '#EF4444',
+  Ready: '#1A936F', 'Out for delivery': '#F97316', Delivered: '#22C55E', Cancelled: '#EF4444',
 }
 
 export default function OrdersView({ orders, upsertOrder, globalSearch }) {
@@ -34,6 +35,16 @@ export default function OrdersView({ orders, upsertOrder, globalSearch }) {
     } catch (err) {
       toast.error(err.message || 'Failed to update')
     }
+  }
+
+  function allowedOptions(order) {
+    if (order.status === 'Scheduled') return ['Scheduled', 'Cancelled']
+    if (order.status === 'Pending') return ['Pending', 'Accepted', 'Preparing', 'Cancelled']
+    if (order.status === 'Accepted') return ['Accepted', 'Preparing', 'Cancelled']
+    if (order.status === 'Preparing') return ['Preparing', 'Ready', 'Cancelled']
+    if (order.status === 'Ready') return order.orderType === 'DELIVERY' ? ['Ready'] : ['Ready', 'Delivered']
+    if (order.status === 'Out for delivery') return ['Out for delivery']
+    return [order.status]
   }
 
   return (
@@ -96,7 +107,7 @@ export default function OrdersView({ orders, upsertOrder, globalSearch }) {
                     style={{ borderColor: STATUS_COLORS[o.status] || 'var(--border)' }}
                     onChange={e => handleStatusChange(o, e.target.value)}
                   >
-                    {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                    {allowedOptions(o).map(s => <option key={s}>{s}</option>)}
                   </select>
                 </td>
               </tr>

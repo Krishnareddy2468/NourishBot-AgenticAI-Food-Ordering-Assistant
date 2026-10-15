@@ -32,7 +32,7 @@ export default function KitchenPage() {
   const [stationFilter, setStationFilter] = useState('All')
   const [actionKey, setActionKey] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const { on, connected } = useWebSocket(user?.restaurant_id || 1)
+  const { on, connected } = useWebSocket()
 
   const loadOrders = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -123,7 +123,7 @@ export default function KitchenPage() {
         <div className="ops-shell-copy">
           <span className="eyebrow">Back of house</span>
           <h2><ChefHat size={20} /> Kitchen Display</h2>
-          <p>Track canteen pre-orders by item and release them to the pickup desk only when every line item is done.</p>
+          <p>Work only meals inside their activation window, then release completed items to pickup or the drive-through lane.</p>
         </div>
         <div className="ops-shell-actions">
           <div className={`ops-chip ${connected ? 'online' : 'offline'}`}>
@@ -133,7 +133,7 @@ export default function KitchenPage() {
           <button className={`icon-btn ${refreshing ? 'is-spinning' : ''}`} onClick={() => loadOrders(true)} title="Refresh">
             <RefreshCw size={15} />
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => router.push('/')}>
+          <button className="btn btn-ghost btn-sm" onClick={() => router.push('/workspace')}>
             <ArrowLeftRight size={14} /> Switch Role
           </button>
           <button className="btn btn-ghost btn-sm" onClick={logout}>

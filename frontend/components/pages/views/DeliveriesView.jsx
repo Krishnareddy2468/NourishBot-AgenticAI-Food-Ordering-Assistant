@@ -11,6 +11,7 @@ import {
 } from '../../../services/platformApi'
 
 const STATUS_COLORS = {
+  PENDING_ASSIGNMENT: '#64748B',
   ASSIGNED: '#3B82F6',
   PICKED_UP: '#8B5CF6',
   EN_ROUTE: '#F59E0B',
@@ -138,7 +139,7 @@ export default function DeliveriesView() {
 
       {/* Filters */}
       <div className="orders-filters" style={{ marginBottom: 16 }}>
-        {['all', 'ASSIGNED', 'PICKED_UP', 'EN_ROUTE', 'DELIVERED', 'FAILED'].map(s => (
+        {['all', 'PENDING_ASSIGNMENT', 'ASSIGNED', 'PICKED_UP', 'EN_ROUTE', 'DELIVERED', 'FAILED'].map(s => (
           <button
             key={s}
             className={`btn btn-sm ${filter === s ? 'btn-primary' : 'btn-ghost'}`}
@@ -250,6 +251,10 @@ export default function DeliveriesView() {
           {filtered.map(d => {
             const color = STATUS_COLORS[d.status] || '#888'
             const canAdvance = STATUS_FLOW.includes(d.status) && nextStatus(d.status)
+            const canAssignDriver = d.status === 'PENDING_ASSIGNMENT' && d.order_status === 'READY'
+            const scheduledLabel = d.scheduled_for
+              ? new Date(d.scheduled_for).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+              : null
             return (
               <div key={d.id} className="menu-item-row" style={{ padding: '12px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -279,6 +284,7 @@ export default function DeliveriesView() {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                       {d.address_json?.address || d.customer_phone || 'No address'}
+                      {scheduledLabel && <span style={{ marginLeft: 12 }}>Scheduled {scheduledLabel}</span>}
                       {d.order_total_cents > 0 && (
                         <span style={{ marginLeft: 12 }}>₹{d.order_total_cents / 100}</span>
                       )}
@@ -294,6 +300,8 @@ export default function DeliveriesView() {
                       </div>
                     ) : d.status === 'ASSIGNED' ? (
                       <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Awaiting driver</span>
+                    ) : !canAssignDriver ? (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Available after kitchen readiness</span>
                     ) : (
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <select

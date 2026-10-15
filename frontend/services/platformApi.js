@@ -5,10 +5,11 @@
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 
 function buildHeaders(extra = {}) {
-  const token = localStorage.getItem('nourishbot_token')
-  const h = { 'Content-Type': 'application/json', ...extra }
-  if (token) h['Authorization'] = `Bearer ${token}`
-  return h
+  return { 'Content-Type': 'application/json', ...extra }
+}
+
+function apiFetch(input, init = {}) {
+  return fetch(input, { ...init, credentials: 'include' })
 }
 
 function makeIdempotencyKey(prefix) {
@@ -20,9 +21,10 @@ function makeIdempotencyKey(prefix) {
 
 function mapBackendStateToUi(orderState) {
   const mapping = {
+    SCHEDULED: 'Scheduled',
     CREATED: 'Pending', AWAITING_PAYMENT: 'Pending', PAID: 'Pending',
     CONFIRMED_BY_RESTAURANT: 'Accepted', ACCEPTED: 'Accepted',
-    PREPARING: 'Preparing', READY: 'Ready', OUT_FOR_DELIVERY: 'Ready',
+    PREPARING: 'Preparing', READY: 'Ready', OUT_FOR_DELIVERY: 'Out for delivery',
     COMPLETED: 'Delivered', DELIVERED: 'Delivered', CANCELLED: 'Cancelled',
     REFUND_PENDING: 'Cancelled', REFUNDED: 'Cancelled',
   }
@@ -32,7 +34,7 @@ function mapBackendStateToUi(orderState) {
 export function mapUiStateToBackend(status) {
   const mapping = {
     Pending: 'PAID', Accepted: 'CONFIRMED_BY_RESTAURANT', Preparing: 'PREPARING',
-    Ready: 'READY', Delivered: 'COMPLETED', Cancelled: 'CANCELLED',
+    Ready: 'READY', 'Out for delivery': 'OUT_FOR_DELIVERY', Delivered: 'COMPLETED', Cancelled: 'CANCELLED',
   }
   return mapping[status] || status
 }
@@ -43,6 +45,7 @@ export function normalizeBackendOrder(order) {
   return {
     id: order.order_id || order.id,
     orderRef: order.order_ref,
+    trackingToken: order.tracking_token || '',
     backendState: order.order_state || order.status,
     customer: order.customer || 'Guest',
     phone: order.phone || '',
@@ -58,10 +61,13 @@ export function normalizeBackendOrder(order) {
     status: mapBackendStateToUi(order.order_state || order.status),
     paymentState: order.payment_state || order.payment_status || 'PENDING',
     orderType: order.order_type || 'DELIVERY',
+    provider: order.provider || 'NOURISHBOT',
+    sourceChannel: order.source_channel || '',
+    scheduledFor: order.scheduled_for || '',
     eta: '20 mins',
     createdAt: order.created_at || '',
-    dateTime: order.created_at
-      ? new Date(order.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    dateTime: (order.scheduled_for || order.created_at)
+      ? new Date(order.scheduled_for || order.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : '',
     platform: order.fulfillment_metadata?.platform || order.platform || 'POS',
     address: order.fulfillment_metadata?.address || '',
@@ -82,8 +88,6 @@ async function parseResponse(res) {
       // Ignore non-JSON error responses and preserve the fallback message.
     }
     if (res.status === 401) {
-      localStorage.removeItem('nourishbot_token')
-      localStorage.removeItem('nourishbot_user')
       window.dispatchEvent(new Event('nourishbot-auth-expired'))
     }
     throw new Error(message)
@@ -94,7 +98,7 @@ async function parseResponse(res) {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function loginApi(email, password) {
-  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ email, password }),
@@ -102,16 +106,27 @@ export async function loginApi(email, password) {
   return parseResponse(res)
 }
 
+export async function getCurrentUser() {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/me`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export async function logoutApi() {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/logout`, { method: 'POST', headers: buildHeaders() })
+  if (!res.ok && res.status !== 401) return parseResponse(res)
+  return null
+}
+
 // ── Orders ───────────────────────────────────────────────────────────────────
 
 export async function fetchBackendOrders() {
-  const res = await fetch(`${API_BASE}/api/v1/orders?limit=200`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/orders?limit=200`, { headers: buildHeaders() })
   const data = await parseResponse(res)
   return data.map(normalizeBackendOrder)
 }
 
 export async function createBackendOrder(payload) {
-  const res = await fetch(`${API_BASE}/api/v1/orders`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/orders`, {
     method: 'POST',
     headers: buildHeaders({ 'Idempotency-Key': makeIdempotencyKey('order') }),
     body: JSON.stringify(payload),
@@ -120,7 +135,7 @@ export async function createBackendOrder(payload) {
 }
 
 export async function updateBackendOrderState(orderId, backendState) {
-  const res = await fetch(`${API_BASE}/api/v1/orders/${orderId}/state`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/orders/${orderId}/state`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ order_state: backendState }),
@@ -129,7 +144,7 @@ export async function updateBackendOrderState(orderId, backendState) {
 }
 
 export async function markBackendOrderPaid(orderId) {
-  const res = await fetch(`${API_BASE}/api/v1/orders/${orderId}/mark-paid`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/orders/${orderId}/mark-paid`, {
     method: 'POST',
     headers: buildHeaders(),
   })
@@ -137,7 +152,7 @@ export async function markBackendOrderPaid(orderId) {
 }
 
 export async function updateOrderItemStatus(orderId, itemId, status) {
-  const res = await fetch(`${API_BASE}/api/v1/orders/${orderId}/items/${itemId}/status`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/orders/${orderId}/items/${itemId}/status`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ status }),
@@ -148,7 +163,7 @@ export async function updateOrderItemStatus(orderId, itemId, status) {
 // ── Payments ─────────────────────────────────────────────────────────────────
 
 export async function createBackendPaymentIntent(payload) {
-  const res = await fetch(`${API_BASE}/api/v1/payments/intents`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/payments/intents`, {
     method: 'POST',
     headers: buildHeaders({ 'Idempotency-Key': makeIdempotencyKey('payment') }),
     body: JSON.stringify(payload),
@@ -159,14 +174,14 @@ export async function createBackendPaymentIntent(payload) {
 // ── Menu ─────────────────────────────────────────────────────────────────────
 
 export async function fetchMenu() {
-  const res = await fetch(`${API_BASE}/api/v1/menu/items`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/menu/items`, { headers: buildHeaders() })
   const data = await parseResponse(res)
   // Backend returns { items: [...] }
   return Array.isArray(data) ? data : (data.items || [])
 }
 
 export async function createMenuItem(payload) {
-  const res = await fetch(`${API_BASE}/api/v1/menu/items`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/menu/items`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
@@ -175,7 +190,7 @@ export async function createMenuItem(payload) {
 }
 
 export async function patchMenuItem(id, updates) {
-  const res = await fetch(`${API_BASE}/api/v1/menu/items/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/menu/items/${id}`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify(updates),
@@ -184,7 +199,7 @@ export async function patchMenuItem(id, updates) {
 }
 
 export async function toggleMenuItemAvailability(id, available) {
-  const res = await fetch(`${API_BASE}/api/v1/menu/items/${id}/availability`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/menu/items/${id}/availability`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ available }),
@@ -193,10 +208,8 @@ export async function toggleMenuItemAvailability(id, available) {
 }
 
 export async function uploadMenuItemImage(id, formData) {
-  const token = localStorage.getItem('nourishbot_token')
-  const res = await fetch(`${API_BASE}/api/v1/menu/items/${id}/images`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/menu/items/${id}/images`, {
     method: 'POST',
-    headers: { Authorization: token ? `Bearer ${token}` : '' },
     body: formData,
   })
   return parseResponse(res)
@@ -205,12 +218,12 @@ export async function uploadMenuItemImage(id, formData) {
 // ── Tables / Sessions ────────────────────────────────────────────────────────
 
 export async function fetchTables() {
-  const res = await fetch(`${API_BASE}/api/v1/tables`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/tables`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function createTable(payload) {
-  const res = await fetch(`${API_BASE}/api/v1/tables`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
@@ -219,7 +232,7 @@ export async function createTable(payload) {
 }
 
 export async function updateTable(tableId, payload) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/${tableId}`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/${tableId}`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
@@ -228,7 +241,7 @@ export async function updateTable(tableId, payload) {
 }
 
 export async function deleteTable(tableId) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/${tableId}`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/${tableId}`, {
     method: 'DELETE',
     headers: buildHeaders(),
   })
@@ -237,7 +250,7 @@ export async function deleteTable(tableId) {
 }
 
 export async function openTableSession(tableId, guests) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ table_id: tableId, guests }),
@@ -246,12 +259,12 @@ export async function openTableSession(tableId, guests) {
 }
 
 export async function fetchSessionOrders(sessionId) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/orders`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/orders`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function addTableSessionOrder(sessionId, items) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/orders`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/orders`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ items }),
@@ -260,7 +273,7 @@ export async function addTableSessionOrder(sessionId, items) {
 }
 
 export async function fireTableSession(sessionId) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/fire`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/fire`, {
     method: 'POST',
     headers: buildHeaders(),
   })
@@ -268,7 +281,7 @@ export async function fireTableSession(sessionId) {
 }
 
 export async function generateTableInvoice(sessionId) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/invoice`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}/invoice`, {
     method: 'POST',
     headers: buildHeaders(),
   })
@@ -276,7 +289,7 @@ export async function generateTableInvoice(sessionId) {
 }
 
 export async function closeTableSession(sessionId) {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ status: 'CLOSED' }),
@@ -285,14 +298,14 @@ export async function closeTableSession(sessionId) {
 }
 
 export async function fetchActiveSessions() {
-  const res = await fetch(`${API_BASE}/api/v1/tables/sessions?status=OPEN`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/tables/sessions?status=OPEN`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 // ── Kitchen ──────────────────────────────────────────────────────────────────
 
 export async function fetchKitchenOrders() {
-  const res = await fetch(`${API_BASE}/api/v1/kitchen/orders`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/kitchen/orders`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
@@ -301,17 +314,17 @@ export async function fetchKitchenOrders() {
 export async function fetchDeliveries(status) {
   const url = new URL(`${API_BASE}/api/v1/deliveries`)
   if (status) url.searchParams.set('status', status)
-  const res = await fetch(url.toString(), { headers: buildHeaders() })
+  const res = await apiFetch(url.toString(), { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function fetchDrivers() {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/drivers`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/drivers`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function assignDriver(orderId, driverId) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/assign`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/assign`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ order_id: orderId, driver_id: driverId }),
@@ -320,7 +333,7 @@ export async function assignDriver(orderId, driverId) {
 }
 
 export async function updateDeliveryStatus(deliveryId, status) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/status`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/status`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ status }),
@@ -329,7 +342,7 @@ export async function updateDeliveryStatus(deliveryId, status) {
 }
 
 export async function submitProofOfDelivery(deliveryId, proofUrl, proofType) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/proof`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/proof`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ proof_url: proofUrl, proof_type: proofType }),
@@ -338,7 +351,7 @@ export async function submitProofOfDelivery(deliveryId, proofUrl, proofType) {
 }
 
 export async function updateDeliveryLocation(deliveryId, lat, lng) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/location`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/location`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({ lat, lng }),
@@ -347,19 +360,19 @@ export async function updateDeliveryLocation(deliveryId, lat, lng) {
 }
 
 export async function trackDelivery(deliveryId) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/track`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/${deliveryId}/track`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
-export async function trackDeliveryByOrder(orderRef) {
-  const res = await fetch(`${API_BASE}/api/v1/deliveries/orders/${orderRef}/track`, { headers: buildHeaders() })
+export async function trackDeliveryByToken(trackingToken) {
+  const res = await apiFetch(`${API_BASE}/api/v1/deliveries/public/${encodeURIComponent(trackingToken)}`)
   return parseResponse(res)
 }
 
 // ── Settlement ───────────────────────────────────────────────────────────────
 
 export async function fetchBackendSettlement(orderId) {
-  const res = await fetch(`${API_BASE}/api/v1/settlements/orders/${orderId}`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/settlements/orders/${orderId}`, { headers: buildHeaders() })
   const data = await parseResponse(res)
   return data.fee_breakdown
 }
@@ -369,12 +382,12 @@ export async function fetchBackendSettlement(orderId) {
 export async function fetchReservations(status) {
   const url = new URL(`${API_BASE}/api/v1/reservations`)
   if (status) url.searchParams.set('status', status)
-  const res = await fetch(url.toString(), { headers: buildHeaders() })
+  const res = await apiFetch(url.toString(), { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function updateReservationStatus(reservationId, status) {
-  const res = await fetch(`${API_BASE}/api/v1/reservations/${reservationId}`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/reservations/${reservationId}`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ status }),
@@ -385,12 +398,12 @@ export async function updateReservationStatus(reservationId, status) {
 // ── Staff ─────────────────────────────────────────────────────────────────────
 
 export async function fetchStaff() {
-  const res = await fetch(`${API_BASE}/api/v1/staff`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/staff`, { headers: buildHeaders() })
   return parseResponse(res)
 }
 
 export async function createStaff(payload) {
-  const res = await fetch(`${API_BASE}/api/v1/staff`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/staff`, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
@@ -399,7 +412,7 @@ export async function createStaff(payload) {
 }
 
 export async function toggleStaffActive(staffId, active) {
-  const res = await fetch(`${API_BASE}/api/v1/staff/${staffId}/active`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/staff/${staffId}/active`, {
     method: 'PATCH',
     headers: buildHeaders(),
     body: JSON.stringify({ active }),
@@ -410,6 +423,6 @@ export async function toggleStaffActive(staffId, active) {
 // ── Invoices ──────────────────────────────────────────────────────────────────
 
 export async function fetchInvoices() {
-  const res = await fetch(`${API_BASE}/api/v1/invoices`, { headers: buildHeaders() })
+  const res = await apiFetch(`${API_BASE}/api/v1/invoices`, { headers: buildHeaders() })
   return parseResponse(res)
 }

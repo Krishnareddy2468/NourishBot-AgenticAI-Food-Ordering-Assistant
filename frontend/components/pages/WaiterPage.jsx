@@ -1,7 +1,7 @@
 'use client'
 /**
  * Pickup-desk view. Existing table-session identifiers are retained internally
- * for database compatibility while the interface presents pickup zones.
+ * for database compatibility while the interface presents pickup and drive-through zones.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -50,7 +50,7 @@ export default function WaiterPage() {
   const [loading, setLoading] = useState(true)
   const [actionState, setActionState] = useState({ openTableId: null, firing: false, billing: false, refreshing: false, syncingOffline: false })
   const [isOfflineMode, setIsOfflineMode] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false)
-  const { on, connected } = useWebSocket(user?.restaurant_id || 1)
+  const { on, connected } = useWebSocket()
 
   const loadData = useCallback(async (silent = false) => {
     if (silent) {
@@ -317,7 +317,7 @@ export default function WaiterPage() {
           )}
           {hasReady && (
             <div className="ops-chip green">
-              <Bell size={13} /> {readyOrders.length} ready for pickup
+              <Bell size={13} /> {readyOrders.length} ready for collection
             </div>
           )}
           <button className={`icon-btn ${actionState.refreshing ? 'is-spinning' : ''}`} onClick={() => loadData(true)} title="Refresh">
@@ -329,7 +329,7 @@ export default function WaiterPage() {
               {actionState.syncingOffline ? 'Syncing...' : 'Sync Offline'}
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => router.push('/')}>
+          <button className="btn btn-ghost btn-sm" onClick={() => router.push('/workspace')}>
             <ArrowLeftRight size={14} /> Switch Role
           </button>
           <button className="btn btn-ghost btn-sm" onClick={logout}>
@@ -341,11 +341,11 @@ export default function WaiterPage() {
       <section className="ops-hero waiter-hero">
         <div>
           <span className="eyebrow">Pickup flow</span>
-          <h3>{activeSession ? `Pickup ${selectedTable?.table_number || selectedTable?.name} is active` : 'Choose a pickup zone to start a counter order'}</h3>
+          <h3>{activeSession ? `Collection ${selectedTable?.table_number || selectedTable?.name} is active` : 'Choose a pickup or drive-through zone'}</h3>
           <p>
             {activeSession
               ? `Meals: ${activeSession.guests}. Add items, send the ticket, and verify readiness before collection.`
-              : 'Available pickup zones can be opened instantly, while active zones retain live kitchen status.'}
+              : 'Collection zones retain live kitchen status for counter pickup and scheduled drive-through.'}
           </p>
           {isOfflineMode && (
             <div className="offline-banner">
@@ -361,7 +361,7 @@ export default function WaiterPage() {
           </article>
           <article>
             <strong>{sessions.length}</strong>
-            <span>Active pickups</span>
+            <span>Active collections</span>
           </article>
           <article>
             <strong>{offlineQueue.length || (hasReady ? readyOrders.length : inProgressItems)}</strong>
@@ -483,7 +483,7 @@ export default function WaiterPage() {
                       <div className="waiter-order-status-head">
                         <span>#{order.order_ref}</span>
                         {allDone ? (
-                          <span className="waiter-chip success"><CheckCircle2 size={13} /> Ready for pickup</span>
+                          <span className="waiter-chip success"><CheckCircle2 size={13} /> Ready for collection</span>
                         ) : (
                           <span className="waiter-chip info"><Clock size={13} /> Preparing</span>
                         )}
@@ -548,7 +548,7 @@ export default function WaiterPage() {
             <div className="waiter-billing-card">
               <div>
                 <span className="eyebrow">Complete collection</span>
-                <h4>Close pickup only after every item is ready</h4>
+                <h4>Close collection only after every item is ready</h4>
                 <p>Collection stays blocked while any submitted item is pending or cooking.</p>
               </div>
               <button className="btn btn-primary" onClick={handleCompletePickup} disabled={actionState.billing}>

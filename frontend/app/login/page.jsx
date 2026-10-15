@@ -6,13 +6,13 @@ import { useAuth } from '../../context/AuthContext'
 import LoginPage from '../../components/pages/LoginPage'
 
 export default function LoginRoute() {
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, authLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (isLoggedIn) router.replace('/')
-  }, [isLoggedIn, router])
+    if (!authLoading && isLoggedIn) router.replace('/workspace')
+  }, [authLoading, isLoggedIn, router])
 
-  if (isLoggedIn) return null
+  if (authLoading || isLoggedIn) return null
   return <LoginPage />
 }

@@ -34,7 +34,7 @@ export default function TablesView() {
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [deletingId, setDeletingId] = useState(null)
-  const { on } = useWebSocket(user?.restaurant_id || 1)
+  const { on } = useWebSocket()
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setError(null)

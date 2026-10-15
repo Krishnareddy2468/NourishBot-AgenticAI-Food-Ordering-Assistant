@@ -24,9 +24,10 @@ function StatCard({ label, value, sub, trend, color }) {
 export default function DashboardView({ orders }) {
   const stats = useMemo(() => {
     const revenue = orders.reduce((s, o) => s + (o.price || 0), 0)
+    const scheduled = orders.filter(o => o.status === 'Scheduled').length
     const pending = orders.filter(o => o.status === 'Pending').length
     const delivered = orders.filter(o => o.status === 'Delivered').length
-    return { total: orders.length, revenue, pending, delivered }
+    return { total: orders.length, revenue, scheduled, pending, delivered }
   }, [orders])
 
   // Build hourly chart data from orders
@@ -48,6 +49,7 @@ export default function DashboardView({ orders }) {
   }, [orders])
 
   const byStatus = [
+    { name: 'Scheduled', value: orders.filter(o => o.status === 'Scheduled').length, fill: '#0F766E' },
     { name: 'Pending', value: orders.filter(o => o.status === 'Pending').length, fill: '#F59E0B' },
     { name: 'Preparing', value: orders.filter(o => o.status === 'Preparing').length, fill: '#3B82F6' },
     { name: 'Ready', value: orders.filter(o => o.status === 'Ready').length, fill: '#8B5CF6' },
@@ -60,7 +62,7 @@ export default function DashboardView({ orders }) {
       <div className="stat-grid">
         <StatCard label="Total Orders" value={stats.total} color="var(--brand-primary)" />
         <StatCard label="Revenue" value={`₹${stats.revenue.toLocaleString('en-IN')}`} color="var(--brand-green)" />
-        <StatCard label="Pending" value={stats.pending} color="#F59E0B" />
+        <StatCard label="Upcoming" value={stats.scheduled} color="#0F766E" />
         <StatCard label="Delivered" value={stats.delivered} color="var(--brand-green)" />
       </div>
 

@@ -9,7 +9,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 const WS_BASE = (process.env.NEXT_PUBLIC_WS_URL || '').replace(/^http/, 'ws') ||
   (typeof window !== 'undefined' ? `ws://${window.location.hostname}:8000/api/v1/ws` : '')
 
-export function useWebSocket(restaurantId = 1) {
+export function useWebSocket() {
   const wsRef = useRef(null)
   const [connected, setConnected] = useState(false)
   const listenersRef = useRef({})
@@ -37,8 +37,7 @@ export function useWebSocket(restaurantId = 1) {
     let reconnectTimer = null
 
     function connect() {
-      const url = `${WS_BASE}?restaurant_id=${restaurantId}`
-      const ws = new WebSocket(url)
+      const ws = new WebSocket(WS_BASE, ['nourishbot'])
       wsRef.current = ws
 
       ws.onopen = () => setConnected(true)
@@ -72,7 +71,7 @@ export function useWebSocket(restaurantId = 1) {
       if (wsRef.current) wsRef.current.close()
       listenersRef.current = {}
     }
-  }, [restaurantId])
+  }, [])
 
   const send = useCallback((data) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

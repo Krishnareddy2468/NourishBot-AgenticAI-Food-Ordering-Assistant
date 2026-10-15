@@ -2,8 +2,8 @@ import './globals.css'
 import Providers from './providers'
 
 export const metadata = {
-  title: 'NourishBot — AI Canteen Pre-Order',
-  description: 'AI-assisted canteen pre-order, kitchen, and smart-pickup workspace',
+  title: 'NourishBot — AI Scheduled Meal Assistant',
+  description: 'Schedule Swiggy, Zomato, or NourishBot meals with route-aware restaurant discovery',
 }
 
 export default function RootLayout({ children }) {

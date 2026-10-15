@@ -6,14 +6,14 @@ import { useAuth } from '../../context/AuthContext'
 import AdminPage from '../../components/pages/AdminPage'
 
 export default function AdminRoute() {
-  const { isLoggedIn, role } = useAuth()
+  const { isLoggedIn, role, authLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoggedIn) router.replace('/login')
-    else if (role !== 'ADMIN') router.replace('/')
-  }, [isLoggedIn, role, router])
+    if (!authLoading && !isLoggedIn) router.replace('/login')
+    else if (role !== 'ADMIN') router.replace('/workspace')
+  }, [authLoading, isLoggedIn, role, router])
 
-  if (!isLoggedIn || role !== 'ADMIN') return null
+  if (authLoading || !isLoggedIn || role !== 'ADMIN') return null
   return <AdminPage />
 }

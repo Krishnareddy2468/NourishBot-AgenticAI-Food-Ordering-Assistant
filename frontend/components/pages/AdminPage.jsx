@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast'
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, BarChart3,
   ChefHat, Tag, Bell, RefreshCw, Zap, UtensilsCrossed, LogOut, Loader2,
-  Users, ArrowLeftRight, Truck,
+  Users, ArrowLeftRight, Truck, CalendarClock,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -21,14 +21,16 @@ import DashboardView from './views/DashboardView'
 import OrdersView from './views/OrdersView'
 import MenuView from './views/MenuView'
 import EmployeesView from './views/EmployeesView'
+import DeliveriesView from './views/DeliveriesView'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'orders', label: 'Pre-orders', icon: ClipboardList },
+  { id: 'orders', label: 'Scheduled Orders', icon: ClipboardList },
   { id: 'kitchen', label: 'Kitchen Queue', icon: ChefHat },
   { id: 'menu', label: 'Menu', icon: Tag },
   { id: 'employees', label: 'Canteen Team', icon: Users },
-  { id: 'analytics', label: 'Pickup Analytics', icon: BarChart3 },
+  { id: 'deliveries', label: 'Home Deliveries', icon: Truck },
+  { id: 'analytics', label: 'Fulfillment Analytics', icon: BarChart3 },
 ]
 
 function LiveClock() {
@@ -48,7 +50,7 @@ function AnalyticsView({ orders }) {
   }, [orders])
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ marginBottom: 16 }}>Pre-orders by Hour</h3>
+      <h3 style={{ marginBottom: 16 }}>Scheduled meals by Hour</h3>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={byHour}>
           <defs>
@@ -119,7 +121,9 @@ function KDSView({ orders, upsertOrder }) {
                     <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11 }} onClick={() => move(o, 'Ready')}>→ Ready</button>
                   )}
                   {status === 'Ready' && (
-                    <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, background: 'var(--brand-green)' }} onClick={() => move(o, 'Delivered')}>✓ Collected</button>
+                    o.orderType === 'DELIVERY'
+                      ? <button className="btn btn-ghost btn-sm" style={{ width: '100%', fontSize: 11 }} disabled>Awaiting driver dispatch</button>
+                      : <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, background: 'var(--brand-green)' }} onClick={() => move(o, 'Delivered')}>✓ Collected</button>
                   )}
                 </div>
               </div>
@@ -139,7 +143,7 @@ export default function AdminPage() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const { on, connected } = useWebSocket(user?.restaurant_id || 1)
+  const { on, connected } = useWebSocket()
 
   const loadOrders = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -168,6 +172,7 @@ export default function AdminPage() {
   }, [on, loadOrders])
 
   const pendingCount = orders.filter(o => o.status === 'Pending').length
+  const scheduledCount = orders.filter(o => o.status === 'Scheduled').length
   const preparingCount = orders.filter(o => o.status === 'Preparing' || o.status === 'Accepted').length
   const readyCount = orders.filter(o => o.status === 'Ready').length
   const revenueToday = orders.reduce((sum, order) => sum + Number(order.price || 0), 0)
@@ -179,6 +184,7 @@ export default function AdminPage() {
       case 'menu': return <MenuView />
       case 'kitchen': return <KDSView orders={orders} upsertOrder={upsertOrder} />
       case 'employees': return <EmployeesView />
+      case 'deliveries': return <DeliveriesView />
       case 'analytics': return <AnalyticsView orders={orders} />
       default: return <DashboardView orders={orders} />
     }
@@ -211,7 +217,7 @@ export default function AdminPage() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user">{user?.email}</div>
-          <button className="sidebar-item" onClick={() => router.push('/')} title="Switch role">
+          <button className="sidebar-item" onClick={() => router.push('/workspace')} title="Switch role">
             <ArrowLeftRight size={15} /> Switch Role
           </button>
           <button className="sidebar-item" onClick={logout}>
@@ -232,6 +238,10 @@ export default function AdminPage() {
               {connected ? 'Live sync on' : 'Reconnecting'}
             </div>
             <div className="ops-chip warm">
+              <CalendarClock size={13} />
+              {scheduledCount} upcoming
+            </div>
+            <div className="ops-chip warm">
               <ShoppingCart size={13} />
               {pendingCount} queued
             </div>
@@ -241,7 +251,7 @@ export default function AdminPage() {
             </div>
             <div className="ops-chip green">
               <Truck size={13} />
-              {readyCount} ready for pickup
+              {readyCount} ready for fulfillment
             </div>
             {pendingCount > 0 && <div className="live-ticker"><Zap size={12} />{pendingCount} pending</div>}
             <button className={`icon-btn ${refreshing ? 'is-spinning' : ''}`} onClick={() => loadOrders(true)} title="Refresh">
@@ -259,13 +269,17 @@ export default function AdminPage() {
               <section className="ops-hero">
                 <div>
                   <span className="eyebrow">Operations pulse</span>
-                  <h3>Operations, pickup, and kitchen share the same live pre-order queue.</h3>
-                  <p>Orders move from confirmation to preparation to customer collection with real-time updates.</p>
+                  <h3>Upcoming meals activate into one live preparation queue.</h3>
+                  <p>Scheduled orders stay out of the kitchen until their activation window, then move through preparation and fulfillment.</p>
                 </div>
                 <div className="ops-hero-stats">
                   <article>
                     <strong>{orders.length}</strong>
                     <span>Total orders</span>
+                  </article>
+                  <article>
+                    <strong>{scheduledCount}</strong>
+                    <span>Upcoming meals</span>
                   </article>
                   <article>
                     <strong>₹{revenueToday.toLocaleString('en-IN')}</strong>

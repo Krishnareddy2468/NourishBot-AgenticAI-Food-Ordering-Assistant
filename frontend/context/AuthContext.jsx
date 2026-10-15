@@ -1,60 +1,58 @@
 'use client'
 /* eslint-disable react-refresh/only-export-components */
-/**
- * Auth context — manages JWT token, user role, and login/logout.
- */
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { getCurrentUser, logoutApi } from '../services/platformApi'
 
 const AuthContext = createContext(null)
 
-const TOKEN_KEY = 'nourishbot_token'
-const USER_KEY = 'nourishbot_user'
+function normalizeUser(data) {
+  if (!data) return null
+  return {
+    id: data.user_id ?? data.id,
+    email: data.email || '',
+    role: data.role || '',
+    restaurant_id: data.restaurant_id,
+  }
+}
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return localStorage.getItem(TOKEN_KEY) || ''
-  })
-  const [user, setUser] = useState(() => {
-    if (typeof window === 'undefined') return null
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  const refreshSession = useCallback(async () => {
     try {
-      return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
-    } catch { return null }
-  })
-
-  const isLoggedIn = !!token && !!user
-  const role = user?.role || ''
-
-  const login = useCallback((tokenValue, userData) => {
-    setToken(tokenValue)
-    setUser(userData)
-    localStorage.setItem(TOKEN_KEY, tokenValue)
-    localStorage.setItem(USER_KEY, JSON.stringify(userData))
+      setUser(normalizeUser(await getCurrentUser()))
+    } catch {
+      setUser(null)
+    } finally {
+      setAuthLoading(false)
+    }
   }, [])
 
-  const logout = useCallback(() => {
-    setToken('')
+  useEffect(() => { refreshSession() }, [refreshSession])
+
+  const login = useCallback((userData) => {
+    setUser(normalizeUser(userData))
+    setAuthLoading(false)
+  }, [])
+
+  const logout = useCallback(async () => {
+    try { await logoutApi() } catch { /* clear local state even if the request fails */ }
     setUser(null)
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
   }, [])
-
-  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
 
   useEffect(() => {
-    const handleExpired = () => {
-      setToken('')
-      setUser(null)
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
-    }
+    const handleExpired = () => setUser(null)
     window.addEventListener('nourishbot-auth-expired', handleExpired)
     return () => window.removeEventListener('nourishbot-auth-expired', handleExpired)
   }, [])
 
+  const isLoggedIn = !!user
+  const role = user?.role || ''
+
   return (
-    <AuthContext.Provider value={{ token, user, role, isLoggedIn, login, logout, authHeaders }}>
+    <AuthContext.Provider value={{ user, role, isLoggedIn, authLoading, login, logout, refreshSession }}>
       {children}
     </AuthContext.Provider>
   )
