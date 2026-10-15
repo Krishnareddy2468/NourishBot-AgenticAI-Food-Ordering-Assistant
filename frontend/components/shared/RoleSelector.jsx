@@ -9,9 +9,9 @@ import { useAuth } from '../../context/AuthContext'
 import { LayoutDashboard, ChefHat, UtensilsCrossed, Sparkles, ArrowRight } from 'lucide-react'
 
 const ROLES = [
-  { id: 'ADMIN', label: 'Admin / POS', icon: LayoutDashboard, desc: 'Orders, menu, staff, payments, drivers' },
-  { id: 'WAITER', label: 'Waiter', icon: UtensilsCrossed, desc: 'Table map, sessions, fire-to-kitchen, bill' },
-  { id: 'KITCHEN', label: 'Kitchen', icon: ChefHat, desc: 'KDS v2, item-level statuses' },
+  { id: 'ADMIN', label: 'Canteen Operations', icon: LayoutDashboard, desc: 'Pre-orders, menu availability, team, and throughput' },
+  { id: 'WAITER', label: 'Pickup Desk', icon: UtensilsCrossed, desc: 'Customer handoff, active sessions, and collection status' },
+  { id: 'KITCHEN', label: 'Kitchen', icon: ChefHat, desc: 'Preparation queue and item-level progress' },
 ]
 
 export default function RoleSelector({ onSelect }) {
@@ -35,9 +35,9 @@ export default function RoleSelector({ onSelect }) {
     <div className="role-selector">
       <div className="role-selector-shell">
         <div className="role-selector-copy">
-          <span className="role-chip"><Sparkles size={14} /> Live restaurant control</span>
-          <h2>Pick the control room for this shift</h2>
-          <p>{user?.email || 'Staff'} can jump into service, kitchen, or full operations without losing sync.</p>
+          <span className="role-chip"><Sparkles size={14} /> Live canteen coordination</span>
+          <h2>Choose your workspace for this shift</h2>
+          <p>{user?.email || 'Staff'} can move between pickup, kitchen, and operations without losing sync.</p>
         </div>
       <div className="role-cards">
         {allowedRoles.map(r => {

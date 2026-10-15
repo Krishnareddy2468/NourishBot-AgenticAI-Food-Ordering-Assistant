@@ -5,12 +5,11 @@ Agentic bot using OpenAI GPT-4o via agent_orchestrator.
 Features:
   - Persistent session state per user (PostgreSQL)
   - Inline keyboards for quick actions
-  - Location sharing → nearby restaurant search hook
+  - Canteen menu, cart, order, and pickup assistance
   - Typing indicator while thinking
-  - /start, /menu, /order, /reserve, /cart, /help, /reset
+  - /start, /menu, /order, /pickup, /cart, /help, /reset
 """
 
-import asyncio
 import logging
 import os
 import sys
@@ -42,10 +41,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
-from app.agent.orchestrator import get_bot_response
-from app.agent.mcp_agent import get_mcp_response
 from app.agent.pipeline import process_message as pipeline_process
-from app.core.config import settings
 from app.db.crud import get_session, reset_session, save_session, save_order_rating
 
 load_dotenv()
@@ -66,8 +62,8 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📋 Menu"), KeyboardButton("⭐ Specials")],
-            [KeyboardButton("🛒 Order"), KeyboardButton("📅 Reserve a Table")],
-            [KeyboardButton("🛍️ My Cart"), KeyboardButton("ℹ️ Info")],
+            [KeyboardButton("🛒 Order"), KeyboardButton("🛍️ My Cart")],
+            [KeyboardButton("📦 Pickup Info"), KeyboardButton("ℹ️ Info")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Type a message or pick an option…",
@@ -82,23 +78,11 @@ def quick_actions_inline() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🛒 Place an Order",   callback_data="action_order"),
-            InlineKeyboardButton("📅 Book a Table",     callback_data="action_reserve"),
-        ],
-        [
             InlineKeyboardButton("🛍️ View My Cart",    callback_data="action_cart"),
-            InlineKeyboardButton("ℹ️ Restaurant Info", callback_data="action_info"),
         ],
-    ])
-
-
-# ── Platform selection (NourishBot / Zomato / Swiggy) ─────────────────────────────
-
-def platform_selection_inline() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍽️ Order via NourishBot Bot", callback_data="platform_nourishbot")],
         [
-            InlineKeyboardButton("🟥 Zomato",  callback_data="platform_zomato"),
-            InlineKeyboardButton("🟧 Swiggy",  callback_data="platform_swiggy"),
+            InlineKeyboardButton("📦 Pickup Info",      callback_data="action_pickup"),
+            InlineKeyboardButton("ℹ️ Canteen Info",     callback_data="action_info"),
         ],
     ])
 
@@ -118,14 +102,7 @@ def rating_inline_keyboard(order_ref: str) -> InlineKeyboardMarkup:
     ])
 
 
-PLATFORM_PROMPT_TEXT = (
-    "Where would you like to order from? 🍽️\n\n"
-    "• *NourishBot Bot* — chat & order right here\n"
-    "• *Zomato* / *Swiggy* — order via the delivery app"
-)
-
-
-# Greeting detection (used to re-show platform prompt on hello/hi/etc.)
+# Greeting detection
 GREETING_WORDS = {
     "hi", "hii", "hiii", "hello", "helo", "hey", "heyy", "yo",
     "namaste", "namaskar", "namaskaram", "vanakkam",
@@ -147,25 +124,18 @@ BUTTON_INTENT_MAP = {
     "📋 Menu":            "Show me the full menu please",
     "⭐ Specials":         "What are today's specials and deals?",
     "🛒 Order":           "I want to place an order",
-    "📅 Reserve a Table": "I want to reserve a table",
     "🛍️ My Cart":        "Show me my current cart",
-    "ℹ️ Info":            "Tell me about the restaurant — timings, location, delivery",
+    "📦 Pickup Info":     "Explain how canteen pickup works",
+    "ℹ️ Info":            "Tell me about the canteen, opening times, and pickup location",
 }
 
 CALLBACK_INTENT_MAP = {
     "action_menu":     "Show me the full menu please",
     "action_specials": "What are today's specials and deals?",
     "action_order":    "I want to place an order",
-    "action_reserve":  "I want to reserve a table",
     "action_cart":     "Show me my current cart",
-    "action_info":     "Tell me about the restaurant — timings, location, delivery",
-}
-
-
-PLATFORM_CALLBACKS = {
-    "platform_nourishbot": "NourishBot",
-    "platform_zomato": "Zomato",
-    "platform_swiggy": "Swiggy",
+    "action_pickup":   "Explain how canteen pickup works",
+    "action_info":     "Tell me about the canteen, opening times, and pickup location",
 }
 
 
@@ -198,52 +168,21 @@ async def _do_think_and_reply(
 ) -> None:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-    # Routing matrix:
-    #   ordering_platform = Zomato/Swiggy + MCP_ENABLED → mcp_agent (LangGraph + MCP)
-    #   ordering_platform = NourishBot (or unset)           → deterministic DB pipeline
-    #   external MCP unavailable                        → legacy link fallback
-    reply: str | None = None
-    sess = await get_session(chat_id)
-    platform_choice = (sess.get("ordering_platform") or "").strip()
-
-    if platform_choice in ("Zomato", "Swiggy") and settings.MCP_ENABLED:
-        try:
-            reply = await get_mcp_response(
-                user_message=user_message,
-                chat_id=chat_id,
-                user_name=user_name,
-                platform=platform_choice,
-            )
-        except Exception as e:
-            logger.error("MCP agent failed, falling back: %s", e, exc_info=True)
-            reply = None
-
-    if reply is None and platform_choice not in ("Zomato", "Swiggy"):
-        # In-house NourishBot flow: 5-stage deterministic pipeline.
-        try:
-            reply = await pipeline_process(
-                message=user_message,
-                chat_id=chat_id,
-                user_name=user_name,
-            )
-        except Exception as e:
-            logger.error("Pipeline failed, falling back to legacy: %s", e, exc_info=True)
-            reply = None
-
-    if reply is None and platform_choice in ("Zomato", "Swiggy"):
-        # Last-resort fallback for external ordering: provide links / legacy
-        # behaviour if live MCP is unavailable.
-        reply = await asyncio.get_event_loop().run_in_executor(
-            None,
-            get_bot_response,
-            user_message,
-            chat_id,
-            user_name,
+    # Active product routing: every customer message stays in the in-house
+    # canteen pipeline. The model proposes; deterministic tools validate writes.
+    try:
+        reply = await pipeline_process(
+            message=user_message,
+            chat_id=chat_id,
+            user_name=user_name,
         )
+    except Exception as e:
+        logger.error("Canteen pipeline failed: %s", e, exc_info=True)
+        reply = None
 
     if reply is None:
         reply = (
-            "Sorry, I had trouble reaching the restaurant system for a moment. "
+            "Sorry, I had trouble reaching the canteen system for a moment. "
             "Please try again — I need the live menu/cart DB before I can order safely."
         )
 
@@ -263,12 +202,12 @@ async def _do_think_and_reply(
 
 # ── /start ────────────────────────────────────────────────────────────────────
 
-async def _send_platform_prompt(update: Update):
-    """Send the NourishBot / Zomato / Swiggy platform-selection prompt."""
+async def _send_quick_actions(update: Update):
+    """Show the active canteen-ordering actions."""
     await update.effective_message.reply_text(
-        PLATFORM_PROMPT_TEXT,
+        "What would you like to do? Choose an option or describe your meal naturally.",
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=platform_selection_inline(),
+        reply_markup=quick_actions_inline(),
     )
 
 
@@ -278,19 +217,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = user.first_name if user else "there"
 
     await reset_session(chat_id, user_name)
+    await save_session(chat_id, {"ordering_platform": "NourishBot"})
 
     welcome = (
-        f"👋 Hey *{user_name}*! Welcome to *NourishBot Restaurant* 🍽️\n\n"
-        f"_Where every bite hits different ❤️_\n\n"
-        f"I'm your AI-powered restaurant assistant — I can help you with "
-        f"our menu, take your order, or book a table."
+        f"👋 Hey *{user_name}*! Welcome to *NourishBot Canteen* 🍽️\n\n"
+        f"I'm your AI pre-order assistant. I can help you explore the demo menu, "
+        f"prepare a cart, place a pickup order, and check when it is ready."
     )
     await update.message.reply_text(
         welcome,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=main_keyboard(),
     )
-    await _send_platform_prompt(update)
+    await _send_quick_actions(update)
 
 
 # ── /menu ──────────────────────────────────────────────────────────────────────
@@ -305,10 +244,10 @@ async def cmd_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _think_and_reply(update, context, "I want to place an order")
 
 
-# ── /reserve ───────────────────────────────────────────────────────────────────
+# ── /pickup ────────────────────────────────────────────────────────────────────
 
-async def cmd_reserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _think_and_reply(update, context, "I want to reserve a table")
+async def cmd_pickup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _think_and_reply(update, context, "Explain how canteen pickup works")
 
 
 # ── /cart ──────────────────────────────────────────────────────────────────────
@@ -337,12 +276,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 *What I can do for you:*\n\n"
         "📋 /menu — Browse the full menu\n"
         "🛒 /order — Place a food order\n"
-        "📅 /reserve — Book a table\n"
+        "📦 /pickup — Learn how pickup works\n"
         "🛍️ /cart — View your cart\n"
         "🔄 /reset — Start a fresh conversation\n"
         "❓ /help — Show this message\n\n"
         "Or just *chat naturally* — I'll understand! 😊\n"
-        "Try: _\"I want 2 Chicken Biryani\"_ or _\"Book a table for 4 on Friday\"_"
+        "Try: _\"I want 2 vegetable biryanis for pickup\"_"
     )
     await update.message.reply_text(
         help_text,
@@ -403,100 +342,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         return
 
-    # ── Platform selection callback ──────────────────────────────────────────
-    if query.data in PLATFORM_CALLBACKS:
-        platform = PLATFORM_CALLBACKS[query.data]
-        await save_session(chat_id, {
-            "ordering_platform": platform,
-            "history": [],
-        })
-
-        # When MCP is enabled, route Zomato/Swiggy into the LangGraph
-        # MCP agent — the user stays inside Telegram and orders through
-        # the live MCP server.
-        if platform in ("Zomato", "Swiggy") and settings.MCP_ENABLED:
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            opening = (
-                "🟥 *Connecting you to Zomato* 🍽️"
-                if platform == "Zomato"
-                else "🟧 *Connecting you to Swiggy* 🍽️"
-            )
-            await query.message.reply_text(
-                opening,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=main_keyboard(),
-            )
-            try:
-                reply = await get_mcp_response(
-                    user_message=(
-                        "Hi! I just opened the chat — please greet me and ask "
-                        "what cuisine I'm in the mood for, or for my delivery area / pin code."
-                    ),
-                    chat_id=chat_id,
-                    user_name=user_name,
-                    platform=platform,
-                )
-            except Exception as e:
-                logger.error("MCP agent open failed: %s", e, exc_info=True)
-                reply = None
-
-            if reply:
-                try:
-                    await query.message.reply_text(
-                        reply,
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=main_keyboard(),
-                    )
-                except Exception:
-                    await query.message.reply_text(reply, reply_markup=main_keyboard())
-                return
-            # else fall through to redirect-link fallback
-
-        # Fallback / MCP disabled → external app redirect
-        if platform == "Zomato":
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🟥 Open Zomato", url=settings.ZOMATO_URL)],
-                [InlineKeyboardButton(
-                    "↩️ Order via NourishBot Bot instead",
-                    callback_data="platform_nourishbot",
-                )],
-            ])
-            await query.message.reply_text(
-                "🟥 *Zomato selected!*\n\n"
-                "Tap below to open our Zomato page and place your order on the app.",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=kb,
-            )
-            return
-
-        if platform == "Swiggy":
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🟧 Open Swiggy", url=settings.SWIGGY_URL)],
-                [InlineKeyboardButton(
-                    "↩️ Order via NourishBot Bot instead",
-                    callback_data="platform_nourishbot",
-                )],
-            ])
-            await query.message.reply_text(
-                "🟧 *Swiggy selected!*\n\n"
-                "Tap below to open our Swiggy page and place your order on the app.",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=kb,
-            )
-            return
-
-        # NourishBot → continue inside the bot
-        await query.message.reply_text(
-            "🍽️ *Awesome — let's get you sorted right here!* ❤️",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=main_keyboard(),
-        )
-        await query.message.reply_text(
-            "Quick actions 👇",
-            reply_markup=quick_actions_inline(),
-        )
-        return
-
     intent = CALLBACK_INTENT_MAP.get(query.data)
     if not intent:
         return
@@ -509,30 +354,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text or ""
 
-    # Greeting → show the platform-selection prompt only before a platform is
-    # chosen. External MCP carts live on Zomato/Swiggy, not in the local NourishBot
-    # cart, so using the local cart as the only "mid-flow" signal breaks MCP
-    # conversations by re-opening the picker on a simple "hi".
+    # Offer quick actions for a fresh greeting without interrupting an active cart.
     if _is_greeting(raw) and raw not in BUTTON_INTENT_MAP:
         chat_id = update.effective_chat.id
         sess    = await get_session(chat_id)
         cart    = sess.get("cart", []) or []
-        platform_chosen = (sess.get("ordering_platform") or "").strip()
-
-        # Only re-prompt before platform selection. Once Zomato/Swiggy is
-        # selected, route greetings into that MCP agent so its session remains
-        # continuous across the chat.
-        if not cart and not platform_chosen:
+        if not cart:
             user      = update.effective_user
             user_name = (user.first_name if user else "") or sess.get("user_name") or "there"
 
-            greeting_line = f"👋 Hey *{user_name}*! Welcome to *NourishBot Restaurant* 🍽️"
+            greeting_line = f"👋 Hey *{user_name}*! Welcome to *NourishBot Canteen* 🍽️"
             await update.message.reply_text(
                 greeting_line,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=main_keyboard(),
             )
-            await _send_platform_prompt(update)
+            await _send_quick_actions(update)
             return
 
     # Map keyboard buttons to natural language
@@ -543,18 +380,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Location message handler ──────────────────────────────────────────────────
 
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    location  = update.message.location
-    lat, lng  = location.latitude, location.longitude
-    chat_id   = update.effective_chat.id
-    user      = update.effective_user
-    user_name = user.first_name if user else ""
-
-    location_message = (
-        f"I'm at coordinates: lat {lat:.6f}, lng {lng:.6f}. "
-        "Find restaurants near me."
+    await update.message.reply_text(
+        "NourishBot is pickup-only and does not need your live location. "
+        "Choose Pickup Info to see how collection works.",
+        reply_markup=main_keyboard(),
     )
-
-    await _think_and_reply(update, context, location_message)
 
 
 # ── Error handler ──────────────────────────────────────────────────────────────
@@ -577,7 +407,7 @@ def build_app():
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("menu",    cmd_menu))
     app.add_handler(CommandHandler("order",   cmd_order))
-    app.add_handler(CommandHandler("reserve", cmd_reserve))
+    app.add_handler(CommandHandler("pickup",  cmd_pickup))
     app.add_handler(CommandHandler("cart",    cmd_cart))
     app.add_handler(CommandHandler("reset",   cmd_reset))
     app.add_handler(CommandHandler("help",    cmd_help))

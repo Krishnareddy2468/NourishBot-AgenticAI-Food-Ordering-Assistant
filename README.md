@@ -1,313 +1,197 @@
-# NourishBot — Agentic AI Food Ordering Assistant
+# NourishBot — AI Canteen Pre-Order & Smart Pickup
 
-A restaurant operating system built around a conversational agent. Guests order through
-Telegram; staff run the floor, kitchen, and admin desk through a Next.js web app. Both
-sides talk to one FastAPI backend over REST and WebSockets.
+NourishBot is an agentic AI food-ordering system for fictional campus and workplace
+canteens. A customer can describe a meal in natural language, review the proposed cart,
+place a pre-order, and follow it through preparation to pickup. Canteen staff receive the
+same order in a live operations dashboard and kitchen display.
 
-The agent can take orders against the in-house menu, or hand off to Zomato/Swiggy via
-Model Context Protocol (MCP) when live third-party ordering is enabled.
+The project is intentionally scoped as a portfolio-grade ordering sandbox. It demonstrates
+safe AI actions and real-time order coordination without acting as a delivery marketplace,
+payment platform, or commercial restaurant operating system.
 
----
+## Product idea
 
-## Contents
+Busy canteens have short rush windows, long queues, and frequently changing availability.
+NourishBot moves meal selection before the queue:
 
-- [Architecture](#architecture)
-- [Repository layout](#repository-layout)
-- [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [Running with Docker](#running-with-docker)
-- [API surface](#api-surface)
-- [Database and migrations](#database-and-migrations)
-- [Testing and CI](#testing-and-ci)
-- [Project status](#project-status)
-- [Further documentation](#further-documentation)
+1. A customer asks for a meal using ordinary language.
+2. The assistant checks the synthetic canteen menu and current availability.
+3. It proposes an itemized order instead of writing directly to the database.
+4. Deterministic code validates stock, quantities, and totals.
+5. The confirmed order enters the kitchen queue.
+6. The customer tracks preparation and collects the order when it is ready.
 
----
+The next product milestone adds dietary filters, group lunch carts, and capacity-aware
+pickup windows.
+
+## Scope boundary
+
+The active NourishBot concept includes:
+
+- Conversational ordering against an in-house demo menu
+- Deterministic cart and order validation
+- Pickup-oriented order tracking
+- Kitchen preparation workflow
+- Staff operations dashboard
+- Synthetic menu, customer, and operational data
+- Optional Telegram interface for local demonstrations
+
+It intentionally excludes:
+
+- Ordering from third-party delivery marketplaces
+- Delivery fleet management
+- Live payments, settlements, or commissions
+- Restaurant growth, advertising, or vendor-intelligence products
+- Real customer, merchant, health, or transaction data
+- WhatsApp production deployment or commercial go-to-market strategy
+
+See [the refined product direction](docs/REFINED_PRODUCT_DIRECTION.md) for the design
+boundary and [the public-release checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) before
+publishing or presenting the repository.
 
 ## Architecture
 
-A single FastAPI process boots the REST API, the Telegram bot (polling, on the same event
-loop so asyncpg sessions stay bound to one loop), the WebSocket hub, and the outbox worker.
-Celery worker and beat run alongside for notifications and scheduled jobs.
+```text
+Customer chat
+     │
+     ▼
+Context → Planner → Policy checks → Executor → Verifier → Response
+                         │              │
+                         │              └── PostgreSQL order state
+                         │
+                         └── Only allow-listed actions can execute
 
-```
-Telegram ──┐
-           ├──▶  FastAPI (app.api.main:api)  ──▶  PostgreSQL  (SQLAlchemy async + Alembic)
-Next.js  ──┘         │                        ──▶  Redis       (session cache + Celery broker)
-   REST + WS         │
-                     ├──▶  Agent pipeline  ──▶  OpenAI
-                     ├──▶  MCP agent       ──▶  Zomato / Swiggy (LangGraph + mcp-remote)
-                     ├──▶  Outbox worker   ──▶  WebSocket broadcast
-                     └──▶  Celery worker / beat
+Kitchen display ◀── WebSocket events ──▶ Pickup operations dashboard
 ```
 
-### The agent pipeline
+The central safety rule is: **the language model may propose an action, but deterministic
+application code validates and commits it.**
 
-`backend/app/agent/pipeline.py` implements five stages per incoming message. The governing
-rule is that **the LLM never writes to the database** — it proposes, deterministic code commits.
+## Current application surfaces
 
-| Stage      | Module                                                    | Responsibility                                            |
-| ---------- | --------------------------------------------------------- | --------------------------------------------------------- |
-| 1. Context | [context_builder.py](backend/app/agent/context_builder.py) | Read a full DB snapshot for the chat                      |
-| 2. Plan    | [planner.py](backend/app/agent/planner.py)                 | LLM returns a JSON plan: goal, slots, proposed actions    |
-| 3. Execute | [executor.py](backend/app/agent/executor.py)               | Deterministic tool runner, applies policy checks, commits |
-| 4. Verify  | [verifier.py](backend/app/agent/verifier.py)               | Re-reads the DB, validates totals and availability        |
-| 5. Respond | [responder.py](backend/app/agent/responder.py)             | Turns verified facts into a friendly reply                |
+| Surface | Purpose |
+|---|---|
+| Customer assistant | Browse the canteen menu and prepare an order conversationally |
+| Operations dashboard | Monitor orders, availability, staff, and service health |
+| Pickup desk | Manage active customer sessions and handoff |
+| Kitchen display | Move line items from queued to cooking to ready |
+| Order tracking | Show a customer the latest verified order state |
 
-Tool-call loops are bounded by `AGENT_MAX_ITERATIONS` (default 6). A conversation state
-machine ([state_machine.py](backend/app/agent/state_machine.py)) tracks progress through
-ordering and reservation flows. LLM calls fall back through a three-model chain
-(`OPENAI_PRIMARY_MODEL` → `OPENAI_FALLBACK_MODEL` → `OPENAI_FALLBACK_2_MODEL`).
+## Technology
 
-### Third-party ordering (MCP)
-
-When `MCP_ENABLED=true`, a LangGraph ReAct agent binds MCP tools from Zomato and Swiggy,
-bridged from HTTP to stdio by `npx mcp-remote`. This is a **single-tenant** mode: orders go
-to the bot owner's Zomato/Swiggy account using a shared OAuth token cache. With MCP disabled
-(the cloud default), guests who pick Zomato or Swiggy get redirect links to those apps instead.
-
-### Staff frontend
-
-Next.js 14 App Router, one route per role:
-
-| Route                                                      | Purpose                     |
-| ---------------------------------------------------------- | --------------------------- |
-| [/](frontend/app/page.jsx)                                  | Role selector               |
-| [/login](frontend/app/login/page.jsx)                       | JWT sign-in                 |
-| [/admin](frontend/app/admin/page.jsx)                       | Menu, staff, reports        |
-| [/waiter](frontend/app/waiter/page.jsx)                     | Table and order management  |
-| [/kitchen](frontend/app/kitchen/page.jsx)                   | Kitchen display system      |
-| [/track/[orderRef]](frontend/app/track/[orderRef]/page.jsx) | Guest-facing order tracking |
-
-Authorization is role-based: `ADMIN`, `MANAGER`, `WAITER`, `KITCHEN`, `CASHIER`, `DRIVER`
-(see [deps.py](backend/app/auth/deps.py)). Live updates arrive over `/api/v1/ws`;
-[offlineOrderQueue.js](frontend/services/offlineOrderQueue.js) buffers writes when the
-connection drops.
-
----
+- Python 3.11 and FastAPI
+- PostgreSQL, SQLAlchemy, and Alembic
+- Redis and Celery for background work
+- OpenAI-compatible agent pipeline
+- Next.js 14 and React
+- WebSockets for live operational updates
+- Docker and Terraform development scaffolding
 
 ## Repository layout
 
-```
-backend/            FastAPI + Telegram bot + agent (Python 3.11)
-  app/agent/          5-stage pipeline, MCP agent, policies, persona
-  app/api/routes/     REST routers, all under /api/v1
-  app/db/             SQLAlchemy models, CRUD, session
-  app/realtime/       WebSocket manager, events, notifications
-  app/workers/        Celery app, outbox worker, notification worker
-  alembic/versions/   Migrations 0001–0006
-frontend/           Next.js 14 staff + tracking app
-packages/           Shared TS workspaces — auth, contracts, logger, ui, utils (scaffolds)
-sdk/                Python and TypeScript client SDKs (scaffolds)
-infra/              Dockerfiles, Terraform (dev env)
-deploy/             Azure App Service / static hosting config
-docs/               Architecture, guides, plans, brochures
-.azuredevops/       CI and CD pipelines
+```text
+backend/                 FastAPI API, agent pipeline, database, and workers
+  app/agent/             Context, planning, policy, execution, and verification
+  app/api/routes/        REST endpoints
+  app/db/                Models and persistence
+  app/realtime/          WebSocket events
+frontend/                Next.js staff and tracking application
+docs/                    Product boundary, architecture, and engineering guides
+infra/                   Container and infrastructure configuration
+tests/                   Unit, smoke, and evaluation suites
 ```
 
----
+## Local setup
 
-## Prerequisites
+Requirements:
 
-| Requirement | Version              | Needed for                                                  |
-| ----------- | -------------------- | ----------------------------------------------------------- |
-| Node.js     | ≥ 20                | Frontend, Turborepo,`npx mcp-remote`                      |
-| pnpm        | ≥ 9                 | Workspace package manager                                   |
-| Python      | 3.11                 | Backend                                                     |
-| PostgreSQL  | 14+ with`pgvector` | Primary datastore (migration`0005` enables the extension) |
-| Redis       | 7                    | Session cache, Celery broker                                |
+- Node.js 20+
+- pnpm 9+
+- Python 3.11
+- PostgreSQL 14+
+- Redis 7
 
-You will also need an [OpenAI API key](https://platform.openai.com/) and a Telegram bot
-token from [@BotFather](https://t.me/BotFather).
-
----
-
-## Quick start
+Install dependencies:
 
 ```bash
-# 1. Install both toolchains
-make install          # pnpm install + pip install -r backend/requirements.txt
-
-# 2. Configure
-cp .env.example .env  # then fill in DATABASE_URL, OPENAI_API_KEY, TELEGRAM_TOKEN
-
-# 3. Migrate the database
-cd backend && alembic upgrade head && cd ..
-
-# 4. Seed the menu from the bundled workbook (optional)
-python backend/scripts/seed_from_excel.py
-
-# 5. Run
-python backend/main.py   # API + Telegram bot + outbox worker on :8000
-pnpm dev                 # Next.js frontend on :3000
+make install
 ```
 
-Health check: `curl http://localhost:8000/api/health`.
-Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs).
+Configure the application:
 
-To run the API without the Telegram bot (useful when two developers share one token), set
-`TELEGRAM_BOT_ENABLED=false`.
+```bash
+cp .env.example .env
+```
 
-### Root scripts
+At minimum, configure the database URLs, an OpenAI API key, and a Telegram token if the
+chat channel is enabled.
 
-| Command          | Effect                                                                          |
-| ---------------- | ------------------------------------------------------------------------------- |
-| `make install` | Install Node and Python dependencies                                            |
-| `pnpm dev`     | `turbo run dev` across workspaces                                             |
-| `pnpm build`   | `turbo run build`                                                             |
-| `pnpm lint`    | `turbo run lint`                                                              |
-| `make test`    | `pnpm test` + `pytest backend/tests` (see [Testing and CI](#testing-and-ci)) |
+Run database migrations:
 
----
+```bash
+cd backend
+alembic upgrade head
+cd ..
+```
+
+Start the backend and frontend:
+
+```bash
+python backend/main.py
+pnpm dev
+```
+
+- API: [http://localhost:8000](http://localhost:8000)
+- API documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Staff application: [http://localhost:3000](http://localhost:3000)
 
 ## Configuration
 
-Copy [.env.example](.env.example) to `.env`. The variables that must be set before the app
-will start:
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Async PostgreSQL connection |
+| `DATABASE_URL_SYNC` | Migration connection |
+| `REDIS_URL` | Cache and background-job broker |
+| `OPENAI_API_KEY` | Assistant planning and response generation |
+| `TELEGRAM_TOKEN` | Optional demo chat channel |
+| `NEXT_PUBLIC_API_BASE_URL` | Browser-to-API base URL |
+| `NEXT_PUBLIC_WS_URL` | Live event endpoint |
 
-| Variable              | Purpose                                                 |
-| --------------------- | ------------------------------------------------------- |
-| `DATABASE_URL`      | Async PostgreSQL DSN (`postgresql+asyncpg://…`)      |
-| `DATABASE_URL_SYNC` | Sync DSN used by Alembic (`postgresql+psycopg2://…`) |
-| `OPENAI_API_KEY`    | LLM access                                              |
-| `TELEGRAM_TOKEN`    | Bot token from @BotFather                               |
-
-Commonly adjusted:
-
-| Variable                     | Default                           | Purpose                                             |
-| ---------------------------- | --------------------------------- | --------------------------------------------------- |
-| `OPENAI_PRIMARY_MODEL`     | `gpt-4o`                        | Primary model                                       |
-| `OPENAI_FALLBACK_MODEL`    | `gpt-4o-mini`                   | First fallback                                      |
-| `OPENAI_FALLBACK_2_MODEL`  | `gpt-3.5-turbo`                 | Second fallback                                     |
-| `REDIS_URL`                | `redis://localhost:6379/0`      | Cache and Celery broker                             |
-| `PORT`                     | `8000`                          | API port                                            |
-| `JWT_SECRET`               | dev placeholder                   | **Must be changed in production**             |
-| `JWT_EXPIRY_MINUTES`       | `480`                           | Staff session lifetime                              |
-| `MCP_ENABLED`              | `false`                         | Enable live Zomato/Swiggy ordering                  |
-| `MCP_AUTH_DIR`             | —                                | Path to the`mcp-remote` token cache in containers |
-| `STORAGE_PROVIDER`         | `local`                         | `local`, `s3`, `gcs`, or `azure`            |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000`         | Frontend → API                                     |
-| `NEXT_PUBLIC_WS_URL`       | `ws://localhost:8000/api/v1/ws` | Frontend → WebSocket                               |
-
-Razorpay (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`) and Google
-Sheets (`GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS`) are optional; both degrade gracefully when
-unset. Cloud object-storage clients are commented out in
-[requirements.txt](backend/requirements.txt) — uncomment the one you need.
-
----
-
-## Running with Docker
-
-[backend/docker-compose.yml](backend/docker-compose.yml) defines two profiles.
-
-**Cloud** — the default. MCP off, Redis + API + Celery worker + beat:
-
-```bash
-cd backend
-docker compose --profile cloud up -d
-```
-
-**MCP** — single-tenant live ordering. Requires a one-time OAuth dance on the host, which
-populates `~/.mcp-auth`; the container mounts that cache read-only:
-
-```bash
-npx -y mcp-remote https://mcp-server.zomato.com/mcp
-npx -y mcp-remote https://mcp.swiggy.com/food
-docker compose --profile mcp up -d
-```
-
-Use [backend/scripts/export_mcp_auth.sh](backend/scripts/export_mcp_auth.sh) to move that
-token cache to another host as a secret.
-
----
-
-## API surface
-
-All routers are mounted under `/api/v1` ([main.py](backend/app/api/main.py)):
-
-| Prefix                   | Module                                                       |
-| ------------------------ | ------------------------------------------------------------ |
-| `/api/v1/auth`         | [auth.py](backend/app/api/routes/auth.py) — login, JWT issue |
-| `/api/v1/menu`         | [menu.py](backend/app/api/routes/menu.py)                     |
-| `/api/v1/orders`       | [orders.py](backend/app/api/routes/orders.py)                 |
-| `/api/v1/tables`       | [tables.py](backend/app/api/routes/tables.py)                 |
-| `/api/v1/kitchen`      | [kitchen.py](backend/app/api/routes/kitchen.py)               |
-| `/api/v1/payments`     | [payments.py](backend/app/api/routes/payments.py) — Razorpay |
-| `/api/v1/deliveries`   | [deliveries.py](backend/app/api/routes/deliveries.py)         |
-| `/api/v1/reservations` | [reservations.py](backend/app/api/routes/reservations.py)     |
-| `/api/v1/staff`        | [staff.py](backend/app/api/routes/staff.py)                   |
-| `/api/v1/invoices`     | [invoices.py](backend/app/api/routes/invoices.py)             |
-
-Plus `GET /api/health` and `WS /api/v1/ws?restaurant_id=<id>`.
-
----
-
-## Database and migrations
-
-PostgreSQL via SQLAlchemy 2 async, with Alembic migrations in
-[backend/alembic/versions/](backend/alembic/versions/):
-
-| Revision | Change                          |
-| -------- | ------------------------------- |
-| `0001` | vNext initial schema            |
-| `0002` | Fix boolean server defaults     |
-| `0003` | Add session ordering platform   |
-| `0004` | Add delivery proof columns      |
-| `0005` | Enable`pgvector`              |
-| `0006` | Add user preferences and rating |
-
-```bash
-cd backend
-alembic upgrade head                          # apply
-alembic revision --autogenerate -m "message"  # create
-alembic downgrade -1                          # roll back one
-```
-
-Models live in [backend/app/db/models/](backend/app/db/models/), split by domain: menu,
-cart/orders, dine-in, delivery, payments, invoices, reservations, outbox, user preferences.
-
-Order and reservation writes go through a transactional outbox
-([outbox.py](backend/app/db/models/outbox.py)); [outbox_worker.py](backend/app/workers/outbox_worker.py)
-drains it and fans events out over WebSockets, so a broadcast failure never loses a write.
-
----
-
-## Testing and CI
-
-[.azuredevops/pipelines/ci.yml](.azuredevops/pipelines/ci.yml) runs on PRs into `main`
-touching `frontend/`, `backend/`, `packages/`, or `sdk/`. It validates the frontend
-(`pnpm install --frozen-lockfile` → `pnpm build` → `pnpm lint`) and the backend
-(`pip install` → `pytest backend/tests`). `cd-backend.yml` and `cd-frontend.yml` handle
-deployment.
-
-> **Note:** the test suite is not yet written. `backend/tests/` does not exist, so both
-> `make test` and the CI backend job fail at the pytest step. The
-> [tests/](tests/) directory (`unit/`, `smoke/`, `evals/`) holds `.gitkeep` placeholders.
-> Adding tests is the highest-value open task in this repo.
-
----
+Use only fictional menu and user data in demonstrations.
 
 ## Project status
 
-Working: the agent pipeline, Telegram channel, REST API, staff frontend, PostgreSQL schema
-and migrations, WebSocket realtime, outbox worker, Celery workers, JWT auth with role gates,
-Razorpay integration, MCP ordering, and Docker/Azure deployment config.
+Working foundations:
 
-Scaffolded but empty: `packages/*` (auth, contracts, logger, ui, utils), `sdk/python`,
-`sdk/typescript`, `data/migrations`, `data/seed`, `docs/adr`, and `.azuredevops/templates`.
+- Five-stage agent pipeline
+- Menu, order, kitchen, and tracking APIs
+- PostgreSQL schema and migrations
+- Role-based staff interface
+- WebSocket order updates
+- Background-worker scaffolding
+- Offline queue support for the staff workflow
 
----
+Current refinement work:
 
-## Further documentation
+- Reframe staff workflows around pre-order and pickup
+- Add explicit pickup-window capacity
+- Add dietary and allergen metadata
+- Add group-cart membership and confirmation
+- Replace legacy demo assets with fully synthetic fixtures
+- Build unit, API-contract, and agent-evaluation coverage
 
-- [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) — flow diagrams, routing matrix, session state
-- [docs/architecture/PRODUCTION_ARCHITECTURE_NOURISHBOT.md](docs/architecture/PRODUCTION_ARCHITECTURE_NOURISHBOT.md)
-- [docs/architecture/CTO_DEEP_TECH_ARCHITECTURE_NOURISHBOT.md](docs/architecture/CTO_DEEP_TECH_ARCHITECTURE_NOURISHBOT.md)
-- [docs/guides/CODEBASE_GUIDE.md](docs/guides/CODEBASE_GUIDE.md) — file-by-file walkthrough
-- [docs/testing-docs/FEATURES_AND_TESTING_GUIDE.md](docs/testing-docs/FEATURES_AND_TESTING_GUIDE.md)
-- [docs/plans/FOOD_OS_MASTER_BLUEPRINT.md](docs/plans/FOOD_OS_MASTER_BLUEPRINT.md)
+## Development rules
 
-> Parts of `docs/` predate two migrations — the move from SQLite to PostgreSQL and from
-> Google Gemini to OpenAI (commit `ee54600`). Where a document and the code disagree, the
-> code is current.
+- Never let generated text directly mutate persistent state.
+- Validate availability and totals immediately before commit.
+- Require confirmation for order placement and cancellation.
+- Keep demo data synthetic and free of real business information.
+- Treat dietary information as a preference unless verified allergen controls exist.
+- Do not claim that the prototype provides medical or allergy-safety guarantees.
+
+## Important repository note
+
+This repository retains earlier implementation history because the project will continue in
+the same Git repository. Historical files may not represent the refined product direction.
+Review the public-release checklist and the applicable NDA or IP-assignment agreement before
+making the repository public.

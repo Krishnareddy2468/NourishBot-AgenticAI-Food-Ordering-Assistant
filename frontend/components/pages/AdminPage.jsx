@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast'
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, BarChart3,
   ChefHat, Tag, Bell, RefreshCw, Zap, UtensilsCrossed, LogOut, Loader2,
-  Table2, CalendarDays, Users, Receipt, Banknote, ArrowLeftRight, Truck,
+  Users, ArrowLeftRight, Truck,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,25 +20,15 @@ import { fetchBackendOrders, updateBackendOrderState, mapUiStateToBackend } from
 import DashboardView from './views/DashboardView'
 import OrdersView from './views/OrdersView'
 import MenuView from './views/MenuView'
-import TablesView from './views/TablesView'
-import ReservationsView from './views/ReservationsView'
 import EmployeesView from './views/EmployeesView'
-import InvoicesView from './views/InvoicesView'
-import SettlementsView from './views/SettlementsView'
-import DeliveriesView from './views/DeliveriesView'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'orders', label: 'Orders', icon: ClipboardList },
-  { id: 'deliveries', label: 'Deliveries', icon: Truck },
-  { id: 'kitchen', label: 'KDS', icon: ChefHat },
-  { id: 'tables', label: 'Tables', icon: Table2 },
-  { id: 'reservations', label: 'Reservations', icon: CalendarDays },
+  { id: 'orders', label: 'Pre-orders', icon: ClipboardList },
+  { id: 'kitchen', label: 'Kitchen Queue', icon: ChefHat },
   { id: 'menu', label: 'Menu', icon: Tag },
-  { id: 'employees', label: 'Employees', icon: Users },
-  { id: 'invoices', label: 'Invoices', icon: Receipt },
-  { id: 'settlements', label: 'Settlements', icon: Banknote },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'employees', label: 'Canteen Team', icon: Users },
+  { id: 'analytics', label: 'Pickup Analytics', icon: BarChart3 },
 ]
 
 function LiveClock() {
@@ -49,16 +39,16 @@ function LiveClock() {
 
 function AnalyticsView({ orders }) {
   const byHour = useMemo(() => {
-    const hours = Array.from({ length: 13 }, (_, i) => ({ hour: `${i + 10}h`, revenue: 0 }))
+    const hours = Array.from({ length: 13 }, (_, i) => ({ hour: `${i + 10}h`, orders: 0 }))
     orders.forEach(o => {
       const h = o.createdAt ? new Date(o.createdAt).getHours() - 10 : -1
-      if (h >= 0 && h < 13) hours[h].revenue += o.price || 0
+      if (h >= 0 && h < 13) hours[h].orders += 1
     })
     return hours
   }, [orders])
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ marginBottom: 16 }}>Revenue by Hour</h3>
+      <h3 style={{ marginBottom: 16 }}>Pre-orders by Hour</h3>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={byHour}>
           <defs>
@@ -71,7 +61,7 @@ function AnalyticsView({ orders }) {
           <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#888' }} />
           <YAxis tick={{ fontSize: 11, fill: '#888' }} />
           <Tooltip contentStyle={{ background: '#1A1A28', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }} />
-          <Area type="monotone" dataKey="revenue" stroke="#FF6B35" fill="url(#rev)" strokeWidth={2} />
+          <Area type="monotone" dataKey="orders" stroke="#FF6B35" fill="url(#rev)" strokeWidth={2} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -129,7 +119,7 @@ function KDSView({ orders, upsertOrder }) {
                     <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11 }} onClick={() => move(o, 'Ready')}>→ Ready</button>
                   )}
                   {status === 'Ready' && (
-                    <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, background: 'var(--brand-green)' }} onClick={() => move(o, 'Delivered')}>✓ Delivered</button>
+                    <button className="btn btn-primary btn-sm" style={{ width: '100%', fontSize: 11, background: 'var(--brand-green)' }} onClick={() => move(o, 'Delivered')}>✓ Collected</button>
                   )}
                 </div>
               </div>
@@ -186,14 +176,9 @@ export default function AdminPage() {
     switch (activeView) {
       case 'dashboard': return <DashboardView orders={orders} />
       case 'orders': return <OrdersView orders={orders} upsertOrder={upsertOrder} globalSearch={globalSearch} />
-      case 'deliveries': return <DeliveriesView />
       case 'menu': return <MenuView />
       case 'kitchen': return <KDSView orders={orders} upsertOrder={upsertOrder} />
-      case 'tables': return <TablesView />
-      case 'reservations': return <ReservationsView />
       case 'employees': return <EmployeesView />
-      case 'invoices': return <InvoicesView />
-      case 'settlements': return <SettlementsView />
       case 'analytics': return <AnalyticsView orders={orders} />
       default: return <DashboardView orders={orders} />
     }
@@ -256,7 +241,7 @@ export default function AdminPage() {
             </div>
             <div className="ops-chip green">
               <Truck size={13} />
-              {readyCount} ready
+              {readyCount} ready for pickup
             </div>
             {pendingCount > 0 && <div className="live-ticker"><Zap size={12} />{pendingCount} pending</div>}
             <button className={`icon-btn ${refreshing ? 'is-spinning' : ''}`} onClick={() => loadOrders(true)} title="Refresh">
@@ -274,8 +259,8 @@ export default function AdminPage() {
               <section className="ops-hero">
                 <div>
                   <span className="eyebrow">Operations pulse</span>
-                  <h3>Admin, waiter, and kitchen are working from the same live queue.</h3>
-                  <p>Orders flow from acceptance to prep to service with real-time updates across every station.</p>
+                  <h3>Operations, pickup, and kitchen share the same live pre-order queue.</h3>
+                  <p>Orders move from confirmation to preparation to customer collection with real-time updates.</p>
                 </div>
                 <div className="ops-hero-stats">
                   <article>
@@ -284,7 +269,7 @@ export default function AdminPage() {
                   </article>
                   <article>
                     <strong>₹{revenueToday.toLocaleString('en-IN')}</strong>
-                    <span>Gross tracked</span>
+                    <span>Order value tracked</span>
                   </article>
                   <article>
                     <strong>{connected ? 'Live' : 'Retrying'}</strong>

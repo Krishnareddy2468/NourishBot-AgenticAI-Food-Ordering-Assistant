@@ -40,13 +40,13 @@ export default function LoginPage() {
         <div className="login-hero">
           <div className="login-logo">
             <UtensilsCrossed size={40} />
-            <h1>NourishBot POS</h1>
-            <p>Restaurant operations, floor service, and kitchen execution in one workspace.</p>
+            <h1>NourishBot</h1>
+            <p>AI-assisted canteen pre-orders, kitchen preparation, and smart pickup in one workspace.</p>
           </div>
           <div className="login-role-preview">
-            <div><ShieldCheck size={15} /> Admin control</div>
-            <div><ConciergeBell size={15} /> Waiter workflow</div>
-            <div><ChefHat size={15} /> Kitchen realtime</div>
+            <div><ShieldCheck size={15} /> Canteen operations</div>
+            <div><ConciergeBell size={15} /> Pickup workflow</div>
+            <div><ChefHat size={15} /> Live kitchen queue</div>
           </div>
         </div>
 
@@ -89,7 +89,7 @@ export default function LoginPage() {
         </form>
 
         <div className="login-footer">
-          Demo: admin@nourishbot.com / admin123 or waiter@nourishbot.com / waiter123
+          Demo staff accounts only — never use production credentials here.
         </div>
       </div>
     </div>

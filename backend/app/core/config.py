@@ -102,13 +102,13 @@ class Settings:
         "http://localhost:3000",
     ]
 
-    # ── Restaurant static info ─────────────────────────────────────────────────
-    RESTAURANT_NAME:     str = "NourishBot Restaurant"
-    RESTAURANT_TAGLINE:  str = "Where every bite hits different ❤️"
-    RESTAURANT_TIMINGS:  str = "6:00 AM – 11:00 PM, all days"
-    RESTAURANT_LOCATION: str = "Hyderabad, Telangana"
-    RESTAURANT_CUISINE:  str = "Indian – Veg & Non-Veg"
-    RESTAURANT_DELIVERY: str = "Via Swiggy & Zomato"
+    # ── Synthetic canteen information ──────────────────────────────────────────
+    RESTAURANT_NAME:     str = "NourishBot Demo Canteen"
+    RESTAURANT_TAGLINE:  str = "Pre-order. Skip the queue. Pick up when ready."
+    RESTAURANT_TIMINGS:  str = "8:00 AM – 8:00 PM, weekdays"
+    RESTAURANT_LOCATION: str = "Demo Campus Food Court"
+    RESTAURANT_CUISINE:  str = "Indian canteen meals – Veg & Non-Veg"
+    RESTAURANT_DELIVERY: str = "Pickup only"
 
     def validate(self) -> None:
         missing = []

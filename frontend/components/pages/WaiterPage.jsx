@@ -1,7 +1,7 @@
 'use client'
 /**
- * Waiter view — table map, sessions, add items, fire-to-kitchen,
- * kitchen readiness tracking, billing with payment gate.
+ * Pickup-desk view. Existing table-session identifiers are retained internally
+ * for database compatibility while the interface presents pickup zones.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -74,9 +74,9 @@ export default function WaiterPage() {
         setSessions(cached.sessions)
         setMenu(cached.menu)
         setIsOfflineMode(true)
-        if (!silent) toast('Offline mode: using last saved floor data')
+        if (!silent) toast('Offline mode: using last saved pickup data')
       } else if (!silent) {
-        toast.error(_err.message || 'Failed to load waiter data')
+        toast.error(_err.message || 'Failed to load pickup data')
       }
     } finally {
       setActionState(prev => ({ ...prev, refreshing: false }))
@@ -201,7 +201,7 @@ export default function WaiterPage() {
   ), 0)
 
   async function handleOpenSession(table) {
-    const guests = prompt('Number of guests:', '2')
+    const guests = prompt('Number of meals in this pickup:', '1')
     if (!guests) return
 
     setActionState(prev => ({ ...prev, openTableId: table.id }))
@@ -210,10 +210,10 @@ export default function WaiterPage() {
       setActiveSession(session)
       setSelectedTable(table)
       setCart([])
-      toast.success(`Session opened for Table ${table.table_number || table.name}`)
+      toast.success(`Pickup opened at ${table.table_number || table.name}`)
       await loadData(true)
     } catch (err) {
-      toast.error(err.message || 'Could not open table session')
+      toast.error(err.message || 'Could not open pickup session')
     } finally {
       setActionState(prev => ({ ...prev, openTableId: null }))
     }
@@ -268,28 +268,28 @@ export default function WaiterPage() {
     }
   }
 
-  async function handleGenerateBill() {
+  async function handleCompletePickup() {
     if (!activeSession) return
 
     const cooking = sessionOrders.some(order =>
       order.items?.some(item => item.status === 'PENDING' || item.status === 'IN_PROGRESS')
     )
     if (cooking) {
-      toast.error('Wait until all kitchen items are done before generating the bill.')
+      toast.error('Wait until all kitchen items are ready before completing pickup.')
       return
     }
 
     setActionState(prev => ({ ...prev, billing: true }))
     try {
       const invoice = await generateTableInvoice(activeSession.id)
-      toast.success(`Bill generated — ₹${(invoice.total_cents / 100).toFixed(2)}`)
+      toast.success(`Pickup completed — ₹${(invoice.total_cents / 100).toFixed(2)} order value`)
       setActiveSession(null)
       setSelectedTable(null)
       setSessionOrders([])
       setCart([])
       await loadData(true)
     } catch (err) {
-      toast.error(err.message || 'Failed to generate bill')
+      toast.error(err.message || 'Failed to complete pickup')
     } finally {
       setActionState(prev => ({ ...prev, billing: false }))
     }
@@ -301,9 +301,9 @@ export default function WaiterPage() {
     <div className="waiter-page">
       <div className="ops-shell">
         <div className="ops-shell-copy">
-          <span className="eyebrow">Floor service</span>
-          <h2><Users size={20} /> Waiter Portal</h2>
-          <p>Run the dining floor from table opening to kitchen fire to a clean checkout.</p>
+          <span className="eyebrow">Customer collection</span>
+          <h2><Users size={20} /> Pickup Desk</h2>
+          <p>Coordinate counter orders, kitchen readiness, and verified collection.</p>
         </div>
         <div className="ops-shell-actions">
           <div className={`ops-chip ${connected ? 'online' : 'offline'}`}>
@@ -317,7 +317,7 @@ export default function WaiterPage() {
           )}
           {hasReady && (
             <div className="ops-chip green">
-              <Bell size={13} /> {readyOrders.length} ready to serve
+              <Bell size={13} /> {readyOrders.length} ready for pickup
             </div>
           )}
           <button className={`icon-btn ${actionState.refreshing ? 'is-spinning' : ''}`} onClick={() => loadData(true)} title="Refresh">
@@ -340,28 +340,28 @@ export default function WaiterPage() {
 
       <section className="ops-hero waiter-hero">
         <div>
-          <span className="eyebrow">Service flow</span>
-          <h3>{activeSession ? `Table ${selectedTable?.table_number || selectedTable?.name} is active` : 'Pick a table to start a guest session'}</h3>
+          <span className="eyebrow">Pickup flow</span>
+          <h3>{activeSession ? `Pickup ${selectedTable?.table_number || selectedTable?.name} is active` : 'Choose a pickup zone to start a counter order'}</h3>
           <p>
             {activeSession
-              ? `Guests: ${activeSession.guests}. Add items, fire the ticket, and watch kitchen progress before billing.`
-              : 'Available tables can be opened instantly, and occupied ones keep their live order readiness here.'}
+              ? `Meals: ${activeSession.guests}. Add items, send the ticket, and verify readiness before collection.`
+              : 'Available pickup zones can be opened instantly, while active zones retain live kitchen status.'}
           </p>
           {isOfflineMode && (
             <div className="offline-banner">
               <CloudOff size={15} />
-              Offline mode enabled. New restaurant orders are being queued locally for sync.
+              Offline mode enabled. New canteen orders are queued locally for sync.
             </div>
           )}
         </div>
         <div className="ops-hero-stats">
           <article>
             <strong>{tables.filter(table => table.active !== false).length}</strong>
-            <span>Floor tables</span>
+            <span>Pickup zones</span>
           </article>
           <article>
             <strong>{sessions.length}</strong>
-            <span>Open sessions</span>
+            <span>Active pickups</span>
           </article>
           <article>
             <strong>{offlineQueue.length || (hasReady ? readyOrders.length : inProgressItems)}</strong>
@@ -372,8 +372,8 @@ export default function WaiterPage() {
 
       <section className="waiter-section">
         <div className="waiter-section-head">
-          <h3>Table Map</h3>
-          <span>{tables.length} tables</span>
+          <h3>Pickup Zones</h3>
+          <span>{tables.length} zones</span>
         </div>
         <div className="table-grid">
           {tables.map(table => {
@@ -396,14 +396,14 @@ export default function WaiterPage() {
                   } else if (table.status === 'AVAILABLE') {
                     handleOpenSession(table)
                   } else {
-                    toast('Table not available')
+                    toast('Pickup zone not available')
                   }
                 }}
               >
-                <div className="table-tile-name">{table.table_number || table.name}</div>
-                <div className="table-tile-status" style={{ color }}>{statusKey}</div>
-                <div className="table-tile-capacity">Seats {table.capacity || '—'}</div>
-                {session && <div className="table-tile-guests"><Users size={12} />{session.guests}</div>}
+                <div className="table-tile-name">Pickup {table.table_number || table.name}</div>
+                <div className="table-tile-status" style={{ color }}>{session ? 'ACTIVE' : statusKey}</div>
+                <div className="table-tile-capacity">Capacity {table.capacity || '—'}</div>
+                {session && <div className="table-tile-guests"><Users size={12} />{session.guests} meals</div>}
                 {isOpening && <div className="table-tile-loading"><Loader2 className="spin" size={14} />Opening</div>}
               </button>
             )
@@ -483,7 +483,7 @@ export default function WaiterPage() {
                       <div className="waiter-order-status-head">
                         <span>#{order.order_ref}</span>
                         {allDone ? (
-                          <span className="waiter-chip success"><CheckCircle2 size={13} /> Ready to serve</span>
+                          <span className="waiter-chip success"><CheckCircle2 size={13} /> Ready for pickup</span>
                         ) : (
                           <span className="waiter-chip info"><Clock size={13} /> Preparing</span>
                         )}
@@ -547,13 +547,13 @@ export default function WaiterPage() {
 
             <div className="waiter-billing-card">
               <div>
-                <span className="eyebrow">Close the table</span>
-                <h4>Generate bill only after the kitchen is clear</h4>
-                <p>Billing stays blocked while any fired item is still pending or cooking.</p>
+                <span className="eyebrow">Complete collection</span>
+                <h4>Close pickup only after every item is ready</h4>
+                <p>Collection stays blocked while any submitted item is pending or cooking.</p>
               </div>
-              <button className="btn btn-primary" onClick={handleGenerateBill} disabled={actionState.billing}>
+              <button className="btn btn-primary" onClick={handleCompletePickup} disabled={actionState.billing}>
                 {actionState.billing ? <Loader2 size={14} className="spin" /> : <ReceiptText size={14} />}
-                {actionState.billing ? 'Generating...' : 'Generate Bill & Close'}
+                {actionState.billing ? 'Completing...' : 'Mark Collected'}
               </button>
             </div>
           </section>

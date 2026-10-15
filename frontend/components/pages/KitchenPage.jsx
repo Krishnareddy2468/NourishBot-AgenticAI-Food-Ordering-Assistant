@@ -22,7 +22,7 @@ const ITEM_STATUS = {
   CANCELLED: { label: 'Cancelled', color: '#EF4444', icon: XCircle },
 }
 
-const STATION_FILTERS = ['All', 'DINE_IN', 'DELIVERY', 'PICKUP']
+const STATION_FILTERS = ['All', 'PICKUP']
 
 export default function KitchenPage() {
   const { logout, user } = useAuth()
@@ -123,7 +123,7 @@ export default function KitchenPage() {
         <div className="ops-shell-copy">
           <span className="eyebrow">Back of house</span>
           <h2><ChefHat size={20} /> Kitchen Display</h2>
-          <p>Track active tickets by item, move them through prep, and only release orders when every line item is done.</p>
+          <p>Track canteen pre-orders by item and release them to the pickup desk only when every line item is done.</p>
         </div>
         <div className="ops-shell-actions">
           <div className={`ops-chip ${connected ? 'online' : 'offline'}`}>
@@ -146,7 +146,7 @@ export default function KitchenPage() {
         <div>
           <span className="eyebrow">Kitchen pulse</span>
           <h3>{filteredItems.length} live line items on the board</h3>
-          <p>Each action here updates waiter and admin views, so the pass stays aligned with the front of house.</p>
+          <p>Each action updates pickup and operations views so customers receive verified readiness information.</p>
         </div>
         <div className="ops-hero-stats">
           <article>

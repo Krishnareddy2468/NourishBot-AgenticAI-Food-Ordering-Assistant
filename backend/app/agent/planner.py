@@ -5,13 +5,13 @@ One LLM call (OpenAI, JSON mode) that reads the ContextSnapshot +
 user message and outputs a structured PlannerOutput:
 
   {
-    "goal":                "ORDER_ONLINE" | "DINE_IN" | "TAKEAWAY" |
-                           "RESERVATION" | "TRACK_ORDER" | "CANCEL_ORDER" |
+    "goal":                "ORDER_ONLINE" | "TAKEAWAY" |
+                           "TRACK_ORDER" | "CANCEL_ORDER" |
                            "SUPPORT" | "MENU_BROWSE",
-    "missing_slots":       ["phone", "address", ...],
+    "missing_slots":       ["customer_name", "customer_phone", ...],
     "constraints":         {"veg": true, "budget_max": 500, "allergy": ""},
     "proposed_actions":    [{"tool": "...", "args": {...}}, ...],
-    "user_intent_summary": "wants 2x Biryani delivered to Kondapur",
+    "user_intent_summary": "wants 2x vegetable biryani for pickup",
     "requires_confirmation": false
   }
 
@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 # Goal constants
 GOALS = {
     "ORDER_ONLINE",
-    "DINE_IN",
     "TAKEAWAY",
-    "RESERVATION",
     "TRACK_ORDER",
     "CANCEL_ORDER",
     "SUPPORT",
@@ -59,23 +57,17 @@ AVAILABLE TOOLS:
   remove_from_cart    {item_name}
   view_cart           {}
   clear_cart          {}
-  set_order_type      {order_type: DELIVERY|PICKUP|DINE_IN}
-  set_delivery_address {address}
-  update_customer     {name?, phone?, address?, language?}
-  place_order         {order_type, address?, notes?}
+  set_order_type      {order_type: PICKUP}
+  update_customer     {name?, phone?, language?}
+  place_order         {order_type: PICKUP, notes?}
   track_order         {order_ref}
   cancel_order        {order_ref}
-  create_payment_intent {order_ref, provider?}
-  check_payment_status {order_ref?, payment_id?}
-  make_reservation    {date, time, guests, special_request?}
 """
 
 # Slots required per goal
 REQUIRED_SLOTS: dict[str, list[str]] = {
     "ORDER_ONLINE":  ["customer_name", "customer_phone"],
-    "DINE_IN":       ["customer_name", "customer_phone"],
     "TAKEAWAY":      ["customer_name", "customer_phone"],
-    "RESERVATION":   ["customer_name", "customer_phone", "date", "time", "guests"],
     "TRACK_ORDER":   ["order_ref"],
     "CANCEL_ORDER":  ["order_ref"],
     "SUPPORT":       [],
@@ -123,11 +115,11 @@ def _build_planner_prompt(message: str, ctx: ContextSnapshot) -> str:
     # State-specific instruction injected into rules
     state_hint = _state_hint(ctx.current_state, ctx)
 
-    return f"""You are the PLANNER for NourishBot Restaurant. Read the context + message. Output ONE JSON object.
+    return f"""You are the PLANNER for NourishBot, a fictional canteen pre-order and pickup assistant. Read the context + message. Output ONE JSON object.
 
 CONTEXT:
 State: {ctx.current_state.value} | Time: {ctx.time_of_day} ({ctx.now.strftime('%I:%M %p')}) | Open: {ctx.is_open}
-Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | Order type: {ctx.order_type or "—"} | Address: {ctx.delivery_address or "—"}
+Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | Order type: PICKUP
 Cart: {ctx.cart_summary}
 Orders: {active_order_text} | Kitchen: {ctx.kitchen_load} orders
 
@@ -142,14 +134,15 @@ TOOLS:
 {TOOL_CATALOGUE}
 
 OUTPUT JSON:
-{{"goal":"ORDER_ONLINE|DINE_IN|TAKEAWAY|RESERVATION|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"...","args":{{...}}}}],"user_intent_summary":"...","requires_confirmation":false}}
+{{"goal":"ORDER_ONLINE|TAKEAWAY|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"...","args":{{...}}}}],"user_intent_summary":"...","requires_confirmation":false}}
 
 RULES:
 1. Max {settings.AGENT_MAX_ITERATIONS} proposed_actions.
 2. Missing name/phone → add to missing_slots, don't place_order.
-3. DELIVERY needs address → add to missing_slots if absent.
-4. place_order ONLY when: cart non-empty + all slots known + customer confirmed.
-5. Never fabricate items or prices.
+3. This project is PICKUP ONLY. Never request an address, payment, delivery, dine-in, or reservation action.
+4. Every set_order_type and place_order action must use PICKUP.
+5. place_order ONLY when: cart non-empty + all slots known + customer confirmed.
+6. Never fabricate items or prices.
 {state_hint}
 
 HISTORY:
@@ -166,17 +159,18 @@ def _build_minimal_prompt(message: str, ctx: ContextSnapshot) -> str:
     known = []
     if ctx.customer_name:  known.append(f"name={ctx.customer_name}")
     if ctx.customer_phone: known.append(f"phone={ctx.customer_phone}")
-    return f"""You are a restaurant order assistant planner. Output ONLY a JSON object.
+    return f"""You are a canteen pickup-order assistant planner. Output ONLY a JSON object.
 
 Customer message: {message}
 Cart: {cart_text}
 Known: {', '.join(known) or 'nothing'}
-Restaurant: {"OPEN" if ctx.is_open else "CLOSED"}
+Canteen: {"OPEN" if ctx.is_open else "CLOSED"}
 
 Output this exact JSON (fill in values):
 {{"goal":"ORDER_ONLINE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"get_menu","args":{{}}}}],"user_intent_summary":"","requires_confirmation":false}}
 
-Valid goals: ORDER_ONLINE DINE_IN TAKEAWAY RESERVATION TRACK_ORDER CANCEL_ORDER SUPPORT MENU_BROWSE
+Valid goals: ORDER_ONLINE TAKEAWAY TRACK_ORDER CANCEL_ORDER SUPPORT MENU_BROWSE
+Only PICKUP orders are allowed. Never request delivery address or payment.
 Return ONLY the JSON, nothing else."""
 
 

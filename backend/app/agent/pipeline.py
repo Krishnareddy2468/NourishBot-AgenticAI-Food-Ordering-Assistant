@@ -64,8 +64,8 @@ async def process_message(
 
     plan = await Planner.plan(message, ctx)
 
-    # If we extracted slot values, prepend update_customer / set_delivery_address
-    # actions so the executor saves them before anything else.
+    # If we extracted safe slot values, prepend them so the executor saves
+    # them before anything else.
     if slot_hint and slot_hint.get("actions"):
         plan.proposed_actions = slot_hint["actions"] + plan.proposed_actions
         plan.missing_slots = slot_hint.get("remaining_slots", plan.missing_slots)
@@ -316,27 +316,53 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
     confirmation too early. This keeps DB writes agentic while ensuring
     required slots are collected before `place_order`.
     """
-    if plan.goal not in ("ORDER_ONLINE", "TAKEAWAY", "DINE_IN"):
-        return plan
+    blocked_tools = {
+        "set_delivery_address",
+        "create_payment_intent",
+        "check_payment_status",
+        "make_reservation",
+    }
+    actions = []
+    for proposed in list(plan.proposed_actions or []):
+        if proposed.get("tool") in blocked_tools:
+            continue
+        action = {**proposed, "args": dict(proposed.get("args") or {})}
+        if action.get("tool") in ("set_order_type", "place_order"):
+            action["args"]["order_type"] = "PICKUP"
+            action["args"].pop("address", None)
+        elif action.get("tool") == "update_customer":
+            action["args"].pop("address", None)
+        actions.append(action)
 
-    actions = list(plan.proposed_actions or [])
+    safe_missing = [
+        slot for slot in (plan.missing_slots or [])
+        if slot not in ("delivery_address", "address", "order_type")
+    ]
     action_tools = [a.get("tool") for a in actions]
-    has_order_intent = bool(ctx.cart) or any(
+    has_order_intent = (
+        plan.goal in ("ORDER_ONLINE", "TAKEAWAY") and bool(ctx.cart)
+    ) or any(
         t in {
             "add_to_cart",
             "update_cart_item",
             "remove_from_cart",
             "view_cart",
             "set_order_type",
-            "set_delivery_address",
             "place_order",
         }
         for t in action_tools
     )
     if not has_order_intent:
-        return plan
+        return PlannerOutput(
+            goal=plan.goal,
+            missing_slots=safe_missing,
+            constraints=plan.constraints,
+            proposed_actions=actions,
+            user_intent_summary=plan.user_intent_summary,
+            requires_confirmation=plan.requires_confirmation,
+        )
 
-    missing = list(plan.missing_slots or [])
+    missing = safe_missing
 
     def add_missing(slot: str) -> None:
         if slot not in missing:
@@ -352,29 +378,18 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
     if not ctx.customer_phone and not customer_action_args.get("phone"):
         add_missing("customer_phone")
 
-    proposed_order_type = None
-    proposed_address = ""
-    for action in actions:
-        args = action.get("args") or {}
-        if action.get("tool") == "set_order_type":
-            proposed_order_type = str(args.get("order_type") or "").upper()
-        elif action.get("tool") == "place_order":
-            proposed_order_type = str(args.get("order_type") or proposed_order_type or "").upper()
-            proposed_address = str(args.get("address") or proposed_address or "")
-        elif action.get("tool") == "set_delivery_address":
-            proposed_address = str(args.get("address") or proposed_address or "")
-
-    order_type = proposed_order_type or (ctx.order_type or "")
-    if not order_type:
-        add_missing("order_type")
-    if order_type == "DELIVERY" and not (ctx.delivery_address or proposed_address):
-        add_missing("delivery_address")
+    # Product invariant: the active NourishBot concept accepts pickup only.
+    # Remove stale slots that may remain in sessions created by the legacy flow.
+    missing = [
+        slot for slot in missing
+        if slot not in ("delivery_address", "address", "order_type")
+    ]
 
     if missing:
         actions = [a for a in actions if a.get("tool") != "place_order"]
 
     return PlannerOutput(
-        goal=plan.goal,
+        goal=plan.goal if plan.goal in ("ORDER_ONLINE", "TAKEAWAY") else "ORDER_ONLINE",
         missing_slots=missing,
         constraints=plan.constraints,
         proposed_actions=actions,
@@ -392,10 +407,6 @@ def _extract_phone(text: str) -> str:
 
 def _extract_order_type(text: str) -> str:
     lowered = (text or "").strip().lower()
-    if "delivery" in lowered or "deliver" in lowered:
-        return "DELIVERY"
     if "pickup" in lowered or "pick up" in lowered or "takeaway" in lowered or "take away" in lowered:
         return "PICKUP"
-    if "dine" in lowered or "table" in lowered or "restaurant" in lowered:
-        return "DINE_IN"
     return ""
