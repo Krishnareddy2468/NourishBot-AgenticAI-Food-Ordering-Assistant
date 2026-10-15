@@ -196,7 +196,7 @@ All endpoints require JWT auth (except login).
 - **Razorpay** — payment gateway (intents + webhook)
 - **WebSocket** — real-time push to all frontend dashboards (via `app/realtime`)
 - **Docker** — Python 3.11 + Node 20 image; `docker-compose.yml` included
-- **CI/CD** — Azure pipelines + GitHub Actions scaffolded (Sprint 0 complete)
+- **CI/CD** — GitHub Actions validates the backend and frontend; Vercel will provide frontend preview and production deployments
 - **Logging** — structured logging with rotation (`app/core/logging_config.py`)
 
 ---

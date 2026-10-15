@@ -42,6 +42,7 @@ ve-lyra-monorepo-template/
 # ── Node / Frontend ─────────────────────────────────────────────────────────
 node_modules/
 .next/
+.vercel/
 dist-ssr/
 .turbo/
 npm-debug.log*
@@ -60,9 +61,7 @@ storage/uploads/
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-compose.override.yml
 
-# ── Azure DevOps / Cloud ──────────────────────────────────────────────────────
-*.arm
-*.parameters.json
+# ── Cloud / deployment artifacts ───────────────────────────────────────────────
 .env.cloud
 
 # ── Terraform ────────────────────────────────────────────────────────────────

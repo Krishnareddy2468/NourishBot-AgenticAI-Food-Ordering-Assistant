@@ -65,8 +65,9 @@ food is allergy-safe without verified ingredient and kitchen controls.
 
 | Component | Current behavior |
 |---|---|
-| Telegram | Polling bot with provider selection and natural-language scheduling |
-| WhatsApp | Signed Cloud API webhook, duplicate-message suppression, text/interactive replies, and shared-location parsing |
+| Telegram | Polling bot with provider selection, natural-language scheduling, consent controls, and secure channel-link commands |
+| WhatsApp | Signed Cloud API webhook, duplicate-message suppression, consent-gated shared locations, and secure channel linking |
+| Customer web identity | HttpOnly opaque browser identity linked with a short-lived one-time code; privacy self-service API is available |
 | NourishBot | In-house scheduled pickup, drive-through, or home-delivery flow backed by PostgreSQL |
 | Swiggy / Zomato | Discovery-only by default; transactions remain disabled until scheduling, fulfillment, reconciliation, and receipt capabilities are verified |
 | Google Maps | Read-only nearby restaurant and drive-through-along-route discovery |
@@ -74,6 +75,22 @@ food is allergy-safe without verified ingredient and kitchen controls.
 Provider names do not imply an official partnership. Endpoint availability, OAuth policy,
 tool schemas, account permissions, and scheduled-order support must be verified with each
 provider before enabling it in a public environment.
+
+### Privacy and channel-link commands
+
+Telegram and WhatsApp handle these commands deterministically without sending them to the
+language model:
+
+- `privacy status` — view personalization, location, reminder, and analytics consent.
+- `enable memory` / `disable memory` — opt in to or stop personalization.
+- `export my memory` — receive the stored preference profile and masked linked-channel list.
+- `delete memory`, followed by `delete my memory permanently` — permanently remove stored personalization.
+- `enable location` / `disable location` — control whether shared coordinates may be used.
+- `enable reminders`, `disable reminders`, `enable analytics`, or `disable analytics` — change those purpose-specific decisions.
+- `link whatsapp`, `link telegram`, or `link web` — create an expiring code; send `link <code>` on the named target channel.
+
+A phone number alone never merges customer profiles. Cross-channel linking requires control of
+an existing verified channel and the target channel.
 
 ## Safety architecture
 
@@ -101,6 +118,10 @@ Release-critical controls include:
 - High-entropy, revocable public tracking tokens with audience-safe responses
 - Maps discovery separated from provider-side menu, availability, and checkout verification
 - WhatsApp HMAC signature verification and Redis idempotency keys
+- Tenant-scoped Telegram, WhatsApp, and web identities linked only with hashed, expiring, one-time codes
+- Append-only consent decisions for personalization, location, reminders, and analytics
+- Consent-gated personalization learned only from fulfilled orders or explicit ratings
+- Daily retention enforcement for chat turns, shared locations, and provider response/error excerpts
 - Redis-backed login, webhook, and API rate limits
 - Explicit CORS origins in production
 - Validated staff order-state transitions
@@ -113,6 +134,8 @@ Release-critical controls include:
 | `/` | Public landing page for the scheduled-meal product |
 | Telegram bot | Customer meal planning and provider selection |
 | WhatsApp webhook | Customer meal planning through WhatsApp Cloud API |
+| `/api/v1/customer/identity/link` | Link an opaque web identity with a one-time code created on an existing channel |
+| `/api/v1/customer/privacy*` | View consent, change consent, export memory, or permanently delete memory |
 | `/login` | Staff authentication |
 | `/workspace` | Authenticated role selection |
 | `/admin` | Upcoming schedules, live operations, menu, and staff overview |
@@ -150,7 +173,8 @@ backend/
   alembic/               database migrations
   tests/                 backend unit tests
 frontend/                landing page, staff workspaces, and customer tracking
-infra/                   deployment scaffolding
+deploy/                  Vercel deployment contract and runtime notes
+infra/                   container and infrastructure scaffolding for backend services
 ```
 
 ## Local setup
@@ -190,6 +214,30 @@ celery -A app.workers.celery_app beat --loglevel=info
 The landing page is at `http://localhost:3000`; API documentation is at
 `http://localhost:8000/docs`.
 
+## Deployment target
+
+The public Next.js application's deployment target is **Vercel**. In the Vercel project settings,
+set the repository Root Directory to `frontend`; framework detection, builds, preview
+deployments, and production deployments then run from that directory. The checked-in
+[`frontend/vercel.json`](frontend/vercel.json) records the framework choice.
+
+Set these Vercel environment variables for Preview and Production:
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | `https://api.nourishbot.example` | Public HTTPS origin of the NourishBot API |
+| `NEXT_PUBLIC_WS_URL` | `wss://api.nourishbot.example/api/v1/ws` | Public secure WebSocket endpoint |
+
+The existing backend is not deployed as a Vercel Function yet. It starts Telegram polling and
+an outbox loop inside the FastAPI lifespan and relies on separate Celery worker and beat
+processes. Until those jobs are converted to webhooks, idempotent cron endpoints, and durable
+external coordination, deploy the backend container, worker, and beat on an always-on runtime,
+with managed PostgreSQL and Redis. This runtime must not be Azure; the specific backend host
+can be selected independently of Vercel.
+
+See [`docs/guides/VERCEL_DEPLOYMENT.md`](docs/guides/VERCEL_DEPLOYMENT.md) for setup,
+verification, rollback, and the requirements for a future full-Vercel backend migration.
+
 ## Configuration
 
 Copy [backend/.env.example](backend/.env.example) and configure:
@@ -201,8 +249,14 @@ Copy [backend/.env.example](backend/.env.example) and configure:
 | `REDIS_URL` | Cache, idempotency, Celery broker, and result backend |
 | `JWT_SECRET` | Staff authentication signing secret |
 | `AUTH_COOKIE_NAME` / `AUTH_COOKIE_SAMESITE` | HttpOnly staff-session cookie settings |
+| `CUSTOMER_IDENTITY_COOKIE_NAME` | HttpOnly opaque cookie used by the linked customer privacy API |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins; no wildcard in production |
 | `CONFIRMATION_TTL_MINUTES` | Lifetime of a one-time order confirmation challenge |
+| `IDENTITY_LINK_TTL_MINUTES` | Lifetime of a hashed, single-use channel-link code |
+| `CONSENT_POLICY_VERSION` | Policy version recorded with each append-only consent decision |
+| `MESSAGE_RETENTION_DAYS` | Maximum retained age for conversational turns |
+| `LOCATION_RETENTION_DAYS` | Maximum retained age for shared route coordinates and transient session addresses |
+| `PROVIDER_RESPONSE_RETENTION_DAYS` | Age after which provider response/error excerpts are redacted |
 | `MCP_TRANSACTIONAL_ENABLED` | Development-only transaction gate; production rejects it until provider verification is implemented |
 | `*_RATE_LIMIT_PER_MINUTE` | Per-client API, login, and webhook request ceilings |
 | `OPENAI_API_KEY` | Planner and response generation |
@@ -226,23 +280,27 @@ cd frontend && pnpm build
 
 Before a public launch:
 
-1. Use a managed PostgreSQL database and Redis instance, then run `alembic upgrade head`.
-2. Set `ENVIRONMENT=production`, a strong `JWT_SECRET`, and exact `ALLOWED_ORIGINS`.
-3. Create least-privilege staff accounts and remove demo credentials and synthetic fixtures
+1. Connect the repository to Vercel with `frontend` as the project Root Directory and configure
+   the Preview and Production public API/WebSocket variables.
+2. Use a managed PostgreSQL database and Redis instance, then run `alembic upgrade head`.
+3. Set `ENVIRONMENT=production`, a strong `JWT_SECRET`, and exact `ALLOWED_ORIGINS` that include
+   the production Vercel/custom domain and approved preview origins.
+4. Create least-privilege staff accounts and remove demo credentials and synthetic fixtures
    that should not be exposed.
-4. Configure HTTPS, the public frontend/API URLs, monitoring, backups, and log redaction.
-5. Register and verify the WhatsApp webhook; test duplicate delivery, retries, token expiry,
+5. Configure HTTPS, the public frontend/API URLs, monitoring, backups, and log redaction.
+6. Register and verify the WhatsApp webhook; test duplicate delivery, retries, token expiry,
    and the 24-hour messaging rules applicable to the account.
-6. Verify the Swiggy and Zomato MCP endpoints, OAuth identity, transaction ownership, native
+7. Verify the Swiggy and Zomato MCP endpoints, OAuth identity, transaction ownership, native
    scheduling fields, and supported fulfillment modes. Leave a provider disabled if any check fails.
-7. Restrict the Google Maps key to the production workload, enable Places API (New) and Routes
+8. Restrict the Google Maps key to the production workload, enable Places API (New) and Routes
    API, configure quotas, and test nearby and on-route searches in staging.
-8. Run unit, migration, webhook, end-to-end chat, cancellation, scheduling-boundary,
+9. Run unit, migration, webhook, end-to-end chat, cancellation, scheduling-boundary,
    concurrency, security, and load tests in staging.
-9. Confirm the Celery worker and beat processes are healthy; without them, scheduled in-house
-   orders will not enter the live kitchen queue.
-10. Confirm `/api/ready` returns 200 and perform a rollback drill before opening traffic.
-11. Review the repository and rewritten Git history against the applicable NDA or IP terms.
+10. Confirm the Celery worker and beat processes are healthy; without them, scheduled in-house
+    orders will not enter the live kitchen queue.
+11. Confirm `/api/ready` returns 200 from the deployed frontend's network path and perform a
+    Vercel rollback drill before opening traffic.
+12. Review the repository and rewritten Git history against the applicable NDA or IP terms.
 
 ## Current readiness
 
@@ -259,7 +317,12 @@ Implemented in this repository:
 - Tokenized, privacy-safe scheduled customer tracking and tenant-scoped staff views
 - HttpOnly staff authentication, authenticated WebSockets, and origin/CSRF enforcement
 - Immutable one-time order confirmations, stable idempotency, and durable provider-attempt outcomes
-- Focused unit tests for scheduling policy, confirmation safety, tenant isolation, authentication, MCP tool safety, and WhatsApp parsing
+- Unified customer identities for Telegram, WhatsApp, and web with one-time cross-channel linking
+- Explicit consent controls for personalization, locations, reminders, and analytics
+- Memory status, disable, export, and permanent deletion commands in Telegram and WhatsApp, plus customer web APIs
+- Fulfillment/feedback-only personalization with idempotent learning records; cancelled and unfulfilled orders do not count as completed taste signals
+- Automated message, location, and provider-response retention enforcement through Celery Beat
+- Focused unit tests for scheduling policy, confirmation safety, identity/privacy, retention, tenant isolation, authentication, MCP tool safety, and WhatsApp parsing
 
 Still environment-dependent before public traffic:
 
@@ -267,7 +330,8 @@ Still environment-dependent before public traffic:
 - WhatsApp business verification and webhook registration
 - Confirmation that Swiggy and Zomato support the required scheduled transaction and fulfillment modes
 - Staging end-to-end, security, concurrency, and load-test results
-- Production hosting, DNS, TLS, alerting, backups, and rollback verification
+- Vercel project connection, production domain, environment variables, and rollback verification
+- Always-on backend/worker/beat hosting, DNS, TLS, alerting, and backups
 
 Do not claim a provider is live merely because its button is visible. A provider is live only
 after its authenticated tools pass the scheduling capability and end-to-end staging checks.
@@ -275,6 +339,8 @@ after its authenticated tools pass the scheduling capability and end-to-end stag
 ## Development rules
 
 - Never let generated text directly mutate persistent state.
+- Never create or use long-term personalization unless the customer has explicitly enabled it.
+- Never merge customer profiles from a caller-supplied phone number; use the one-time channel-link flow.
 - Never place an instant order or emulate scheduling with delayed clicks.
 - Validate menu availability, quantities, totals, identity, and schedule immediately before commit.
 - Require confirmation for placement and cancellation.
