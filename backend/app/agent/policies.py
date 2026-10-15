@@ -67,7 +67,7 @@ class RestaurantPolicy:
 
     def can_cancel_order(self, current_status: str) -> bool:
         """Check if an order can be cancelled given its current status."""
-        status_order = ["SCHEDULED", "CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"]
+        status_order = ["CREATED", "CONFIRMED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"]
         try:
             idx = status_order.index(current_status)
             cancel_idx = status_order.index(self.can_cancel_before)

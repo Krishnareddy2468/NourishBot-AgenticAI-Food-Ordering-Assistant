@@ -30,6 +30,7 @@ from app.db.models import (
 )
 from app.agent.privacy_service import ensure_channel
 from app.core.config import settings
+from app.domain.order_state import record_order_event
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +424,15 @@ async def save_order(
         )
         session.add(order)
         await session.flush()
+        record_order_event(
+            session,
+            order,
+            event_type="ORDER_CREATED",
+            to_state="CREATED",
+            actor_type="SYSTEM",
+            source="LEGACY_CRUD",
+            reason_code="LEGACY_ORDER_CREATED",
+        )
 
         for item in items:
             name = item.get("item_name", item.get("item", ""))

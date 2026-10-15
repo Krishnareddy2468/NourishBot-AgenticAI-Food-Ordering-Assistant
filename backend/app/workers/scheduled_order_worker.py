@@ -7,7 +7,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import Order, OutboxEvent
+from app.db.models import MealSchedule, Order, OutboxEvent
+from app.domain.order_state import transition_order, transition_schedule
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -30,17 +31,38 @@ def activate_due_orders() -> dict:
             orders = session.execute(
                 select(Order)
                 .where(
-                    Order.status == "SCHEDULED",
+                    Order.schedule_state == "SCHEDULED",
                     Order.provider == "NOURISHBOT",
-                    Order.scheduled_for.is_not(None),
-                    Order.scheduled_for <= cutoff,
+                    Order.desired_for.is_not(None),
+                    Order.desired_for <= cutoff,
                 )
                 .with_for_update(skip_locked=True)
             ).scalars().all()
 
             for order in orders:
-                order.status = "CREATED"
-                order.activated_at = now
+                meal_schedule = session.execute(
+                    select(MealSchedule).where(MealSchedule.order_id == order.id)
+                ).scalar_one_or_none()
+                transition_schedule(
+                    session,
+                    order,
+                    "ACTIVATED",
+                    actor_type="SYSTEM",
+                    source="SCHEDULER",
+                    reason_code="SUBMISSION_WINDOW_OPEN",
+                    meal_schedule=meal_schedule,
+                    occurred_at=now,
+                )
+                if order.status in {"CREATED", "CONFIRMED"}:
+                    transition_order(
+                        session,
+                        order,
+                        "ACCEPTED",
+                        actor_type="SYSTEM",
+                        source="SCHEDULER",
+                        reason_code="SCHEDULE_ACTIVATED",
+                        occurred_at=now,
+                    )
                 activated_refs.append(order.order_ref)
                 session.add(OutboxEvent(
                     restaurant_id=order.restaurant_id,
@@ -48,7 +70,7 @@ def activate_due_orders() -> dict:
                     payload={
                         "order_id": order.id,
                         "order_ref": order.order_ref,
-                        "new_status": "CREATED",
+                        "new_status": order.status,
                         "activated_from_schedule": True,
                         "order_type": order.order_type,
                     },

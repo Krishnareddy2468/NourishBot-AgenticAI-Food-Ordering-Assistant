@@ -16,6 +16,7 @@ from app.db.models import (
     Order, OrderItem, MenuItem, Invoice,
 )
 from app.auth.deps import require_waiter, require_manager, require_staff, tenant_id
+from app.domain.order_state import record_order_event, transition_order
 
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
@@ -272,6 +273,16 @@ async def add_table_order(session_id: int, body: dict, user=Depends(require_wait
         )
         session.add(order)
         await session.flush()
+        record_order_event(
+            session,
+            order,
+            event_type="ORDER_CREATED",
+            to_state="CREATED",
+            actor_type="STAFF",
+            actor_id=user.get("user_id"),
+            source="TABLE_API",
+            reason_code="DINE_IN_ORDER_CREATED",
+        )
 
         for item_data in items_data:
             item_id = item_data.get("item_id")
@@ -332,7 +343,15 @@ async def fire_to_kitchen(session_id: int, user=Depends(require_waiter)):
             )
             order = order_result.scalar_one_or_none()
             if order and order.status == "CREATED":
-                order.status = "ACCEPTED"
+                transition_order(
+                    session,
+                    order,
+                    "ACCEPTED",
+                    actor_type="STAFF",
+                    actor_id=user.get("user_id"),
+                    source="TABLE_API",
+                    reason_code="FIRED_TO_KITCHEN",
+                )
                 fired.append({"order_id": order.id, "order_ref": order.order_ref})
         await session.commit()
 

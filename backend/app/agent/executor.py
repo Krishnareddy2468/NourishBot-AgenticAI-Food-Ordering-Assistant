@@ -19,7 +19,7 @@ import logging
 import secrets
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -32,7 +32,7 @@ from app.db.models import (
     ModifierGroup, Modifier, MenuItemModifierGroup,
     Order, OrderItem, Reservation,
     Payment, DiningTable, TableSession, TableSessionOrder,
-    Driver, Delivery, Invoice, ConfirmationChallenge,
+    Driver, Delivery, Invoice, ConfirmationChallenge, MealSchedule,
 )
 from app.agent.context_builder import ContextSnapshot, save_session_meta
 from app.agent.policies import default_policy
@@ -43,6 +43,14 @@ from app.agent.order_confirmation import (
     create_challenge,
     lock_valid_challenge,
     snapshot_hash,
+)
+from app.domain.order_state import (
+    InvalidStateTransition,
+    record_order_event,
+    record_schedule_event,
+    sync_terminal_schedule,
+    transition_order,
+    transition_schedule,
 )
 
 logger = logging.getLogger(__name__)
@@ -602,10 +610,17 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
             customer_id=ctx.customer_id,
             channel_id=ch.id,
             order_type=order_type,
-            status="SCHEDULED",
+            status="CONFIRMED",
             provider=provider,
+            schedule_state="SCHEDULED",
+            provider_state="NOT_REQUIRED" if provider.upper() == "NOURISHBOT" else "PENDING",
+            fulfillment_state="NOT_STARTED",
             source_channel=ctx.channel_type,
             scheduled_for=scheduled_for,
+            desired_for=scheduled_for,
+            ready_by=scheduled_for,
+            submission_window_start=scheduled_for - timedelta(minutes=settings.SCHEDULE_ACTIVATION_LEAD_MINUTES),
+            submission_window_end=scheduled_for,
             subtotal_cents=subtotal,
             total_cents=subtotal,
             notes=notes or None,
@@ -613,6 +628,45 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         )
         db.add(order)
         await db.flush()
+        record_order_event(
+            db,
+            order,
+            event_type="ORDER_CREATED",
+            to_state="CONFIRMED",
+            actor_type="CUSTOMER",
+            actor_id=ctx.customer_id,
+            source=ctx.channel_type,
+            reason_code="EXPLICIT_CONFIRMATION",
+            metadata={"confirmation_id": challenge.id},
+        )
+
+        if ctx.customer_id:
+            meal_schedule = MealSchedule(
+                restaurant_id=ctx.restaurant_id,
+                customer_id=ctx.customer_id,
+                order_id=order.id,
+                title=f"Meal order {order_ref}",
+                meal_period="UNSPECIFIED",
+                state="SCHEDULED",
+                desired_for=scheduled_for,
+                ready_by=scheduled_for,
+                submission_window_start=scheduled_for - timedelta(minutes=settings.SCHEDULE_ACTIVATION_LEAD_MINUTES),
+                submission_window_end=scheduled_for,
+                timezone=str(scheduled_for.tzinfo),
+                source=ctx.channel_type,
+            )
+            db.add(meal_schedule)
+            await db.flush()
+            record_schedule_event(
+                db,
+                meal_schedule,
+                event_type="SCHEDULE_CREATED",
+                to_state="SCHEDULED",
+                actor_type="CUSTOMER",
+                actor_id=ctx.customer_id,
+                source=ctx.channel_type,
+                reason_code="ORDER_CONFIRMED",
+            )
 
         if order_type == "DELIVERY":
             db.add(Delivery(
@@ -771,7 +825,29 @@ async def _tool_cancel_order(args: dict, ctx: ContextSnapshot, result: Execution
                       f"Call us directly to arrange changes.",
             )
 
-        order.status = "CANCELLED"
+        transition_order(
+            db,
+            order,
+            "CANCELLED",
+            actor_type="CUSTOMER",
+            actor_id=ctx.customer_id,
+            source=ctx.channel_type,
+            reason_code="CUSTOMER_CANCELLED",
+        )
+        if order.schedule_state in {"SCHEDULED", "ACTIVATED"}:
+            meal_schedule = (await db.execute(
+                select(MealSchedule).where(MealSchedule.order_id == order.id)
+            )).scalar_one_or_none()
+            transition_schedule(
+                db,
+                order,
+                "CANCELLED",
+                actor_type="CUSTOMER",
+                actor_id=ctx.customer_id,
+                source=ctx.channel_type,
+                reason_code="CUSTOMER_CANCELLED",
+                meal_schedule=meal_schedule,
+            )
         await db.commit()
 
         # Broadcast real-time event
@@ -1272,6 +1348,15 @@ async def _tool_add_table_order(args: dict, ctx: ContextSnapshot, result: Execut
         )
         db.add(order)
         await db.flush()
+        record_order_event(
+            db,
+            order,
+            event_type="ORDER_CREATED",
+            to_state="ACCEPTED",
+            actor_type="STAFF",
+            source="AGENT_TOOL",
+            reason_code="DINE_IN_ORDER_CREATED",
+        )
 
         for item in validated:
             db.add(OrderItem(
@@ -1522,7 +1607,28 @@ async def _tool_update_order_status(args: dict, ctx: ContextSnapshot, result: Ex
             return ActionResult("update_order_status", False,
                                 error=f"Order not found.")
 
-        order.status = status
+        try:
+            transition_order(
+                db,
+                order,
+                status,
+                actor_type="STAFF",
+                source="AGENT_TOOL",
+                reason_code="STAFF_STATE_UPDATE",
+            )
+        except InvalidStateTransition as exc:
+            return ActionResult("update_order_status", False, error=str(exc))
+        meal_schedule = (await db.execute(
+            select(MealSchedule).where(MealSchedule.order_id == order.id)
+        )).scalar_one_or_none()
+        sync_terminal_schedule(
+            db,
+            order,
+            meal_schedule=meal_schedule,
+            actor_type="STAFF",
+            source="AGENT_TOOL",
+            reason_code="ORDER_TERMINAL_STATE_SYNC",
+        )
         await db.commit()
 
         try:
@@ -1646,19 +1752,60 @@ async def _tool_update_delivery_status(args: dict, ctx: ContextSnapshot, result:
             return ActionResult("update_delivery_status", False, error="Delivery not found.")
 
         delivery.status = status
-        if status == "PICKED_UP":
-            delivery.picked_up_at = datetime.now(timezone.utc)
-        elif status == "DELIVERED":
-            delivery.delivered_at = datetime.now(timezone.utc)
-            # Also mark order delivered
+        order_obj = None
+        if status in {"PICKED_UP", "EN_ROUTE", "DELIVERED", "FAILED"}:
             order_obj = (await db.execute(
                 select(Order).where(
                     Order.id == delivery.order_id,
                     Order.restaurant_id == ctx.restaurant_id,
                 )
             )).scalar_one_or_none()
-            if order_obj:
-                order_obj.status = "DELIVERED"
+
+        try:
+            if status == "PICKED_UP":
+                delivery.picked_up_at = datetime.now(timezone.utc)
+                if order_obj and order_obj.status != "OUT_FOR_DELIVERY":
+                    transition_order(
+                        db, order_obj, "OUT_FOR_DELIVERY",
+                        actor_type="STAFF", source="AGENT_TOOL",
+                        reason_code="DRIVER_PICKED_UP",
+                    )
+            elif status == "EN_ROUTE":
+                if order_obj and order_obj.status != "OUT_FOR_DELIVERY":
+                    transition_order(
+                        db, order_obj, "OUT_FOR_DELIVERY",
+                        actor_type="STAFF", source="AGENT_TOOL",
+                        reason_code="DELIVERY_EN_ROUTE",
+                    )
+            elif status == "DELIVERED":
+                delivery.delivered_at = datetime.now(timezone.utc)
+                if order_obj:
+                    transition_order(
+                        db, order_obj, "DELIVERED",
+                        actor_type="STAFF", source="AGENT_TOOL",
+                        reason_code="DELIVERY_COMPLETED",
+                    )
+            elif status == "FAILED" and order_obj:
+                transition_order(
+                    db, order_obj, "FAILED",
+                    actor_type="STAFF", source="AGENT_TOOL",
+                    reason_code="DELIVERY_FAILED",
+                )
+        except InvalidStateTransition as exc:
+            return ActionResult("update_delivery_status", False, error=str(exc))
+
+        if order_obj:
+            meal_schedule = (await db.execute(
+                select(MealSchedule).where(MealSchedule.order_id == order_obj.id)
+            )).scalar_one_or_none()
+            sync_terminal_schedule(
+                db,
+                order_obj,
+                meal_schedule=meal_schedule,
+                actor_type="STAFF",
+                source="AGENT_TOOL",
+                reason_code="DELIVERY_OUTCOME_SYNC",
+            )
         await db.commit()
 
     return ActionResult("update_delivery_status", True, data={

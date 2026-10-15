@@ -1,70 +1,4 @@
-hgit add 
-
-
-git add 
-  README.md 
-  backend/.env.example 
-  backend/alembic/versions/0005_enable_pgvector.py 
-  backend/alembic/versions/0010_add_website_auth.py 
-  backend/app/api/main.py 
-  backend/app/api/routes/auth.py 
-  backend/app/api/routes/deliveries.py 
-  backend/app/api/routes/invoices.py 
-  backend/app/api/routes/menu.py 
-  backend/app/api/routes/orders.py 
-  backend/app/api/routes/payments.py 
-  backend/app/api/routes/reservations.py 
-  backend/app/api/routes/staff.py 
-  backend/app/api/routes/tables.py 
-  backend/app/auth/deps.py 
-  backend/app/auth/jwt.py 
-  backend/app/core/config.py 
-  backend/app/db/models/__init__.py 
-  backend/app/db/models/core.py 
-  backend/requirements.txt 
-  backend/tests/unit/test_auth_security.py 
-  frontend/app/workspace/page.jsx 
-  frontend/components/pages/LoginPage.jsx 
-  frontend/components/shared/RoleSelector.jsx 
-  frontend/context/AuthContext.jsx 
-  frontend/services/platformApi.js
-
-  README.md 
-
-
-gc
-
-  backend/.env.example 
-
-
-
-  bdackend/alembic/versions/0005_enable_pgvector.py 
-
-
-
-  backend/alembic/versions/0010_add_website_auth.py 
-  backend/app/api/main.py 
-  backend/app/api/routes/auth.py 
-  backend/app/api/routes/deliveries.py 
-  backend/app/api/routes/invoices.py 
-  backend/app/api/routes/menu.py 
-  backend/app/api/routes/orders.py 
-  backend/app/api/routes/payments.py 
-  backend/app/api/routes/reservations.py 
-  backend/app/api/routes/staff.py 
-  backend/app/api/routes/tables.py 
-  backend/app/auth/deps.py 
-  backend/app/auth/jwt.py 
-  backend/app/core/config.py 
-  backend/app/db/models/__init__.py 
-  backend/app/db/models/core.py 
-  backend/requirements.txt 
-  backend/tests/unit/test_auth_security.py 
-  frontend/app/workspace/page.jsx 
-  frontend/components/pages/LoginPage.jsx 
-  frontend/components/shared/RoleSelector.jsx 
-  frontend/context/AuthContext.jsx 
-  frontend/services/platformApi.js# NourishBot V2.0 — Product Upgrade and Implementation Plan
+# NourishBot V2.0 — Product Upgrade and Implementation Plan
 
 **Product:** NourishBot — Your AI Meal Planning & Scheduling Companion
 **Plan status:** Approved for phased development
@@ -489,24 +423,36 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Create one consistent model for plans, schedules, orders, fulfillment, and provider execution.
 
+**Implementation status:** Complete in the working tree on 2026-10-15. Migration `0011` must be applied after website-auth migration `0010` before the updated application starts.
+
 ### Work
 
-- [ ] Add meal plan, template, routine, budget, provider attempt, and event tables.
-- [ ] Introduce a central order transition service.
-- [ ] Separate meal scheduling state from provider order state.
-- [ ] Add immutable order and schedule event histories.
-- [ ] Add desired time, ready-by time, provider slot, and submission window fields.
-- [ ] Migrate current order statuses safely.
-- [ ] Distinguish cancellation, delivery failure, provider rejection, and expiry.
-- [ ] Remove or quarantine legacy duplicate agent implementations after parity tests.
+- [X] Add meal plan, template, routine, budget, provider attempt, and event tables.
+- [X] Introduce a central order transition service.
+- [X] Separate meal scheduling state from provider order state.
+- [X] Add immutable order and schedule event histories.
+- [X] Add desired time, ready-by time, provider slot, and submission window fields.
+- [X] Migrate current order statuses safely.
+- [X] Distinguish cancellation, delivery failure, provider rejection, and expiry.
+- [X] Remove or quarantine legacy duplicate agent implementations after parity tests.
 
 ### Acceptance criteria
 
-- [ ] Every transition is validated and audited.
-- [ ] Invalid transitions fail consistently.
-- [ ] Existing orders migrate without data loss.
-- [ ] Delivery failures remain distinct from cancellations.
-- [ ] The current agent entry point is unambiguous.
+- [X] Every transition is validated and audited.
+- [X] Invalid transitions fail consistently.
+- [X] Existing orders migrate without data loss.
+- [X] Delivery failures remain distinct from cancellations.
+- [X] The current agent entry point is unambiguous.
+
+### Phase 2 validation evidence
+
+- Backend tests: 61 passed, including eight dedicated domain/state-machine tests.
+- Python compilation: passed with the bytecode cache redirected outside the source tree.
+- Alembic migration chain: `0011` is the single head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0010 <-> 0011`: passed.
+- Legacy `scheduled_for` values are retained and copied into `desired_for`; legacy state normalization is recorded in the order event history.
+- Order and schedule event histories are protected by ORM guards and PostgreSQL update/delete rejection triggers.
+- Telegram and WhatsApp use the canonical pipeline; legacy agent entry points fail closed with an explicit migration error.
 
 ## Phase 3 — Reliable Scheduling Engine
 

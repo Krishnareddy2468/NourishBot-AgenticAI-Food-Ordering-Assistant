@@ -1077,6 +1077,9 @@ def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> st
     2. Executor: Runs the LLM, executes tool calls deterministically
     3. Verifier: Validates results against policies before committing
     """
+    from app.agent.entrypoint import reject_legacy_agent
+    reject_legacy_agent("app.agent.orchestrator.get_bot_response")
+
     trace_id = uuid.uuid4().hex[:8]
     logger.info("[%s] chat_id=%s msg=%r", trace_id, chat_id, user_message[:80])
 

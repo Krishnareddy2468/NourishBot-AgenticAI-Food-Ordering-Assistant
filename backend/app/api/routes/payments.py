@@ -8,6 +8,7 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import Payment
 from app.payments.razorpay import create_payment_order, verify_webhook_signature
 from app.auth.deps import require_staff, tenant_id
+from app.domain.order_state import transition_order
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 
@@ -102,7 +103,7 @@ async def razorpay_webhook(request: Request):
             payment.provider_signature = payment_data.get("signature")
 
             # Payment never activates a future meal. Only the scheduler may
-            # move SCHEDULED orders into the live kitchen queue.
+            # move an order whose schedule_state is SCHEDULED into the live queue.
             order_id = payment.order_id
             restaurant_id = payment.restaurant_id
             order_advanced = False
@@ -111,8 +112,19 @@ async def razorpay_webhook(request: Request):
                     select(Order).where(Order.id == order_id)
                 )
                 order = order_result.scalar_one_or_none()
-                if order and order.status in ("CREATED",):
-                    order.status = "ACCEPTED"
+                if (
+                    order
+                    and order.schedule_state != "SCHEDULED"
+                    and order.status in {"CREATED", "CONFIRMED"}
+                ):
+                    transition_order(
+                        session,
+                        order,
+                        "ACCEPTED",
+                        actor_type="SYSTEM",
+                        source="PAYMENT_WEBHOOK",
+                        reason_code="PAYMENT_CAPTURED",
+                    )
                     order_advanced = True
 
             await session.commit()
@@ -147,8 +159,8 @@ async def razorpay_webhook(request: Request):
                             event_type="order.status_changed",
                             message=(
                                 f"Payment confirmed for {order.order_ref}. Your meal remains scheduled "
-                                f"for {order.scheduled_for.isoformat()}."
-                                if order.status == "SCHEDULED" and order.scheduled_for
+                                f"for {order.desired_for.isoformat()}."
+                                if order.schedule_state == "SCHEDULED" and order.desired_for
                                 else f"Payment confirmed for order {order.order_ref}! Your order is now {order.status}."
                             ),
                         )

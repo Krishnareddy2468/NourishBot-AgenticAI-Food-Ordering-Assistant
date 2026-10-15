@@ -10,8 +10,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
-from app.db.models import Delivery, Driver, DeliveryLocationEvent, Order, User
+from app.db.models import Delivery, Driver, DeliveryLocationEvent, MealSchedule, Order, User
 from app.auth.deps import require_manager, require_driver, require_staff, tenant_id
+from app.domain.order_state import InvalidStateTransition, sync_terminal_schedule, transition_order
 
 router = APIRouter(prefix="/api/v1/deliveries", tags=["deliveries"])
 
@@ -240,33 +241,67 @@ async def update_delivery_status(delivery_id: int, body: DeliveryStatusUpdateReq
             raise HTTPException(409, f"Cannot move delivery from {delivery.status} to {body.status}")
 
         delivery.status = body.status
+        order = None
+        if body.status in {"PICKED_UP", "EN_ROUTE", "DELIVERED", "FAILED"}:
+            order = (await session.execute(
+                select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
+            )).scalar_one_or_none()
         if body.status == "PICKED_UP":
             delivery.picked_up_at = datetime.now(timezone.utc)
-            order = (await session.execute(
-                select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
-            )).scalar_one_or_none()
-            if order:
-                order.status = "OUT_FOR_DELIVERY"
+            if order and order.status != "OUT_FOR_DELIVERY":
+                try:
+                    transition_order(
+                        session, order, "OUT_FOR_DELIVERY",
+                        actor_type="STAFF", actor_id=user.get("user_id"),
+                        source="DELIVERY_API", reason_code="DRIVER_PICKED_UP",
+                    )
+                except InvalidStateTransition as exc:
+                    raise HTTPException(409, str(exc)) from exc
         elif body.status == "EN_ROUTE":
-            order = (await session.execute(
-                select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
-            )).scalar_one_or_none()
-            if order:
-                order.status = "OUT_FOR_DELIVERY"
+            if order and order.status != "OUT_FOR_DELIVERY":
+                try:
+                    transition_order(
+                        session, order, "OUT_FOR_DELIVERY",
+                        actor_type="STAFF", actor_id=user.get("user_id"),
+                        source="DELIVERY_API", reason_code="DELIVERY_EN_ROUTE",
+                    )
+                except InvalidStateTransition as exc:
+                    raise HTTPException(409, str(exc)) from exc
         elif body.status == "DELIVERED":
             delivery.delivered_at = datetime.now(timezone.utc)
-            # Also mark order as DELIVERED
-            order = (await session.execute(
-                select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
-            )).scalar_one_or_none()
             if order:
-                order.status = "DELIVERED"
+                try:
+                    transition_order(
+                        session, order, "DELIVERED",
+                        actor_type="STAFF", actor_id=user.get("user_id"),
+                        source="DELIVERY_API", reason_code="DELIVERY_COMPLETED",
+                    )
+                except InvalidStateTransition as exc:
+                    raise HTTPException(409, str(exc)) from exc
         elif body.status == "FAILED":
-            order = (await session.execute(
-                select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
-            )).scalar_one_or_none()
             if order:
-                order.status = "CANCELLED"
+                try:
+                    transition_order(
+                        session, order, "FAILED",
+                        actor_type="STAFF", actor_id=user.get("user_id"),
+                        source="DELIVERY_API", reason_code="DELIVERY_FAILED",
+                    )
+                except InvalidStateTransition as exc:
+                    raise HTTPException(409, str(exc)) from exc
+
+        if order is not None:
+            meal_schedule = (await session.execute(
+                select(MealSchedule).where(MealSchedule.order_id == order.id)
+            )).scalar_one_or_none()
+            sync_terminal_schedule(
+                session,
+                order,
+                meal_schedule=meal_schedule,
+                actor_type="STAFF",
+                actor_id=user.get("user_id"),
+                source="DELIVERY_API",
+                reason_code="DELIVERY_OUTCOME_SYNC",
+            )
 
         await session.commit()
 
@@ -292,12 +327,12 @@ async def update_delivery_status(delivery_id: int, body: DeliveryStatusUpdateReq
         evt = delivery_status_changed(delivery_id, delivery.order_id, body.status, rid)
         await ws_manager.broadcast(delivery.restaurant_id, evt.to_dict())
 
-        if body.status in ("PICKED_UP", "EN_ROUTE", "DELIVERED"):
+        if body.status in ("PICKED_UP", "EN_ROUTE", "DELIVERED", "FAILED"):
             order = (await session.execute(
                 select(Order).where(Order.id == delivery.order_id, Order.restaurant_id == rid)
             )).scalar_one_or_none()
             if order:
-                public_status = "DELIVERED" if body.status == "DELIVERED" else "OUT_FOR_DELIVERY"
+                public_status = order.status
                 evt2 = order_status_changed(order.id, order.order_ref, public_status, rid)
                 await ws_manager.broadcast(delivery.restaurant_id, evt2.to_dict())
 
@@ -486,7 +521,7 @@ async def track_delivery_public(tracking_token: str):
                 "delivery": None,
                 "message": (
                     "Your meal is scheduled and will enter preparation near its selected time."
-                    if order.status == "SCHEDULED"
+                    if order.schedule_state == "SCHEDULED"
                     else "Your order is in the live preparation queue."
                 ),
             }

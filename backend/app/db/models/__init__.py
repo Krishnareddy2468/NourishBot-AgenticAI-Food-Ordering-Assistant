@@ -37,6 +37,15 @@ from app.db.models.privacy import (
     MemoryLearningEvent,
     PrivacyRequest,
 )
+from app.db.models.planning import (
+    MealPlan,
+    MealTemplate,
+    MealRoutine,
+    MealBudget,
+    MealSchedule,
+    OrderEvent,
+    ScheduleEvent,
+)
 
 __all__ = [
     "Restaurant",
@@ -72,4 +81,11 @@ __all__ = [
     "IdentityLinkChallenge",
     "MemoryLearningEvent",
     "PrivacyRequest",
+    "MealPlan",
+    "MealTemplate",
+    "MealRoutine",
+    "MealBudget",
+    "MealSchedule",
+    "OrderEvent",
+    "ScheduleEvent",
 ]

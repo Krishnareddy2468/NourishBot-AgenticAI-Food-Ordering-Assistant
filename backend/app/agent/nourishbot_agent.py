@@ -440,6 +440,9 @@ async def get_nourishbot_response(user_message: str, chat_id: int, user_name: st
     Returns the assistant text, or None if the agent can't be built (so the
     caller can fall back to the legacy orchestrator).
     """
+    from app.agent.entrypoint import reject_legacy_agent
+    reject_legacy_agent("app.agent.nourishbot_agent.get_nourishbot_response")
+
     try:
         agent = await _get_agent()
     except Exception as e:

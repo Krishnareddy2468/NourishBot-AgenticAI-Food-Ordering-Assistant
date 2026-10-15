@@ -10,8 +10,9 @@ from typing import Optional
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
-from app.db.models import Order, OrderItem
+from app.db.models import MealSchedule, Order, OrderItem
 from app.auth.deps import require_role, require_kitchen, require_cashier, require_staff, tenant_id
+from app.domain.order_state import InvalidStateTransition, sync_terminal_schedule, transition_order
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 require_order_operator = require_role("ADMIN", "MANAGER", "KITCHEN", "WAITER")
@@ -26,8 +27,18 @@ def _serialize_order(order: Order, items: list) -> dict:
         "status": order.status,
         "order_type": order.order_type,
         "provider": order.provider,
+        "schedule_state": order.schedule_state,
+        "provider_state": order.provider_state,
+        "fulfillment_state": order.fulfillment_state,
         "source_channel": order.source_channel,
         "scheduled_for": order.scheduled_for.isoformat() if order.scheduled_for else None,
+        "desired_for": order.desired_for.isoformat() if order.desired_for else None,
+        "ready_by": order.ready_by.isoformat() if order.ready_by else None,
+        "provider_slot_start": order.provider_slot_start.isoformat() if order.provider_slot_start else None,
+        "provider_slot_end": order.provider_slot_end.isoformat() if order.provider_slot_end else None,
+        "submission_window_start": order.submission_window_start.isoformat() if order.submission_window_start else None,
+        "submission_window_end": order.submission_window_end.isoformat() if order.submission_window_end else None,
+        "terminal_reason": order.terminal_reason,
         "activated_at": order.activated_at.isoformat() if order.activated_at else None,
         "customer": order.customer.name if order.customer else "Guest",
         "phone": order.customer.phone if order.customer else "",
@@ -108,18 +119,6 @@ class OrderStateUpdate(BaseModel):
     order_state: str
 
 
-ALLOWED_STATE_TRANSITIONS = {
-    "SCHEDULED": {"CANCELLED"},
-    "CREATED": {"ACCEPTED", "CONFIRMED_BY_RESTAURANT", "PREPARING", "CANCELLED"},
-    "PAID": {"ACCEPTED", "CONFIRMED_BY_RESTAURANT", "PREPARING", "CANCELLED"},
-    "ACCEPTED": {"PREPARING", "CANCELLED"},
-    "CONFIRMED_BY_RESTAURANT": {"PREPARING", "CANCELLED"},
-    "PREPARING": {"READY", "CANCELLED"},
-    "READY": {"OUT_FOR_DELIVERY", "COMPLETED", "DELIVERED"},
-    "OUT_FOR_DELIVERY": {"DELIVERED", "CANCELLED"},
-}
-
-
 @router.patch("/{order_id}/state")
 async def update_order_state(order_id: int, body: OrderStateUpdate, user=Depends(require_order_operator)):
     rid = tenant_id(user)
@@ -130,23 +129,42 @@ async def update_order_state(order_id: int, body: OrderStateUpdate, user=Depends
             raise HTTPException(404, "Order not found")
 
         requested_state = body.order_state.strip().upper()
-        allowed = ALLOWED_STATE_TRANSITIONS.get(order.status, set())
-        if requested_state not in allowed:
-            raise HTTPException(
-                409,
-                f"Cannot move order from {order.status} to {requested_state}",
+        try:
+            transition_order(
+                session,
+                order,
+                requested_state,
+                actor_type="STAFF",
+                actor_id=user.get("user_id"),
+                source="ORDER_API",
+                reason_code="STAFF_STATE_UPDATE",
             )
+        except InvalidStateTransition as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+        meal_schedule = (await session.execute(
+            select(MealSchedule).where(MealSchedule.order_id == order.id)
+        )).scalar_one_or_none()
+        sync_terminal_schedule(
+            session,
+            order,
+            meal_schedule=meal_schedule,
+            actor_type="STAFF",
+            actor_id=user.get("user_id"),
+            source="ORDER_API",
+            reason_code="ORDER_TERMINAL_STATE_SYNC",
+        )
 
         # Capture before commit to avoid async expiry issues
         restaurant_id = order.restaurant_id
         order_ref = order.order_ref
         customer_id = order.customer_id
 
-        order.status = requested_state
         await session.commit()
         await session.refresh(order)
+        new_state = order.status
 
-        if requested_state in {"DELIVERED", "COMPLETED"}:
+        if new_state in {"DELIVERED", "COMPLETED"}:
             try:
                 from app.agent.memory_agent import learn_from_order
                 await learn_from_order(
@@ -160,13 +178,13 @@ async def update_order_state(order_id: int, body: OrderStateUpdate, user=Depends
 
         from app.realtime.events import order_status_changed
         from app.realtime.ws_manager import ws_manager
-        evt = order_status_changed(order_id, order_ref, requested_state, rid)
+        evt = order_status_changed(order_id, order_ref, new_state, rid)
         await ws_manager.broadcast(restaurant_id, evt.to_dict())
 
         # Notify customer on status change
         try:
             from app.realtime.notifications import notify_order_status
-            await notify_order_status(order_ref, requested_state, order.order_type if hasattr(order, 'order_type') else "DELIVERY")
+            await notify_order_status(order_ref, new_state, order.order_type if hasattr(order, 'order_type') else "DELIVERY")
         except Exception:
             pass
 
@@ -198,8 +216,16 @@ async def mark_order_paid(order_id: int, user=Depends(require_cashier)):
         order_ref = order.order_ref
         customer_id = order.customer_id
 
-        if order.status != "SCHEDULED":
-            order.status = "PAID"
+        if order.status == "CREATED":
+            transition_order(
+                session,
+                order,
+                "CONFIRMED",
+                actor_type="STAFF",
+                actor_id=user.get("user_id"),
+                source="ORDER_API",
+                reason_code="PAYMENT_MARKED_PAID",
+            )
         await session.commit()
         await session.refresh(order)
 

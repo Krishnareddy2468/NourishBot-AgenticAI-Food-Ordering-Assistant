@@ -312,7 +312,7 @@ async def _load_active_orders(ctx: ContextSnapshot, db) -> None:
         select(Order).where(
             Order.customer_id == ctx.customer_id,
             Order.restaurant_id == ctx.restaurant_id,
-            Order.status.in_(["SCHEDULED", "CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"]),
+            Order.status.in_(["CREATED", "CONFIRMED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"]),
         ).order_by(Order.created_at.desc()).limit(5)
     )
     for order in result.scalars().all():
@@ -322,7 +322,10 @@ async def _load_active_orders(ctx: ContextSnapshot, db) -> None:
             "total_cents": order.total_cents,
             "order_type": order.order_type,
             "created_at": order.created_at.isoformat() if order.created_at else "",
-            "scheduled_for": order.scheduled_for.isoformat() if order.scheduled_for else "",
+            "scheduled_for": order.desired_for.isoformat() if order.desired_for else "",
+            "schedule_state": order.schedule_state,
+            "provider_state": order.provider_state,
+            "fulfillment_state": order.fulfillment_state,
             "provider": order.provider,
         })
 

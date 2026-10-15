@@ -27,7 +27,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
@@ -72,6 +72,8 @@ async def _start_provider_attempt(
             existing.attempt_count += 1
             existing.status = "SUBMITTING"
             existing.last_error = None
+            existing.submitted_at = datetime.now(timezone.utc)
+            existing.completed_at = None
             await db.commit()
             return existing, None
 
@@ -85,6 +87,7 @@ async def _start_provider_attempt(
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
             status="SUBMITTING",
+            submitted_at=datetime.now(timezone.utc),
         )
         db.add(attempt)
         await db.commit()
@@ -108,7 +111,11 @@ async def _finish_provider_attempt(
             return
         attempt.status = status
         attempt.provider_order_id = provider_order_id or attempt.provider_order_id
+        if provider_order_id:
+            attempt.receipt_json = {"provider_order_id": provider_order_id}
         attempt.last_error = (error or "")[:500] or None
+        if status in {"CONFIRMED", "FAILED"}:
+            attempt.completed_at = datetime.now(timezone.utc)
         await db.commit()
 
 

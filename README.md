@@ -124,7 +124,8 @@ Release-critical controls include:
 - Daily retention enforcement for chat turns, shared locations, and provider response/error excerpts
 - Redis-backed login, webhook, and API rate limits
 - Explicit CORS origins in production
-- Validated staff order-state transitions
+- Central validated order, schedule, provider, and fulfillment transitions with append-only audit histories
+- Distinct cancellation, fulfillment failure, provider rejection, and expiry outcomes
 - Readiness checks for PostgreSQL and Redis
 
 ## Application surfaces
@@ -173,6 +174,7 @@ backend/
   app/workers/           Celery and scheduled-order activation
   alembic/               database migrations
   tests/                 backend unit tests
+docs/architecture/       lifecycle and system design contracts
 frontend/                landing page, staff workspaces, and customer tracking
 deploy/                  Vercel deployment contract and runtime notes
 infra/                   container and infrastructure scaffolding for backend services
