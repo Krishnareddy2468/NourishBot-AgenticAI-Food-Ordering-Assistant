@@ -3,7 +3,8 @@ Auth routes — staff login.
 """
 
 import bcrypt
-from fastapi import APIRouter, HTTPException, status
+import hmac
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from sqlalchemy import select
@@ -11,6 +12,8 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.db.models import User
 from app.auth.jwt import create_access_token
+from app.auth.deps import extract_token
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -20,8 +23,8 @@ def verify_password(plain: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(plain.encode(), hashed.encode())
     except Exception:
-        # Fallback for plain-text seeded passwords (dev only)
-        return plain == hashed
+        # Legacy plain-text seeds are tolerated only in local development.
+        return not settings.is_production and hmac.compare_digest(plain, hashed)
 
 
 def hash_password(plain: str) -> str:
@@ -34,18 +37,17 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     user_id: int
+    email: str
     role: str
     restaurant_id: int
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, response: Response):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(User).where(User.email == body.email, User.active == True)
+            select(User).where(User.email == body.email.strip().lower(), User.active == True)
         )
         user = result.scalar_one_or_none()
 
@@ -58,10 +60,40 @@ async def login(body: LoginRequest):
         role=user.role,
         email=user.email,
     )
+    response.set_cookie(
+        key=settings.AUTH_COOKIE_NAME,
+        value=token,
+        max_age=settings.JWT_EXPIRY_MINUTES * 60,
+        httponly=True,
+        secure=settings.is_production,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+        path="/",
+    )
 
     return LoginResponse(
-        access_token=token,
         user_id=user.id,
+        email=user.email or "",
         role=user.role,
         restaurant_id=user.restaurant_id,
+    )
+
+
+@router.get("/me", response_model=LoginResponse)
+async def me(user=Depends(extract_token)):
+    return LoginResponse(
+        user_id=int(user["user_id"]),
+        email=str(user.get("email") or ""),
+        role=str(user["role"]),
+        restaurant_id=int(user["restaurant_id"]),
+    )
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response):
+    response.delete_cookie(
+        key=settings.AUTH_COOKIE_NAME,
+        path="/",
+        secure=settings.is_production,
+        httponly=True,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
     )

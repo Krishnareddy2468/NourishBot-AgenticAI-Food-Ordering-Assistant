@@ -13,10 +13,12 @@ Database: PostgreSQL (via SQLAlchemy async + Alembic migrations).
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -24,6 +26,8 @@ from app.db.session import async_engine
 from app.bot.telegram import build_app as build_telegram_app
 from app.realtime.ws_manager import ws_manager
 from app.workers.outbox_worker import outbox_worker_loop
+from app.core.config import settings
+from app.auth.jwt import decode_access_token
 
 load_dotenv()
 
@@ -56,6 +60,8 @@ async def init_db():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.is_production:
+        settings.validate()
     await init_db()
 
     # Start outbox worker as background task
@@ -108,10 +114,72 @@ api = FastAPI(
 
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@api.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@api.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    """Cookie-authenticated state changes must originate from an approved frontend."""
+    if (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.cookies.get(settings.AUTH_COOKIE_NAME)
+    ):
+        origin = request.headers.get("origin", "")
+        if origin not in settings.ALLOWED_ORIGINS:
+            return JSONResponse(status_code=403, content={"detail": "Untrusted request origin"})
+    return await call_next(request)
+
+
+@api.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Redis-backed per-client protection for public HTTP endpoints."""
+    if request.method == "OPTIONS" or request.url.path in ("/api/health", "/api/ready"):
+        return await call_next(request)
+
+    path = request.url.path
+    if path == "/api/v1/auth/login":
+        bucket, limit = "login", settings.LOGIN_RATE_LIMIT_PER_MINUTE
+    elif "/webhook" in path:
+        bucket, limit = "webhook", settings.WEBHOOK_RATE_LIMIT_PER_MINUTE
+    else:
+        bucket, limit = "api", settings.API_RATE_LIMIT_PER_MINUTE
+
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis is not None:
+            client = request.client.host if request.client else "unknown"
+            minute = int(time.time() // 60)
+            key = f"rate:{bucket}:{client}:{minute}"
+            count = await redis.incr(key)
+            if count == 1:
+                await redis.expire(key, 65)
+            if count > limit:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests"},
+                    headers={"Retry-After": "60"},
+                )
+    except Exception as exc:
+        logger.warning("Rate limiter unavailable: %s", exc)
+    return await call_next(request)
 
 
 # ── Register v1 routes ───────────────────────────────────────────────────────
@@ -126,6 +194,7 @@ from app.api.routes.deliveries import router as deliveries_router
 from app.api.routes.reservations import router as reservations_router
 from app.api.routes.staff import router as staff_router
 from app.api.routes.invoices import router as invoices_router
+from app.api.routes.whatsapp import router as whatsapp_router
 
 api.include_router(auth_router)
 api.include_router(menu_router)
@@ -137,15 +206,34 @@ api.include_router(deliveries_router)
 api.include_router(reservations_router)
 api.include_router(staff_router)
 api.include_router(invoices_router)
+api.include_router(whatsapp_router)
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────
 
 @api.websocket("/api/v1/ws")
-async def websocket_endpoint(websocket: WebSocket, restaurant_id: int = 1):
+async def websocket_endpoint(websocket: WebSocket):
     """Real-time WebSocket for KDS, waiter, admin clients."""
+    if websocket.headers.get("origin", "") not in settings.ALLOWED_ORIGINS:
+        await websocket.close(code=4403, reason="Untrusted origin")
+        return
+    protocols = [part.strip() for part in websocket.headers.get("sec-websocket-protocol", "").split(",")]
+    if "nourishbot" not in protocols:
+        await websocket.close(code=4401, reason="Authentication required")
+        return
+    try:
+        raw_token = websocket.cookies.get(settings.AUTH_COOKIE_NAME)
+        if not raw_token:
+            raise ValueError("missing session")
+        payload = decode_access_token(raw_token)
+        restaurant_id = int(payload["restaurant_id"])
+        if restaurant_id <= 0:
+            raise ValueError("invalid tenant")
+    except Exception:
+        await websocket.close(code=4401, reason="Invalid or expired credentials")
+        return
     client_id = str(id(websocket))
-    await ws_manager.connect(websocket, restaurant_id, client_id)
+    await ws_manager.connect(websocket, restaurant_id, client_id, subprotocol="nourishbot")
     try:
         while True:
             # Keep connection alive; client messages can be used for subscriptions
@@ -159,6 +247,21 @@ async def websocket_endpoint(websocket: WebSocket, restaurant_id: int = 1):
 @api.get("/api/health")
 async def health():
     return {"ok": True, "service": "nourishbot-backend", "version": "3.0.0"}
+
+
+@api.get("/api/ready")
+async def readiness():
+    """Deployment readiness probe for PostgreSQL and Redis."""
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        if redis is None or not await redis.ping():
+            raise RuntimeError("Redis is unavailable")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Service dependencies are unavailable") from exc
+    return {"ok": True, "database": "ready", "redis": "ready"}
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────

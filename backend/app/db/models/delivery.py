@@ -37,7 +37,7 @@ class Delivery(Base, RestaurantMixin):
     restaurant_id = Column(BigInteger, nullable=False, index=True, server_default="1")
     order_id = Column(BigInteger, ForeignKey("orders.id"), nullable=False, unique=True, index=True)
     driver_id = Column(BigInteger, ForeignKey("drivers.id"), index=True)
-    status = Column(Text, nullable=False)  # ASSIGNED | PICKED_UP | EN_ROUTE | DELIVERED | FAILED
+    status = Column(Text, nullable=False)  # PENDING_ASSIGNMENT | ASSIGNED | PICKED_UP | EN_ROUTE | DELIVERED | FAILED
     address_json = Column(JSONB, nullable=False)
     customer_phone = Column(Text)
     assigned_at = Column(DateTime(timezone=True))

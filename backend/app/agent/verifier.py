@@ -46,6 +46,8 @@ class VerifiedSummary:
     order_type: Optional[str] = None
     order_total_cents: int = 0
     order_status: Optional[str] = None
+    scheduled_for: Optional[str] = None
+    provider: Optional[str] = None
     order_eta_seconds: Optional[int] = None
     order_items: list[dict] = field(default_factory=list)
 
@@ -92,6 +94,8 @@ class VerifiedSummary:
             "order_type": self.order_type,
             "order_total_inr": round(self.order_total_cents / 100, 2),
             "order_status": self.order_status,
+            "scheduled_for": self.scheduled_for,
+            "provider": self.provider,
             "order_eta_min": self.order_eta_seconds // 60 if self.order_eta_seconds else None,
             "order_items": self.order_items,
             "reservation_ref": self.reservation_ref,
@@ -243,6 +247,8 @@ class Verifier:
             summary.order_type = order.order_type
             summary.order_total_cents = order.total_cents
             summary.order_status = order.status
+            summary.scheduled_for = order.scheduled_for.isoformat() if order.scheduled_for else None
+            summary.provider = order.provider
             summary.order_eta_seconds = exec_result.eta_seconds
             summary.order_items = [
                 {

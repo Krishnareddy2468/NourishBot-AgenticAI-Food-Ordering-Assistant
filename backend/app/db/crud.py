@@ -5,6 +5,8 @@ All functions use the async SQLAlchemy session from app.db.session.
 These replace the old sync SQLite helpers used by telegram.py and the agents.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import uuid
@@ -54,14 +56,15 @@ async def _get_channel(chat_id: int) -> Optional[Channel]:
         return channel
 
 
-async def get_session(chat_id: int) -> dict:
+async def get_session(chat_id: str | int, channel_type: str = "TELEGRAM") -> dict:
     """Return session state as a dict (same shape as old SQLite version).
 
     Tries Redis cache first; falls back to PostgreSQL on miss.
     """
     # ── Redis cache hit ──────────────────────────────────────────────────
     from app.core.redis_client import get_cached_session, cache_session
-    cached = await get_cached_session(chat_id)
+    channel_type = channel_type.upper()
+    cached = await get_cached_session(chat_id, channel_type)
     if cached is not None:
         return cached
 
@@ -70,7 +73,7 @@ async def get_session(chat_id: int) -> dict:
         # Find channel
         ch_result = await session.execute(
             select(Channel).where(
-                Channel.type == "TELEGRAM",
+                Channel.type == channel_type,
                 Channel.external_id == str(chat_id),
             )
         )
@@ -86,7 +89,7 @@ async def get_session(chat_id: int) -> dict:
                 "history": [],
                 "ordering_platform": "",
             }
-            await cache_session(chat_id, result)
+            await cache_session(chat_id, result, channel_type)
             return result
 
         # Find session
@@ -105,7 +108,7 @@ async def get_session(chat_id: int) -> dict:
                 "history": [],
                 "ordering_platform": "",
             }
-            await cache_session(chat_id, result)
+            await cache_session(chat_id, result, channel_type)
             return result
 
         # Reconstruct cart from Cart + CartItems if linked
@@ -158,21 +161,26 @@ async def get_session(chat_id: int) -> dict:
             "history": history,
             "ordering_platform": sess.ordering_platform or "",
         }
-        await cache_session(chat_id, result)
+        await cache_session(chat_id, result, channel_type)
         return result
 
 
-async def save_session(chat_id: int, updates: dict) -> None:
+async def save_session(
+    chat_id: str | int,
+    updates: dict,
+    channel_type: str = "TELEGRAM",
+) -> None:
     """Update session fields from a dict of updates.
 
     Writes to PostgreSQL first, then refreshes Redis cache.
     """
     from app.core.redis_client import invalidate_session_cache
+    channel_type = channel_type.upper()
     async with get_session_factory()() as session:
         # Find or create channel
         ch_result = await session.execute(
             select(Channel).where(
-                Channel.type == "TELEGRAM",
+                Channel.type == channel_type,
                 Channel.external_id == str(chat_id),
             )
         )
@@ -180,7 +188,7 @@ async def save_session(chat_id: int, updates: dict) -> None:
         if not channel:
             channel = Channel(
                 restaurant_id=1,
-                type="TELEGRAM",
+                type=channel_type,
                 external_id=str(chat_id),
             )
             session.add(channel)
@@ -215,15 +223,19 @@ async def save_session(chat_id: int, updates: dict) -> None:
             pass
 
         await session.commit()
-        await invalidate_session_cache(chat_id)
+        await invalidate_session_cache(chat_id, channel_type)
 
 
-async def reset_session(chat_id: int, user_name: str = "") -> None:
+async def reset_session(
+    chat_id: str | int,
+    user_name: str = "",
+    channel_type: str = "TELEGRAM",
+) -> None:
     """Reset session to fresh state."""
     async with get_session_factory()() as session:
         ch_result = await session.execute(
             select(Channel).where(
-                Channel.type == "TELEGRAM",
+                Channel.type == channel_type.upper(),
                 Channel.external_id == str(chat_id),
             )
         )
@@ -231,7 +243,7 @@ async def reset_session(chat_id: int, user_name: str = "") -> None:
         if not channel:
             channel = Channel(
                 restaurant_id=1,
-                type="TELEGRAM",
+                type=channel_type.upper(),
                 external_id=str(chat_id),
             )
             session.add(channel)
@@ -254,7 +266,7 @@ async def reset_session(chat_id: int, user_name: str = "") -> None:
         sess.history_json = {"meta": {}, "turns": []}
         await session.commit()
         from app.core.redis_client import invalidate_session_cache
-        await invalidate_session_cache(chat_id)
+        await invalidate_session_cache(chat_id, channel_type.upper())
 
 
 # ── User preference helpers ──────────────────────────────────────────────────
@@ -367,8 +379,8 @@ async def save_order(
     platform: str = "Telegram",
     idempotency_key: Optional[str] = None,
 ) -> str:
-    """Create an order + order items. Returns order_ref (DZK-XXXXXX)."""
-    order_ref = f"DZK-{uuid.uuid4().hex[:6].upper()}"
+    """Create an order + order items. Returns order_ref (NB-XXXXXX)."""
+    order_ref = f"NB-{uuid.uuid4().hex[:6].upper()}"
     idem_key = idempotency_key or f"{customer_phone}-{order_ref}"
     total_cents = int(total_price * 100)
 

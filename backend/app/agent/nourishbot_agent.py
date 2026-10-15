@@ -375,7 +375,7 @@ def _system_prompt(user_name: str, session: dict) -> str:
     now        = datetime.now()
     hour       = now.hour
     time_label = (
-        "morning"    if 6  <= hour < 11 else
+        "breakfast time" if 6  <= hour < 11 else
         "lunch time" if 11 <= hour < 15 else
         "snack time" if 15 <= hour < 18 else
         "dinner time"if 18 <= hour < 23 else
@@ -412,6 +412,9 @@ HARD RULES
 - After `place_order`, narrate the order ID, items, total, and ETA from the tool result.
 - If a value on file is "(not collected yet)", you MUST ask for it before placing an order.
 - Bare answers like "Krishna" or "9999999999" should be treated as the answer to your previous question.
+- Support breakfast, lunch, snacks, and dinner requests. For vegetarian, vegan, high-protein,
+  lighter, balanced, or lower-sugar requests, recommend only from menu facts returned by tools.
+- Treat dietary requests as preferences. Never invent nutrition values or guarantee medical or allergy safety.
 
 TONE
 - Warm, witty, concise — like texting a friend who runs an amazing restaurant.

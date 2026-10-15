@@ -9,18 +9,19 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models import Order, OrderItem
-from app.auth.deps import extract_token
+from app.auth.deps import require_kitchen, tenant_id
 
 router = APIRouter(prefix="/api/v1/kitchen", tags=["kitchen"])
 
 
 @router.get("/orders")
-async def get_kitchen_orders(user=Depends(extract_token)):
+async def get_kitchen_orders(user=Depends(require_kitchen)):
     """Return all active orders for the KDS (ACCEPTED or PREPARING status)."""
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Order)
-            .where(Order.status.in_(["ACCEPTED", "PREPARING", "CREATED"]))
+            .where(Order.restaurant_id == rid, Order.status.in_(["ACCEPTED", "PREPARING", "CREATED"]))
             .order_by(Order.created_at)
         )
         orders = result.scalars().all()
@@ -28,14 +29,14 @@ async def get_kitchen_orders(user=Depends(extract_token)):
         out = []
         for order in orders:
             items_result = await session.execute(
-                select(OrderItem).where(OrderItem.order_id == order.id)
+                select(OrderItem).where(OrderItem.order_id == order.id, OrderItem.restaurant_id == rid)
             )
             items = items_result.scalars().all()
 
             if order.customer_id:
                 from app.db.models import Customer
                 cust_result = await session.execute(
-                    select(Customer).where(Customer.id == order.customer_id)
+                    select(Customer).where(Customer.id == order.customer_id, Customer.restaurant_id == rid)
                 )
                 customer = cust_result.scalar_one_or_none()
                 customer_name = customer.name if customer else "Guest"

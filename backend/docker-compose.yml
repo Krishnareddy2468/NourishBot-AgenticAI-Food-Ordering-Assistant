@@ -3,15 +3,13 @@
 # Two service profiles:
 #
 #   docker compose --profile cloud up -d
-#       Cloud-friendly default. MCP_ENABLED=false. Telegram users who pick
-#       Zomato/Swiggy get redirect links to the apps. Each user orders on
-#       their own Zomato/Swiggy account. No vendor whitelist needed.
+#       Cloud-friendly default. MCP_ENABLED=false. Only the in-house
+#       NourishBot scheduled flow is transactional in this profile.
 #
 #   docker compose --profile mcp up -d
 #       Local/demo / single-tenant deployment. MCP_ENABLED=true. The
-#       container mounts ~/.mcp-auth (the OAuth token cache) read-only so
-#       mcp-remote can talk to Zomato/Swiggy as the bot owner. Every
-#       Telegram user's order goes to YOUR Zomato/Swiggy account.
+#       container mounts an MCP OAuth cache. Enable this only after every
+#       provider's transaction schema has been verified to support scheduling.
 #
 # Before either profile, copy .env.example to .env and fill in:
 #   TELEGRAM_TOKEN, OPENAI_API_KEY  (required)
@@ -80,7 +78,7 @@ services:
   celery-worker:
     build: .
     image: nourishbot-bot:latest
-    profiles: ["cloud"]
+    profiles: ["cloud", "mcp"]
     restart: unless-stopped
     env_file: .env
     environment:
@@ -96,7 +94,7 @@ services:
   celery-beat:
     build: .
     image: nourishbot-bot:latest
-    profiles: ["cloud"]
+    profiles: ["cloud", "mcp"]
     restart: unless-stopped
     env_file: .env
     environment:

@@ -2,6 +2,8 @@
 Cart + Orders models: Cart, CartItem, Order, OrderItem.
 """
 
+import secrets
+
 from sqlalchemy import Column, BigInteger, Text, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func, text
@@ -53,11 +55,17 @@ class Order(Base, RestaurantMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     restaurant_id = Column(BigInteger, nullable=False, index=True, server_default="1")
-    order_ref = Column(Text, nullable=False, unique=True)  # DZK-XXXXXX
+    order_ref = Column(Text, nullable=False, unique=True)  # NB-XXXXXX
+    tracking_token = Column(Text, nullable=False, unique=True, index=True, default=lambda: secrets.token_urlsafe(32))
+    confirmation_id = Column(Text, ForeignKey("confirmation_challenges.id"), nullable=True, unique=True)
     customer_id = Column(BigInteger, ForeignKey("customers.id"), index=True)
     channel_id = Column(BigInteger, ForeignKey("channels.id"), index=True)
-    order_type = Column(Text, nullable=False)  # DELIVERY | PICKUP | DINE_IN
-    status = Column(Text, nullable=False, default="CREATED")  # CREATED|ACCEPTED|PREPARING|READY|OUT_FOR_DELIVERY|DELIVERED|CANCELLED
+    order_type = Column(Text, nullable=False)  # DELIVERY | PICKUP | DRIVE_THRU | DINE_IN
+    status = Column(Text, nullable=False, default="CREATED")  # SCHEDULED|CREATED|ACCEPTED|PREPARING|READY|OUT_FOR_DELIVERY|DELIVERED|CANCELLED
+    provider = Column(Text, nullable=False, server_default=text("'NOURISHBOT'"))
+    source_channel = Column(Text, nullable=False, server_default=text("'TELEGRAM'"))
+    scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
     subtotal_cents = Column(Integer, nullable=False)
     tax_cents = Column(Integer, default=0)
     packing_cents = Column(Integer, default=0)

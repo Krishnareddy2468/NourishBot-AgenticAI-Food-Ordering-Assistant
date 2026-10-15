@@ -11,7 +11,7 @@ Enforces business rules that the LLM cannot violate:
 """
 
 from dataclasses import dataclass, field
-from datetime import time, datetime
+from datetime import time, datetime, timedelta
 from typing import Optional
 
 
@@ -26,6 +26,7 @@ class RestaurantPolicy:
 
     # Pickup
     pickup_available: bool = True
+    drive_thru_available: bool = True
 
     # Dine-in
     dine_in_available: bool = True
@@ -47,6 +48,8 @@ class RestaurantPolicy:
     # Ordering
     max_items_per_order: int = 30
     max_qty_per_item: int = 10
+    min_schedule_lead_minutes: int = 30
+    max_schedule_days: int = 14
 
     # Upsell
     max_upsells_per_session: int = 1
@@ -64,7 +67,7 @@ class RestaurantPolicy:
 
     def can_cancel_order(self, current_status: str) -> bool:
         """Check if an order can be cancelled given its current status."""
-        status_order = ["CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"]
+        status_order = ["SCHEDULED", "CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"]
         try:
             idx = status_order.index(current_status)
             cancel_idx = status_order.index(self.can_cancel_before)
@@ -82,13 +85,48 @@ class RestaurantPolicy:
     def validate_order_type(self, order_type: str) -> tuple[bool, str]:
         """Check if the requested order type is available."""
         if order_type == "DELIVERY" and not self.delivery_available:
-            return False, "Delivery is currently unavailable. Would you like pickup or dine-in instead?"
+            return False, "Delivery is currently unavailable. Would you like pickup or drive-through instead?"
         if order_type == "PICKUP" and not self.pickup_available:
             return False, "Pickup is currently unavailable."
+        if order_type == "DRIVE_THRU" and not self.drive_thru_available:
+            return False, "Drive-through is currently unavailable."
         if order_type == "DINE_IN" and not self.dine_in_available:
             return False, "Dine-in is currently unavailable. Would you like delivery or pickup?"
         return True, ""
 
+    def validate_scheduled_for(
+        self,
+        scheduled_for: datetime,
+        now: Optional[datetime] = None,
+    ) -> tuple[bool, str]:
+        """Require a future meal slot inside the configured scheduling window."""
+        import pytz
 
-# Default policy instance
-default_policy = RestaurantPolicy()
+        tz = pytz.timezone(self.timezone)
+        current = now or datetime.now(tz)
+        if current.tzinfo is None:
+            current = tz.localize(current)
+        if scheduled_for.tzinfo is None:
+            scheduled_for = tz.localize(scheduled_for)
+
+        local_slot = scheduled_for.astimezone(tz)
+        lead = timedelta(minutes=self.min_schedule_lead_minutes)
+        if local_slot < current.astimezone(tz) + lead:
+            return False, f"Meals must be scheduled at least {self.min_schedule_lead_minutes} minutes ahead."
+        if local_slot > current.astimezone(tz) + timedelta(days=self.max_schedule_days):
+            return False, f"Meals can be scheduled up to {self.max_schedule_days} days ahead."
+        if not self.opens_at <= local_slot.time() <= self.closes_at:
+            return False, (
+                f"Choose a meal time between {self.opens_at.strftime('%I:%M %p')} and "
+                f"{self.closes_at.strftime('%I:%M %p')}."
+            )
+        return True, ""
+
+
+# Default policy instance uses deploy-time scheduling limits.
+from app.core.config import settings
+
+default_policy = RestaurantPolicy(
+    min_schedule_lead_minutes=settings.MIN_SCHEDULE_LEAD_MINUTES,
+    max_schedule_days=settings.MAX_SCHEDULE_DAYS,
+)

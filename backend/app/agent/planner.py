@@ -42,6 +42,7 @@ GOALS = {
     "CANCEL_ORDER",
     "SUPPORT",
     "MENU_BROWSE",
+    "RESTAURANT_DISCOVERY",
 }
 
 # Compact tool catalogue for the planner
@@ -51,27 +52,32 @@ AVAILABLE TOOLS:
   get_menu            {filter_type?, filter_category?}
   get_item_details    {item_id?, item_name?}
   get_restaurant_info {}
+  search_best_restaurants_on_maps {location, query?, max_results?}
+  find_drive_through_restaurants_on_route {origin, destination, cuisine?, scheduled_for?, max_results?}
   get_kitchen_eta     {}
   add_to_cart         {items: [{name, qty}]}
   update_cart_item    {item_name, qty}
   remove_from_cart    {item_name}
   view_cart           {}
   clear_cart          {}
-  set_order_type      {order_type: PICKUP}
+  set_order_type      {order_type: PICKUP|DRIVE_THRU|DELIVERY}
+  set_delivery_address {address}
   update_customer     {name?, phone?, language?}
-  place_order         {order_type: PICKUP, notes?}
+  set_schedule        {scheduled_for: ISO-8601 datetime with timezone}
+  place_order         {order_type: PICKUP|DRIVE_THRU|DELIVERY, address?, scheduled_for: ISO-8601 datetime with timezone, provider?}
   track_order         {order_ref}
   cancel_order        {order_ref}
 """
 
 # Slots required per goal
 REQUIRED_SLOTS: dict[str, list[str]] = {
-    "ORDER_ONLINE":  ["customer_name", "customer_phone"],
-    "TAKEAWAY":      ["customer_name", "customer_phone"],
+    "ORDER_ONLINE":  ["customer_name", "customer_phone", "scheduled_for"],
+    "TAKEAWAY":      ["customer_name", "customer_phone", "scheduled_for"],
     "TRACK_ORDER":   ["order_ref"],
     "CANCEL_ORDER":  ["order_ref"],
     "SUPPORT":       [],
     "MENU_BROWSE":   [],
+    "RESTAURANT_DISCOVERY": [],
 }
 
 
@@ -106,7 +112,7 @@ class PlannerOutput:
 
 def _build_planner_prompt(message: str, ctx: ContextSnapshot) -> str:
     menu_lines = [
-        f"  {i['name']} ({i['type']}) ₹{int(i['price'])}"
+        f"  {i['name']} ({i['type']}) ₹{int(i['price'])} — {i.get('description') or 'no description'}"
         for i in ctx.menu_snapshot[:40]
     ]
     menu_text = "\n".join(menu_lines) or "  (no items available)"
@@ -115,11 +121,11 @@ def _build_planner_prompt(message: str, ctx: ContextSnapshot) -> str:
     # State-specific instruction injected into rules
     state_hint = _state_hint(ctx.current_state, ctx)
 
-    return f"""You are the PLANNER for NourishBot, a fictional canteen pre-order and pickup assistant. Read the context + message. Output ONE JSON object.
+    return f"""You are the PLANNER for NourishBot, a scheduled meal ordering assistant. Read the context + message. Output ONE JSON object.
 
 CONTEXT:
 State: {ctx.current_state.value} | Time: {ctx.time_of_day} ({ctx.now.strftime('%I:%M %p')}) | Open: {ctx.is_open}
-Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | Order type: PICKUP
+Customer: {ctx.customer_name or "new"} | Phone: {ctx.customer_phone or "—"} | Order type: {ctx.order_type or "PICKUP"}
 Cart: {ctx.cart_summary}
 Orders: {active_order_text} | Kitchen: {ctx.kitchen_load} orders
 
@@ -134,15 +140,32 @@ TOOLS:
 {TOOL_CATALOGUE}
 
 OUTPUT JSON:
-{{"goal":"ORDER_ONLINE|TAKEAWAY|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"...","args":{{...}}}}],"user_intent_summary":"...","requires_confirmation":false}}
+{{"goal":"ORDER_ONLINE|TAKEAWAY|TRACK_ORDER|CANCEL_ORDER|SUPPORT|MENU_BROWSE|RESTAURANT_DISCOVERY","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"...","args":{{...}}}}],"user_intent_summary":"...","requires_confirmation":false}}
 
 RULES:
 1. Max {settings.AGENT_MAX_ITERATIONS} proposed_actions.
 2. Missing name/phone → add to missing_slots, don't place_order.
-3. This project is PICKUP ONLY. Never request an address, payment, delivery, dine-in, or reservation action.
-4. Every set_order_type and place_order action must use PICKUP.
+3. In-house fulfillment supports PICKUP, DRIVE_THRU, and DELIVERY. DELIVERY means scheduled
+   home delivery and requires a verified delivery address. Do not offer dine-in or reservations.
+4. Preserve the customer's explicit choice. Use DRIVE_THRU for drive-through/curbside and
+   DELIVERY for home delivery; otherwise use PICKUP.
 5. place_order ONLY when: cart non-empty + all slots known + customer confirmed.
 6. Never fabricate items or prices.
+7. Breakfast, lunch, snacks, and dinner are all valid meal periods. Use the current time only
+   as a suggestion; follow the customer's requested meal period when one is stated.
+8. For vegetarian, vegan, high-protein, lighter, balanced, or lower-sugar requests, preserve
+   the preference in constraints and propose only items supported by verified menu type or
+   description. If metadata is insufficient, say so instead of inventing nutrition facts.
+9. Dietary preferences are not medical advice. Never guarantee allergy safety or claim that
+   an item treats a health condition.
+10. INSTANT ORDERS ARE NOT ALLOWED. Every order requires a future scheduled_for value. When
+    the customer provides a meal date/time, call set_schedule. Never place an order for "now",
+    "ASAP", or without an ISO-8601 scheduled time including timezone.
+11. For "best restaurants near me", call search_best_restaurants_on_maps with an explicit area,
+    address, or coordinates. Maps is discovery only; never invent provider availability.
+12. For drive-through along a route, collect both origin and destination, then call
+    find_drive_through_restaurants_on_route. Treat results as candidates; Swiggy or Zomato must
+    verify the menu, future slot, and pickup/drive-through support before checkout.
 {state_hint}
 
 HISTORY:
@@ -159,7 +182,7 @@ def _build_minimal_prompt(message: str, ctx: ContextSnapshot) -> str:
     known = []
     if ctx.customer_name:  known.append(f"name={ctx.customer_name}")
     if ctx.customer_phone: known.append(f"phone={ctx.customer_phone}")
-    return f"""You are a canteen pickup-order assistant planner. Output ONLY a JSON object.
+    return f"""You are a scheduled meal ordering assistant planner. Output ONLY a JSON object.
 
 Customer message: {message}
 Cart: {cart_text}
@@ -169,8 +192,9 @@ Canteen: {"OPEN" if ctx.is_open else "CLOSED"}
 Output this exact JSON (fill in values):
 {{"goal":"ORDER_ONLINE","missing_slots":[],"constraints":{{}},"proposed_actions":[{{"tool":"get_menu","args":{{}}}}],"user_intent_summary":"","requires_confirmation":false}}
 
-Valid goals: ORDER_ONLINE TAKEAWAY TRACK_ORDER CANCEL_ORDER SUPPORT MENU_BROWSE
-Only PICKUP orders are allowed. Never request delivery address or payment.
+Valid goals: ORDER_ONLINE TAKEAWAY TRACK_ORDER CANCEL_ORDER SUPPORT MENU_BROWSE RESTAURANT_DISCOVERY
+Only scheduled PICKUP, DRIVE_THRU, or DELIVERY orders are allowed. DELIVERY requires an address.
+scheduled_for is required and must be in the future. Never request payment before confirmation.
 Return ONLY the JSON, nothing else."""
 
 

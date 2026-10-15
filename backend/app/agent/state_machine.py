@@ -67,11 +67,13 @@ _TRANSITIONS: dict[tuple[BotState, Event], BotState] = {
     # From IDLE
     (BotState.IDLE, Event.MENU_BROWSED):        BotState.BROWSING_MENU,
     (BotState.IDLE, Event.ITEM_ADDED):          BotState.BUILDING_CART,
+    (BotState.IDLE, Event.CONFIRMATION_READY):  BotState.AWAITING_CONFIRMATION,
     (BotState.IDLE, Event.ISSUE_RAISED):        BotState.SUPPORT_CASE,
     (BotState.IDLE, Event.RESET):               BotState.IDLE,
 
     # From BROWSING_MENU
     (BotState.BROWSING_MENU, Event.ITEM_ADDED):         BotState.BUILDING_CART,
+    (BotState.BROWSING_MENU, Event.CONFIRMATION_READY): BotState.AWAITING_CONFIRMATION,
     (BotState.BROWSING_MENU, Event.ISSUE_RAISED):       BotState.SUPPORT_CASE,
     (BotState.BROWSING_MENU, Event.RESET):              BotState.IDLE,
 
@@ -143,8 +145,10 @@ TOOL_EVENTS: dict[str, Event] = {
     "remove_from_cart":         Event.ITEM_ADDED,
     "view_cart":                Event.CART_VIEWED,
     "set_order_type":           Event.ORDER_TYPE_SET,
+    "set_schedule":             Event.DETAILS_COLLECTED,
     "set_delivery_address":     Event.ADDRESS_SET,
     "update_customer":          Event.DETAILS_COLLECTED,
+    "prepare_order_confirmation": Event.CONFIRMATION_READY,
     "place_order":              Event.ORDER_PLACED,
     "create_payment_intent":    Event.PAYMENT_REQUIRED,
     "check_payment_status":     Event.PAYMENT_CAPTURED,  # only if status=CAPTURED

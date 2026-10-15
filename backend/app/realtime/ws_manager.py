@@ -23,8 +23,14 @@ class ConnectionManager:
         self._connections: dict[int, dict[str, WebSocket]] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, restaurant_id: int, client_id: str) -> None:
-        await websocket.accept()
+    async def connect(
+        self,
+        websocket: WebSocket,
+        restaurant_id: int,
+        client_id: str,
+        subprotocol: str | None = None,
+    ) -> None:
+        await websocket.accept(subprotocol=subprotocol)
         async with self._lock:
             if restaurant_id not in self._connections:
                 self._connections[restaurant_id] = {}

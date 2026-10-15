@@ -131,7 +131,7 @@ def _build_responder_prompt(
             f"Suggest these alternatives naturally: {alt_names}"
         )
     if summary.radius_exceeded:
-        live_state_notes.append("This project supports pickup only; do not request an address.")
+        live_state_notes.append("The address is outside the home-delivery area. Offer pickup or drive-through instead.")
 
     live_block = (
         "\n=== LIVE STATE NOTES (must influence reply) ===\n"
@@ -139,7 +139,7 @@ def _build_responder_prompt(
         if live_state_notes else ""
     )
 
-    return f"""You are NourishBot — an AI pre-order assistant for a fictional campus canteen.
+    return f"""You are NourishBot — an AI scheduled-meal assistant.
 
 === PERSONA ===
 Name       : NourishBot
@@ -152,10 +152,18 @@ Address as : {name}
 1. NEVER invent items, prices, order refs, or ETAs — only use facts below.
 2. ALWAYS end with a CTA or question.
 3. Keep it concise — 2-4 lines for chat; longer only for menu or order summaries.
-4. For off-topic messages (not about food, pickup orders, or the canteen), deflect warmly.
+4. For off-topic messages (not about food, scheduled fulfillment, or the canteen), deflect warmly.
 5. If pending_slots has contact details missing, ask for them naturally in one question.
 6. If kitchen_signal is VERY_BUSY or FULL, mention the eta_note.
-7. This is PICKUP ONLY. Never promise delivery, request an address, or discuss live payment.
+7. In-house fulfillment supports scheduled PICKUP, DRIVE_THRU, and DELIVERY. Home delivery
+   requires a verified address. Call drive-through a collection lane, not home delivery.
+8. Support breakfast, lunch, snacks, and dinner. For dietary or healthy-food requests, describe
+   only preferences supported by verified menu facts; never invent nutrition values or promise
+   medical or allergy safety.
+9. Instant ordering is unavailable. Every confirmed order must include its verified future
+   scheduled_for value. Explain that SCHEDULED orders enter preparation near that time.
+10. Maps results are discovery candidates. Clearly say that Swiggy or Zomato must verify the
+    future slot, live menu, price, and drive-through/pickup support before checkout.
 {live_block}
 
 === VERIFIED FACTS ===
@@ -179,7 +187,11 @@ def _build_minimal_responder_prompt(
     # Build a concise fact summary instead of full JSON dump
     fact_lines = []
     if facts.get("order_ref"):
-        fact_lines.append(f"Order ref: {facts['order_ref']}, total: ₹{facts.get('order_total_inr','?')}, type: {facts.get('order_type','?')}")
+        fact_lines.append(
+            f"Order ref: {facts['order_ref']}, total: ₹{facts.get('order_total_inr','?')}, "
+            f"type: {facts.get('order_type','?')}, scheduled: {facts.get('scheduled_for','?')}, "
+            f"provider: {facts.get('provider','NourishBot')}"
+        )
     if facts.get("cart"):
         fact_lines.append(f"Cart: {', '.join(c.get('item_name','?') for c in facts['cart'])}, total: ₹{facts.get('cart_total_inr','?')}")
     if facts.get("menu_items"):
@@ -193,7 +205,7 @@ def _build_minimal_responder_prompt(
     if not fact_lines:
         fact_lines.append("No specific facts — general assistance needed.")
 
-    return f"""You are NourishBot, a warm canteen pickup assistant. Reply in 2-3 lines max. End with a question.
+    return f"""You are NourishBot, a warm scheduled-meal assistant. Reply in 2-3 lines max. End with a question.
 
 Customer: {name} | Message: {original_message}
 Facts: {" | ".join(fact_lines)}
@@ -215,10 +227,11 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
     if summary.order_ref:
         total = round(summary.order_total_cents / 100, 2)
         return (
-            f"Order confirmed! 🎉\n"
+            f"Meal scheduled! 🎉\n"
             f"Ref: {summary.order_ref}\n"
             f"Total: ₹{total:.0f}\n"
-            f"ETA: ~{summary.order_eta_seconds // 60 if summary.order_eta_seconds else 20} mins\n"
+            f"Time: {summary.scheduled_for or 'future slot confirmed'}\n"
+            f"Provider: {summary.provider or 'NourishBot'}\n"
             f"Anything else, {name}?"
         )
 
@@ -236,7 +249,8 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
         slot = summary.pending_slots[0]
         labels = {"customer_name": "name", "customer_phone": "phone number",
                   "delivery_address": "delivery address", "order_type": "order type",
-                  "date": "preferred date", "time": "preferred time", "guests": "number of guests"}
+                  "date": "preferred date", "time": "preferred time", "guests": "number of guests",
+                  "scheduled_for": "future meal date, time, and timezone"}
         label = labels.get(slot, slot)
         return f"Could you share your {label}, {name}? 😊"
 
@@ -250,4 +264,4 @@ def _fallback_response(summary: VerifiedSummary, ctx: ContextSnapshot) -> str:
             f"— but you're welcome to pick up or book a table with us!"
         )
 
-    return f"Got it, {name}! What would you like — menu, order, or table? 😊"
+    return f"Got it, {name}! Which meal would you like to schedule? 😊"

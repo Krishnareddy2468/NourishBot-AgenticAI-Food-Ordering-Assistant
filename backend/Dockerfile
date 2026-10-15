@@ -44,18 +44,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app   ./app
 COPY main.py .
 COPY data  ./data
-COPY config ./config
+COPY alembic ./alembic
+COPY alembic.ini .
 
 # Runtime dirs
-RUN mkdir -p /app/logs /app/storage /run/mcp-auth \
+RUN mkdir -p /app/config /app/logs /app/storage /run/mcp-auth \
     && chown -R nourishbot:nourishbot /app /run/mcp-auth
 
 USER nourishbot
 
 # Sensible defaults — override at deploy time:
-#   MCP_ENABLED=false  → cloud uses redirect-link UX (recommended)
-#   MCP_ENABLED=true   → also set MCP_AUTH_DIR=/run/mcp-auth and mount a
-#                        secret volume containing your local ~/.mcp-auth
+#   MCP_ENABLED=false  → in-house scheduled ordering only
+#   MCP_ENABLED=true   → verify provider scheduling support, then set
+#                        MCP_AUTH_DIR and mount the OAuth cache securely
 ENV PORT=8000 \
     LOG_LEVEL=INFO \
     MCP_ENABLED=false \

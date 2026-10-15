@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Status → customer-friendly message templates
 _STATUS_MESSAGES = {
+    "CREATED": "Your scheduled meal {order_ref} is now in the live preparation queue.",
     "ACCEPTED": "Your order {order_ref} has been accepted! The kitchen is preparing your food.",
     "PREPARING": "Your order {order_ref} is being prepared. Almost there!",
     "READY": "Your order {order_ref} is ready! {delivery_hint}",
@@ -30,6 +31,7 @@ _STATUS_MESSAGES = {
 _DELIVERY_HINTS = {
     "DELIVERY": "A driver will pick it up shortly.",
     "PICKUP": "You can pick it up at the restaurant now!",
+    "DRIVE_THRU": "Your drive-through meal is ready at the collection lane!",
     "DINE_IN": "Your server will bring it to you.",
 }
 
@@ -67,25 +69,40 @@ async def notify_customer(
         if not customer:
             return False
 
-        # Find the Telegram channel for this customer
+        # Prefer the channel that created the order, then fall back to any
+        # supported customer channel.
         channel = (await db.execute(
             select(Channel).where(
                 Channel.customer_id == customer.id,
-                Channel.type == "TELEGRAM",
+                Channel.type == order.source_channel,
             )
         )).scalar_one_or_none()
         if not channel:
-            logger.warning("notify_customer: no Telegram channel for customer %s", customer.id)
+            channel = (await db.execute(
+                select(Channel).where(
+                    Channel.customer_id == customer.id,
+                    Channel.type.in_(["TELEGRAM", "WHATSAPP"]),
+                )
+            )).scalars().first()
+        if not channel:
+            logger.warning("notify_customer: no supported channel for customer %s", customer.id)
             return False
-
-        chat_id = int(channel.external_id)
+        channel_type = channel.type
+        external_id = channel.external_id
 
     # Build message if not provided
     if not message:
         message = _build_message(order_ref, event_type, order.order_type if order else "DELIVERY")
 
-    # Send via Telegram bot
-    return await _send_telegram_message(chat_id, message)
+    if channel_type == "WHATSAPP":
+        from app.api.routes.whatsapp import _send_text
+        try:
+            await _send_text(str(external_id), message)
+            return True
+        except Exception as exc:
+            logger.error("Failed to send WhatsApp notification to %s: %s", external_id, exc)
+            return False
+    return await _send_telegram_message(int(external_id), message)
 
 
 def _build_message(order_ref: str, event_type: str, order_type: str = "DELIVERY") -> str:

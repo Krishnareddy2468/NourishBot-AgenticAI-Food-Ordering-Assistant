@@ -9,7 +9,7 @@ Centralises everything that makes the NourishBot agent consistent and realistic:
   4. Live-state realism  — helpers for:
        a. Out-of-stock alternatives (find similar available items)
        b. Kitchen load → ETA label + apology note
-       c. Delivery radius validation → offer pickup/dine-in fallback
+       c. Delivery radius validation → offer pickup/drive-through fallback
 
 All functions are pure or async DB-read — no writes, no LLM calls.
 """
@@ -278,7 +278,7 @@ def validate_delivery_address(address: str, policy: RestaurantPolicy) -> tuple[b
                 False,
                 f"Sorry, we currently deliver only within Hyderabad 🏙️ "
                 f"— {city.title()} is outside our delivery zone. "
-                f"Would you like to pick up or book a table instead?",
+                f"Would you like pickup or drive-through instead?",
             )
 
     # Check if a known serviceable area is mentioned
@@ -289,7 +289,7 @@ def validate_delivery_address(address: str, policy: RestaurantPolicy) -> tuple[b
     # Address doesn't mention a known area — allow but warn
     # (real implementation would geocode and check radius)
     if not policy.delivery_available:
-        return False, "Delivery is currently unavailable. Please choose pickup or dine-in."
+        return False, "Delivery is currently unavailable. Please choose pickup or drive-through."
 
     return True, ""  # allow — we can't detect every sub-locality
 
@@ -304,7 +304,7 @@ _CTA = {
         "menu_browse":  "Want to explore the menu? I can filter by Veg, Non-Veg, or category!",
         "slot_name":    "What's your name?",
         "slot_contact_details": "Please send your name, mobile number, and delivery address in one message.",
-        "slot_order_type": "Is this for delivery, pickup, or dine-in?",
+        "slot_order_type": "Is this for home delivery, pickup, or drive-through?",
         "slot_phone":   "Can I get your phone number?",
         "slot_address": "What's your delivery address?",
         "slot_date":    "Which date works for you?",
@@ -318,7 +318,7 @@ _CTA = {
         "menu_browse":  "Menu chudatam try cheyandamma — Veg leda Non-Veg?",
         "slot_name":    "Meeru peru cheppagalara?",
         "slot_contact_details": "Mee name, mobile number, delivery address okka message lo pampandi.",
-        "slot_order_type": "Delivery, pickup, leda dine-in ah?",
+        "slot_order_type": "Home delivery, pickup, leda drive-through ah?",
         "slot_phone":   "Mee phone number ivagalara?",
         "slot_address": "Delivery address cheppandi.",
         "slot_date":    "Evaroj ravataniki convenient ga untundi?",
@@ -332,7 +332,7 @@ _CTA = {
         "menu_browse":  "Menu dekhein — Veg ya Non-Veg?",
         "slot_name":    "Aapka naam kya hai?",
         "slot_contact_details": "Apna name, mobile number, aur delivery address ek message mein bhej dijiye.",
-        "slot_order_type": "Delivery, pickup, ya dine-in?",
+        "slot_order_type": "Home delivery, pickup, ya drive-through?",
         "slot_phone":   "Aapka phone number dein please?",
         "slot_address": "Delivery address bataiye.",
         "slot_date":    "Kaunsi date theek rahegi?",

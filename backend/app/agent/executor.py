@@ -16,6 +16,7 @@ Hard rules:
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -31,13 +32,31 @@ from app.db.models import (
     ModifierGroup, Modifier, MenuItemModifierGroup,
     Order, OrderItem, Reservation,
     Payment, DiningTable, TableSession, TableSessionOrder,
-    Driver, Delivery, Invoice,
+    Driver, Delivery, Invoice, ConfirmationChallenge,
 )
 from app.agent.context_builder import ContextSnapshot, save_session_meta
 from app.agent.policies import default_policy
 from app.agent.persona import find_alternatives, validate_delivery_address
+from app.agent.order_confirmation import (
+    build_snapshot,
+    create_challenge,
+    lock_valid_challenge,
+    snapshot_hash,
+)
 
 logger = logging.getLogger(__name__)
+
+# The public chat planner may invoke only customer-facing tools. Keeping the
+# larger registry for future authenticated staff agents must not make those
+# operations reachable through prompt injection in Telegram or WhatsApp.
+_CUSTOMER_TOOL_ALLOWLIST = {
+    "search_menu", "get_menu", "get_item_details", "get_restaurant_info",
+    "search_best_restaurants_on_maps", "find_drive_through_restaurants_on_route",
+    "get_kitchen_eta", "add_to_cart", "update_cart_item", "remove_from_cart",
+    "view_cart", "clear_cart", "set_order_type", "set_delivery_address",
+    "update_customer", "set_schedule", "prepare_order_confirmation",
+    "place_order", "track_order", "cancel_order",
+}
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -90,6 +109,13 @@ class Executor:
         for action in proposed_actions:
             tool = action.get("tool", "")
             args = action.get("args") or {}
+            if tool not in _CUSTOMER_TOOL_ALLOWLIST:
+                result.rejected.append(ActionResult(
+                    tool=tool,
+                    ok=False,
+                    error="This operation is not available in customer chat.",
+                ))
+                continue
             handler = _TOOL_REGISTRY.get(tool)
 
             if not handler:
@@ -257,13 +283,16 @@ async def _tool_update_customer(args: dict, ctx: ContextSnapshot, result: Execut
 
     async with AsyncSessionLocal() as db:
         # Find or create channel
-        ch = await _get_or_create_channel(db, ctx.chat_id)
+        ch = await _get_or_create_channel(db, ctx)
 
         # Find or create customer
         customer = None
         if ch.customer_id:
             customer = (await db.execute(
-                select(Customer).where(Customer.id == ch.customer_id)
+                select(Customer).where(
+                    Customer.id == ch.customer_id,
+                    Customer.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
 
         if not customer and phone:
@@ -299,14 +328,120 @@ async def _tool_update_customer(args: dict, ctx: ContextSnapshot, result: Execut
     return ActionResult("update_customer", True, data={"saved": saved})
 
 
+async def _tool_prepare_order_confirmation(
+    args: dict,
+    ctx: ContextSnapshot,
+    result: ExecutionResult,
+) -> ActionResult:
+    """Persist the exact summary that a later affirmative reply may confirm."""
+    if not ctx.session_id:
+        return ActionResult("prepare_order_confirmation", False, error="Your chat session is not ready. Please try once more.")
+    if not ctx.customer_name or not ctx.customer_phone:
+        return ActionResult("prepare_order_confirmation", False, error="Name and phone are required before confirmation.")
+    cart = result.updated_cart or ctx.cart
+    if not cart:
+        return ActionResult("prepare_order_confirmation", False, error="Cart is empty. Add items first.")
+
+    order_type = str(args.get("order_type") or ctx.order_type or "PICKUP").upper()
+    address = str(args.get("address") or ctx.delivery_address or "").strip()
+    scheduled_raw = str(args.get("scheduled_for") or ctx.scheduled_for or "").strip()
+    if order_type not in ("PICKUP", "DRIVE_THRU", "DELIVERY"):
+        return ActionResult("prepare_order_confirmation", False, error="Choose pickup, drive-through, or home delivery.")
+    if order_type == "DELIVERY" and not address:
+        return ActionResult("prepare_order_confirmation", False, error="Delivery address is required.")
+    try:
+        scheduled_for = datetime.fromisoformat(scheduled_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return ActionResult("prepare_order_confirmation", False, error="Use a valid future meal time with timezone.")
+    if scheduled_for.tzinfo is None:
+        return ActionResult("prepare_order_confirmation", False, error="Meal time must include an explicit timezone.")
+    valid_schedule, schedule_error = ctx.policy.validate_scheduled_for(scheduled_for, ctx.now)
+    if not valid_schedule:
+        return ActionResult("prepare_order_confirmation", False, error=schedule_error)
+    if order_type == "DELIVERY":
+        deliverable, reason = validate_delivery_address(address, ctx.policy)
+        if not deliverable:
+            return ActionResult(
+                "prepare_order_confirmation",
+                False,
+                error=reason,
+                data={"radius_exceeded": True},
+            )
+
+    async with AsyncSessionLocal() as db:
+        verified_items = []
+        for cart_item in cart:
+            menu_item = (await db.execute(
+                select(MenuItem).where(
+                    MenuItem.id == cart_item["item_id"],
+                    MenuItem.restaurant_id == ctx.restaurant_id,
+                )
+            )).scalar_one_or_none()
+            if not menu_item or not menu_item.available:
+                return ActionResult("prepare_order_confirmation", False, error=f"{cart_item['item_name']} is no longer available.")
+            verified_items.append({
+                "item_id": menu_item.id,
+                "item_name": menu_item.name,
+                "qty": cart_item["qty"],
+                "unit_price_cents": menu_item.price_cents,
+            })
+
+        snapshot = build_snapshot(ctx=ctx, args={
+            **args,
+            "order_type": order_type,
+            "address": address,
+            "scheduled_for": scheduled_raw,
+        }, items=verified_items)
+        challenge = await create_challenge(db, ctx=ctx, snapshot=snapshot)
+        await db.commit()
+
+    result.updated_cart = verified_items
+    result.cart_total_cents = snapshot["total_cents"]
+    return ActionResult("prepare_order_confirmation", True, data={
+        "confirmation_id": challenge.id,
+        "confirmation_required": True,
+        "order_type": snapshot["order_type"],
+        "delivery_address": snapshot["delivery_address"],
+        "scheduled_for": snapshot["scheduled_for"],
+        "provider": snapshot["provider"],
+        "total_cents": snapshot["total_cents"],
+        "items": snapshot["items"],
+        "expires_at": challenge.expires_at.isoformat(),
+    })
+
+
 async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionResult) -> ActionResult:
-    order_type = str(args.get("order_type") or "DELIVERY").upper()
-    address = str(args.get("address") or "").strip()
+    order_type = str(args.get("order_type") or ctx.order_type or "PICKUP").upper()
+    address = str(args.get("address") or ctx.delivery_address or "").strip()
     notes = str(args.get("notes") or "").strip()
+    provider = str(args.get("provider") or ctx.ordering_platform or "NOURISHBOT").strip().upper()
+    scheduled_raw = str(args.get("scheduled_for") or ctx.scheduled_for or "").strip()
+    confirmation_id = str(args.get("confirmation_id") or "").strip()
+
+    if not confirmation_id or not ctx.session_id:
+        return ActionResult(
+            "place_order",
+            False,
+            error="Review the final meal summary and explicitly confirm it before ordering.",
+        )
 
     # ── Policy checks ──────────────────────────────────────────────────────
-    if not ctx.is_open:
-        return ActionResult("place_order", False, error="Restaurant is currently closed.")
+    if not scheduled_raw:
+        return ActionResult(
+            "place_order",
+            False,
+            error="Choose a future meal date and time. Instant ordering is not available.",
+        )
+    try:
+        scheduled_for = datetime.fromisoformat(scheduled_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return ActionResult("place_order", False, error="Use a valid meal date and time with timezone.")
+    valid_schedule, schedule_error = ctx.policy.validate_scheduled_for(scheduled_for, ctx.now)
+    if not valid_schedule:
+        return ActionResult("place_order", False, error=schedule_error)
+    if scheduled_for.tzinfo is None:
+        return ActionResult("place_order", False, error="Meal time must include an explicit timezone.")
+    scheduled_for = scheduled_for.astimezone(timezone.utc)
 
     valid, msg = ctx.policy.validate_order_type(order_type)
     if not valid:
@@ -328,23 +463,59 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
     if not cart:
         return ActionResult("place_order", False, error="Cart is empty. Add items first.")
 
-    eta = ctx.policy.estimate_prep_time(ctx.kitchen_load)
-    if eta < 0:
-        return ActionResult("place_order", False, error="Kitchen is at capacity. Please try again in a few minutes.")
+    # This is a future order. Current live kitchen load must not reject a meal
+    # scheduled for another service window; activation handles the live queue.
+    eta = ctx.policy.base_prep_time_sec
 
     if len(cart) > ctx.policy.max_items_per_order:
         return ActionResult("place_order", False,
                             error=f"Order exceeds maximum {ctx.policy.max_items_per_order} items.")
 
     async with AsyncSessionLocal() as db:
+        challenge_record = (await db.execute(
+            select(ConfirmationChallenge).where(
+                ConfirmationChallenge.id == confirmation_id,
+                ConfirmationChallenge.restaurant_id == ctx.restaurant_id,
+                ConfirmationChallenge.session_id == ctx.session_id,
+            )
+        )).scalar_one_or_none()
+        if not challenge_record:
+            return ActionResult("place_order", False, error="That confirmation is invalid. Please review the order again.")
+
+        existing_order = (await db.execute(
+            select(Order).where(
+                Order.idempotency_key == challenge_record.idempotency_key,
+                Order.restaurant_id == ctx.restaurant_id,
+            )
+        )).scalar_one_or_none()
+        if existing_order:
+            result.order_ref = existing_order.order_ref
+            return ActionResult("place_order", True, data={
+                "order_ref": existing_order.order_ref,
+                "order_type": existing_order.order_type,
+                "scheduled_for": existing_order.scheduled_for.isoformat() if existing_order.scheduled_for else None,
+                "provider": existing_order.provider,
+                "idempotent_replay": True,
+                "tracking_token": existing_order.tracking_token,
+            })
+
+        challenge = await lock_valid_challenge(
+            db,
+            challenge_id=confirmation_id,
+            restaurant_id=ctx.restaurant_id,
+            session_id=ctx.session_id,
+        )
+        if not challenge:
+            return ActionResult("place_order", False, error="That confirmation expired or was already used. Please review the order again.")
+
         # Re-read item prices from DB — never trust in-memory cart prices
-        order_ref = f"DZK-{uuid.uuid4().hex[:6].upper()}"
+        order_ref = f"NB-{uuid.uuid4().hex[:6].upper()}"
         subtotal = 0
         validated_items = []
 
         for ci in cart:
             mi = (await db.execute(
-                select(MenuItem).where(MenuItem.id == ci["item_id"])
+                select(MenuItem).where(MenuItem.id == ci["item_id"], MenuItem.restaurant_id == ctx.restaurant_id)
             )).scalar_one_or_none()
 
             if not mi or not mi.available:
@@ -361,6 +532,22 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
                 "unit_price_cents": price,
             })
 
+        current_snapshot = build_snapshot(ctx=ctx, args={
+            **args,
+            "order_type": order_type,
+            "address": address,
+            "scheduled_for": scheduled_for.isoformat(),
+            "provider": provider,
+        }, items=validated_items)
+        if snapshot_hash(current_snapshot) != challenge.snapshot_hash:
+            challenge.invalidated_at = datetime.now(timezone.utc)
+            await db.commit()
+            return ActionResult(
+                "place_order",
+                False,
+                error="The cart, price, address, provider, or meal time changed. Please review and confirm the updated summary.",
+            )
+
         # Delivery minimum check
         if order_type == "DELIVERY" and subtotal < ctx.policy.min_order_for_delivery_cents:
             min_inr = ctx.policy.min_order_for_delivery_cents // 100
@@ -370,22 +557,36 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
             )
 
         # Find channel for FK
-        ch = await _get_or_create_channel(db, ctx.chat_id)
+        ch = await _get_or_create_channel(db, ctx)
 
         order = Order(
             restaurant_id=ctx.restaurant_id,
             order_ref=order_ref,
+            tracking_token=secrets.token_urlsafe(32),
+            confirmation_id=challenge.id,
             customer_id=ctx.customer_id,
             channel_id=ch.id,
             order_type=order_type,
-            status="CREATED",
+            status="SCHEDULED",
+            provider=provider,
+            source_channel=ctx.channel_type,
+            scheduled_for=scheduled_for,
             subtotal_cents=subtotal,
             total_cents=subtotal,
             notes=notes or None,
-            idempotency_key=f"{ctx.customer_phone}-{order_ref}",
+            idempotency_key=challenge.idempotency_key,
         )
         db.add(order)
         await db.flush()
+
+        if order_type == "DELIVERY":
+            db.add(Delivery(
+                restaurant_id=ctx.restaurant_id,
+                order_id=order.id,
+                status="PENDING_ASSIGNMENT",
+                address_json={"address": address},
+                customer_phone=ctx.customer_phone,
+            ))
 
         for item in validated_items:
             db.add(OrderItem(
@@ -400,9 +601,13 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
 
         # Mark cart as converted
         if ctx.cart_id:
-            cart_obj = (await db.execute(select(Cart).where(Cart.id == ctx.cart_id))).scalar_one_or_none()
+            cart_obj = (await db.execute(
+                select(Cart).where(Cart.id == ctx.cart_id, Cart.restaurant_id == ctx.restaurant_id)
+            )).scalar_one_or_none()
             if cart_obj:
                 cart_obj.status = "CONVERTED"
+
+        challenge.used_at = datetime.now(timezone.utc)
 
         await db.commit()
 
@@ -411,7 +616,7 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         result.cart_total_cents = 0
         result.order_ref = order_ref
 
-    logger.info("Order placed: %s for customer %s", order_ref, ctx.customer_phone)
+    logger.info("Order placed: %s for customer_id=%s", order_ref, ctx.customer_id)
 
     # ── Update taste vector after order placement (Phase 1) ──────────────────
     if ctx.customer_id:
@@ -427,10 +632,10 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         except Exception as _e:
             logger.debug("Taste vector update skipped: %s", _e)
 
-    # ── Auto-chain: create Razorpay payment intent for DELIVERY/PICKUP orders ──
+    # ── Auto-chain: create Razorpay payment intent for scheduled in-house orders ──
     payment_data = {}
     razorpay_configured = bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET)
-    if order_type in ("DELIVERY", "PICKUP") and razorpay_configured:
+    if order_type in ("PICKUP", "DRIVE_THRU", "DELIVERY") and razorpay_configured:
         try:
             payment_result = await _tool_create_payment_intent(
                 {"order_ref": order_ref}, ctx, result
@@ -439,7 +644,7 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
                 payment_data = payment_result.data
         except Exception as e:
             logger.warning("Auto payment intent failed for %s: %s", order_ref, e)
-    elif order_type in ("DELIVERY", "PICKUP") and not razorpay_configured:
+    elif order_type in ("PICKUP", "DRIVE_THRU", "DELIVERY") and not razorpay_configured:
         logger.info("Razorpay not configured — order %s confirmed as COD.", order_ref)
 
     return ActionResult("place_order", True, data={
@@ -448,9 +653,35 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         "subtotal_cents": subtotal,
         "eta_seconds": eta,
         "items": validated_items,
+        "tracking_token": order.tracking_token,
         "payment_required": bool(payment_data),
         "payment_url": payment_data.get("razorpay_order_id", ""),
+        "scheduled_for": scheduled_for.isoformat(),
+        "provider": provider,
     })
+
+
+async def _tool_set_schedule(args: dict, ctx: ContextSnapshot, result: ExecutionResult) -> ActionResult:
+    """Validate and persist the future meal time before final confirmation."""
+    scheduled_raw = str(args.get("scheduled_for") or "").strip()
+    if not scheduled_raw:
+        return ActionResult("set_schedule", False, error="Choose a meal date and time.")
+    try:
+        scheduled_for = datetime.fromisoformat(scheduled_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return ActionResult("set_schedule", False, error="Use a valid meal date and time with timezone.")
+    valid, error = ctx.policy.validate_scheduled_for(scheduled_for, ctx.now)
+    if not valid:
+        return ActionResult("set_schedule", False, error=error)
+    if scheduled_for.tzinfo is None:
+        return ActionResult("set_schedule", False, error="Meal time must include an explicit timezone.")
+    normalized = scheduled_for.astimezone(timezone.utc).isoformat()
+    await save_session_meta(
+        ctx.chat_id,
+        {"scheduled_for": normalized},
+        channel_type=ctx.channel_type,
+    )
+    return ActionResult("set_schedule", True, data={"scheduled_for": normalized})
 
 
 async def _tool_track_order(args: dict, ctx: ContextSnapshot, result: ExecutionResult) -> ActionResult:
@@ -461,11 +692,17 @@ async def _tool_track_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         order_ref = ctx.active_orders[0]["order_ref"]
 
     if not order_ref:
-        return ActionResult("track_order", False, error="Please provide an order reference (e.g. DZK-ABC123).")
+        return ActionResult("track_order", False, error="Please provide an order reference (e.g. NB-ABC123).")
+    if not ctx.customer_id:
+        return ActionResult("track_order", False, error="A verified customer identity is required to view an order.")
 
     async with AsyncSessionLocal() as db:
         order = (await db.execute(
-            select(Order).where(Order.order_ref == order_ref)
+            select(Order).where(
+                Order.order_ref == order_ref,
+                Order.restaurant_id == ctx.restaurant_id,
+                Order.customer_id == ctx.customer_id,
+            )
         )).scalar_one_or_none()
 
         if not order:
@@ -477,6 +714,8 @@ async def _tool_track_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
             "total_cents": order.total_cents,
             "order_type": order.order_type,
             "created_at": order.created_at.isoformat() if order.created_at else "",
+            "scheduled_for": order.scheduled_for.isoformat() if order.scheduled_for else "",
+            "provider": order.provider,
         }
         result.tracking_info = info
 
@@ -487,10 +726,16 @@ async def _tool_cancel_order(args: dict, ctx: ContextSnapshot, result: Execution
     order_ref = str(args.get("order_ref") or "").strip().upper()
     if not order_ref:
         return ActionResult("cancel_order", False, error="Order reference required.")
+    if not ctx.customer_id:
+        return ActionResult("cancel_order", False, error="A verified customer identity is required to cancel an order.")
 
     async with AsyncSessionLocal() as db:
         order = (await db.execute(
-            select(Order).where(Order.order_ref == order_ref)
+            select(Order).where(
+                Order.order_ref == order_ref,
+                Order.restaurant_id == ctx.restaurant_id,
+                Order.customer_id == ctx.customer_id,
+            )
         )).scalar_one_or_none()
 
         if not order:
@@ -510,7 +755,7 @@ async def _tool_cancel_order(args: dict, ctx: ContextSnapshot, result: Execution
         try:
             from app.realtime.events import order_status_changed
             from app.realtime.ws_manager import ws_manager
-            evt = order_status_changed(order.id, order_ref, "CANCELLED")
+            evt = order_status_changed(order.id, order_ref, "CANCELLED", ctx.restaurant_id)
             await ws_manager.broadcast(order.restaurant_id, evt.to_dict())
         except Exception as e:
             logger.warning("WS broadcast failed for cancel: %s", e)
@@ -551,7 +796,10 @@ async def _tool_make_reservation(args: dict, ctx: ContextSnapshot, result: Execu
         customer = None
         if ctx.customer_id:
             customer = (await db.execute(
-                select(Customer).where(Customer.id == ctx.customer_id)
+                select(Customer).where(
+                    Customer.id == ctx.customer_id,
+                    Customer.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
 
         if not customer:
@@ -634,6 +882,42 @@ async def _tool_get_restaurant_info(args: dict, ctx: ContextSnapshot, result: Ex
     return ActionResult("get_restaurant_info", True, data=info)
 
 
+async def _tool_search_best_restaurants_on_maps(
+    args: dict, ctx: ContextSnapshot, result: ExecutionResult
+) -> ActionResult:
+    from app.agent.maps_client import MapsServiceError, search_best_restaurants
+
+    try:
+        info = await search_best_restaurants(
+            location=str(args.get("location") or ""),
+            query=str(args.get("query") or "restaurants"),
+            max_results=int(args.get("max_results") or 5),
+        )
+    except MapsServiceError as exc:
+        return ActionResult("search_best_restaurants_on_maps", False, error=str(exc))
+    result.info_payload = info
+    return ActionResult("search_best_restaurants_on_maps", True, data=info)
+
+
+async def _tool_find_drive_through_restaurants_on_route(
+    args: dict, ctx: ContextSnapshot, result: ExecutionResult
+) -> ActionResult:
+    from app.agent.maps_client import MapsServiceError, find_drive_through_on_route
+
+    try:
+        info = await find_drive_through_on_route(
+            origin=str(args.get("origin") or ""),
+            destination=str(args.get("destination") or ""),
+            cuisine=str(args.get("cuisine") or ""),
+            scheduled_for=str(args.get("scheduled_for") or ctx.scheduled_for or ""),
+            max_results=int(args.get("max_results") or 5),
+        )
+    except MapsServiceError as exc:
+        return ActionResult("find_drive_through_restaurants_on_route", False, error=str(exc))
+    result.info_payload = info
+    return ActionResult("find_drive_through_restaurants_on_route", True, data=info)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 3 — Cart / order-type tools
 # ══════════════════════════════════════════════════════════════════════════════
@@ -673,17 +957,17 @@ async def _tool_update_cart_item(args: dict, ctx: ContextSnapshot, result: Execu
 
 
 async def _tool_set_order_type(args: dict, ctx: ContextSnapshot, result: ExecutionResult) -> ActionResult:
-    """Persist the chosen order type (DELIVERY/PICKUP/DINE_IN) to session."""
+    """Persist the chosen fulfillment type to the conversation session."""
     order_type = str(args.get("order_type") or "").strip().upper()
-    if order_type not in ("DELIVERY", "PICKUP", "DINE_IN"):
+    if order_type not in ("PICKUP", "DRIVE_THRU", "DELIVERY"):
         return ActionResult("set_order_type", False,
-                            error=f"Invalid order_type '{order_type}'. Use DELIVERY, PICKUP, or DINE_IN.")
+                            error=f"Invalid order_type '{order_type}'. Use PICKUP, DRIVE_THRU, or DELIVERY.")
 
     valid, msg = ctx.policy.validate_order_type(order_type)
     if not valid:
         return ActionResult("set_order_type", False, error=msg)
 
-    await save_session_meta(ctx.chat_id, {"order_type": order_type})
+    await save_session_meta(ctx.chat_id, {"order_type": order_type}, channel_type=ctx.channel_type)
     return ActionResult("set_order_type", True, data={"order_type": order_type})
 
 
@@ -699,7 +983,7 @@ async def _tool_set_delivery_address(args: dict, ctx: ContextSnapshot, result: E
         return ActionResult("set_delivery_address", False,
                             error=reason, data={"radius_exceeded": True})
 
-    await save_session_meta(ctx.chat_id, {"delivery_address": address})
+    await save_session_meta(ctx.chat_id, {"delivery_address": address}, channel_type=ctx.channel_type)
     return ActionResult("set_delivery_address", True, data={"address": address})
 
 
@@ -720,7 +1004,11 @@ async def _tool_create_payment_intent(args: dict, ctx: ContextSnapshot, result: 
 
     async with AsyncSessionLocal() as db:
         order = (await db.execute(
-            select(Order).where(Order.order_ref == order_ref)
+            select(Order).where(
+                Order.order_ref == order_ref,
+                Order.restaurant_id == ctx.restaurant_id,
+                Order.customer_id == ctx.customer_id,
+            )
         )).scalar_one_or_none()
         if not order:
             return ActionResult("create_payment_intent", False, error=f"Order {order_ref} not found.")
@@ -729,6 +1017,7 @@ async def _tool_create_payment_intent(args: dict, ctx: ContextSnapshot, result: 
         existing_payment = (await db.execute(
             select(Payment).where(
                 Payment.order_id == order.id,
+                Payment.restaurant_id == ctx.restaurant_id,
                 Payment.status == "CREATED",
             )
         )).scalar_one_or_none()
@@ -737,7 +1026,7 @@ async def _tool_create_payment_intent(args: dict, ctx: ContextSnapshot, result: 
             await save_session_meta(ctx.chat_id, {
                 "pending_payment_order_id": existing_payment.provider_order_id,
                 "pending_order_ref": order_ref,
-            })
+            }, channel_type=ctx.channel_type)
             return ActionResult("create_payment_intent", True, data={
                 "payment_id": existing_payment.id,
                 "razorpay_order_id": existing_payment.provider_order_id,
@@ -775,7 +1064,7 @@ async def _tool_create_payment_intent(args: dict, ctx: ContextSnapshot, result: 
         await save_session_meta(ctx.chat_id, {
             "pending_payment_order_id": rzp_order.get("id"),
             "pending_order_ref": order_ref,
-        })
+        }, channel_type=ctx.channel_type)
 
         return ActionResult("create_payment_intent", True, data={
             "payment_id": payment.id,
@@ -801,11 +1090,18 @@ async def _tool_check_payment_status(args: dict, ctx: ContextSnapshot, result: E
         payment = None
         if order_ref:
             order = (await db.execute(
-                select(Order).where(Order.order_ref == order_ref)
+                select(Order).where(
+                    Order.order_ref == order_ref,
+                    Order.restaurant_id == ctx.restaurant_id,
+                    Order.customer_id == ctx.customer_id,
+                )
             )).scalar_one_or_none()
             if order:
                 payment = (await db.execute(
-                    select(Payment).where(Payment.order_id == order.id)
+                    select(Payment).where(
+                        Payment.order_id == order.id,
+                        Payment.restaurant_id == ctx.restaurant_id,
+                    )
                     .order_by(Payment.id.desc())
                 )).scalars().first()
 
@@ -865,6 +1161,7 @@ async def _tool_open_table_session(args: dict, ctx: ContextSnapshot, result: Exe
         existing = (await db.execute(
             select(TableSession).where(
                 TableSession.table_id == table_id,
+                TableSession.restaurant_id == ctx.restaurant_id,
                 TableSession.status == "OPEN",
             )
         )).scalar_one_or_none()
@@ -888,7 +1185,7 @@ async def _tool_open_table_session(args: dict, ctx: ContextSnapshot, result: Exe
             from app.realtime.events import table_session_opened
             from app.realtime.ws_manager import ws_manager
             await ws_manager.broadcast(ctx.restaurant_id,
-                                       table_session_opened(ts.id, table_id).to_dict())
+                                       table_session_opened(ts.id, table_id, ctx.restaurant_id).to_dict())
         except Exception:
             pass
 
@@ -913,14 +1210,17 @@ async def _tool_add_table_order(args: dict, ctx: ContextSnapshot, result: Execut
 
     async with AsyncSessionLocal() as db:
         ts = (await db.execute(
-            select(TableSession).where(TableSession.id == session_id)
+            select(TableSession).where(
+                TableSession.id == session_id,
+                TableSession.restaurant_id == ctx.restaurant_id,
+            )
         )).scalar_one_or_none()
         if not ts or ts.status != "OPEN":
             return ActionResult("add_table_order", False,
                                 error=f"Table session {session_id} not found or not open.")
 
         import uuid as _uuid
-        order_ref = f"DZK-{_uuid.uuid4().hex[:6].upper()}"
+        order_ref = f"NB-{_uuid.uuid4().hex[:6].upper()}"
         total = 0
         validated = []
 
@@ -984,7 +1284,10 @@ async def _tool_close_table_session(args: dict, ctx: ContextSnapshot, result: Ex
 
     async with AsyncSessionLocal() as db:
         ts = (await db.execute(
-            select(TableSession).where(TableSession.id == session_id)
+            select(TableSession).where(
+                TableSession.id == session_id,
+                TableSession.restaurant_id == ctx.restaurant_id,
+            )
         )).scalar_one_or_none()
         if not ts:
             return ActionResult("close_table_session", False,
@@ -1001,7 +1304,7 @@ async def _tool_close_table_session(args: dict, ctx: ContextSnapshot, result: Ex
             from app.realtime.events import table_session_closed
             from app.realtime.ws_manager import ws_manager
             await ws_manager.broadcast(ctx.restaurant_id,
-                                       table_session_closed(session_id, ts.table_id).to_dict())
+                                       table_session_closed(session_id, ts.table_id, ctx.restaurant_id).to_dict())
         except Exception:
             pass
 
@@ -1023,18 +1326,25 @@ async def _tool_generate_invoice(args: dict, ctx: ContextSnapshot, result: Execu
         if entity_type == "TABLE_SESSION":
             links = (await db.execute(
                 select(TableSessionOrder).where(
-                    TableSessionOrder.table_session_id == entity_id
+                    TableSessionOrder.table_session_id == entity_id,
+                    TableSessionOrder.restaurant_id == ctx.restaurant_id,
                 )
             )).scalars().all()
             for link in links:
                 order = (await db.execute(
-                    select(Order).where(Order.id == link.order_id)
+                    select(Order).where(
+                        Order.id == link.order_id,
+                        Order.restaurant_id == ctx.restaurant_id,
+                    )
                 )).scalar_one_or_none()
                 if order:
                     subtotal += order.total_cents
         elif entity_type == "ORDER":
             order = (await db.execute(
-                select(Order).where(Order.id == entity_id)
+                select(Order).where(
+                    Order.id == entity_id,
+                    Order.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
             if order:
                 subtotal = order.total_cents
@@ -1054,7 +1364,10 @@ async def _tool_generate_invoice(args: dict, ctx: ContextSnapshot, result: Execu
         # Auto-close session
         if entity_type == "TABLE_SESSION":
             ts = (await db.execute(
-                select(TableSession).where(TableSession.id == entity_id)
+                select(TableSession).where(
+                    TableSession.id == entity_id,
+                    TableSession.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
             if ts and ts.status == "OPEN":
                 ts.status = "CLOSED"
@@ -1084,7 +1397,10 @@ async def _tool_set_item_availability(args: dict, ctx: ContextSnapshot, result: 
     async with AsyncSessionLocal() as db:
         if item_id:
             mi = (await db.execute(
-                select(MenuItem).where(MenuItem.id == item_id)
+                select(MenuItem).where(
+                    MenuItem.id == item_id,
+                    MenuItem.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         else:
             mi = await _find_menu_item(db, ctx.restaurant_id, item_name)
@@ -1100,7 +1416,7 @@ async def _tool_set_item_availability(args: dict, ctx: ContextSnapshot, result: 
             from app.realtime.events import menu_item_availability_changed
             from app.realtime.ws_manager import ws_manager
             await ws_manager.broadcast(ctx.restaurant_id,
-                                       menu_item_availability_changed(mi.id, available).to_dict())
+                                       menu_item_availability_changed(mi.id, available, ctx.restaurant_id).to_dict())
         except Exception:
             pass
 
@@ -1119,7 +1435,10 @@ async def _tool_update_stock(args: dict, ctx: ContextSnapshot, result: Execution
     async with AsyncSessionLocal() as db:
         if item_id:
             mi = (await db.execute(
-                select(MenuItem).where(MenuItem.id == item_id)
+                select(MenuItem).where(
+                    MenuItem.id == item_id,
+                    MenuItem.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         else:
             mi = await _find_menu_item(db, ctx.restaurant_id, item_name)
@@ -1160,11 +1479,17 @@ async def _tool_update_order_status(args: dict, ctx: ContextSnapshot, result: Ex
     async with AsyncSessionLocal() as db:
         if order_ref:
             order = (await db.execute(
-                select(Order).where(Order.order_ref == order_ref)
+                select(Order).where(
+                    Order.order_ref == order_ref,
+                    Order.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         elif order_id:
             order = (await db.execute(
-                select(Order).where(Order.id == order_id)
+                select(Order).where(
+                    Order.id == order_id,
+                    Order.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         else:
             return ActionResult("update_order_status", False,
@@ -1180,7 +1505,7 @@ async def _tool_update_order_status(args: dict, ctx: ContextSnapshot, result: Ex
         try:
             from app.realtime.events import order_status_changed
             from app.realtime.ws_manager import ws_manager
-            evt = order_status_changed(order.id, order.order_ref, status)
+            evt = order_status_changed(order.id, order.order_ref, status, ctx.restaurant_id)
             await ws_manager.broadcast(order.restaurant_id, evt.to_dict())
         except Exception:
             pass
@@ -1201,20 +1526,30 @@ async def _tool_assign_driver(args: dict, ctx: ContextSnapshot, result: Executio
 
     async with AsyncSessionLocal() as db:
         order = (await db.execute(
-            select(Order).where(Order.order_ref == order_ref)
+            select(Order).where(
+                Order.order_ref == order_ref,
+                Order.restaurant_id == ctx.restaurant_id,
+            )
         )).scalar_one_or_none()
         if not order:
             return ActionResult("assign_driver", False, error=f"Order {order_ref} not found.")
 
         driver = (await db.execute(
-            select(Driver).where(Driver.id == driver_id, Driver.active == True)
+            select(Driver).where(
+                Driver.id == driver_id,
+                Driver.restaurant_id == ctx.restaurant_id,
+                Driver.active == True,
+            )
         )).scalar_one_or_none()
         if not driver:
             return ActionResult("assign_driver", False,
                                 error=f"Driver {driver_id} not found or inactive.")
 
         delivery = (await db.execute(
-            select(Delivery).where(Delivery.order_id == order.id)
+            select(Delivery).where(
+                Delivery.order_id == order.id,
+                Delivery.restaurant_id == ctx.restaurant_id,
+            )
         )).scalar_one_or_none()
 
         if delivery:
@@ -1239,7 +1574,7 @@ async def _tool_assign_driver(args: dict, ctx: ContextSnapshot, result: Executio
             from app.realtime.events import delivery_status_changed
             from app.realtime.ws_manager import ws_manager
             await ws_manager.broadcast(ctx.restaurant_id,
-                delivery_status_changed(delivery.id, order.id, "ASSIGNED").to_dict())
+                delivery_status_changed(delivery.id, order.id, "ASSIGNED", ctx.restaurant_id).to_dict())
         except Exception:
             pass
 
@@ -1262,14 +1597,23 @@ async def _tool_update_delivery_status(args: dict, ctx: ContextSnapshot, result:
     async with AsyncSessionLocal() as db:
         if delivery_id:
             delivery = (await db.execute(
-                select(Delivery).where(Delivery.id == delivery_id)
+                select(Delivery).where(
+                    Delivery.id == delivery_id,
+                    Delivery.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         elif order_ref:
             order = (await db.execute(
-                select(Order).where(Order.order_ref == order_ref)
+                select(Order).where(
+                    Order.order_ref == order_ref,
+                    Order.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
             delivery = (await db.execute(
-                select(Delivery).where(Delivery.order_id == order.id)
+                select(Delivery).where(
+                    Delivery.order_id == order.id,
+                    Delivery.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none() if order else None
         else:
             return ActionResult("update_delivery_status", False,
@@ -1285,7 +1629,10 @@ async def _tool_update_delivery_status(args: dict, ctx: ContextSnapshot, result:
             delivery.delivered_at = datetime.now(timezone.utc)
             # Also mark order delivered
             order_obj = (await db.execute(
-                select(Order).where(Order.id == delivery.order_id)
+                select(Order).where(
+                    Order.id == delivery.order_id,
+                    Order.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
             if order_obj:
                 order_obj.status = "DELIVERED"
@@ -1351,7 +1698,10 @@ async def _tool_get_item_details(args: dict, ctx: ContextSnapshot, result: Execu
     async with AsyncSessionLocal() as db:
         if item_id:
             mi = (await db.execute(
-                select(MenuItem).where(MenuItem.id == item_id)
+                select(MenuItem).where(
+                    MenuItem.id == item_id,
+                    MenuItem.restaurant_id == ctx.restaurant_id,
+                )
             )).scalar_one_or_none()
         else:
             mi = await _find_menu_item(db, ctx.restaurant_id, item_name)
@@ -1425,8 +1775,10 @@ _TOOL_REGISTRY: dict[str, Any] = {
     "view_cart":                _tool_view_cart,
     # Order flow
     "set_order_type":           _tool_set_order_type,
+    "set_schedule":             _tool_set_schedule,
     "set_delivery_address":     _tool_set_delivery_address,
     "update_customer":          _tool_update_customer,
+    "prepare_order_confirmation": _tool_prepare_order_confirmation,
     "place_order":              _tool_place_order,
     "track_order":              _tool_track_order,
     "cancel_order":             _tool_cancel_order,
@@ -1452,17 +1804,27 @@ _TOOL_REGISTRY: dict[str, Any] = {
     "get_menu":                 _tool_get_menu,
     "get_kitchen_eta":          _tool_get_kitchen_eta,
     "get_restaurant_info":      _tool_get_restaurant_info,
+    "search_best_restaurants_on_maps": _tool_search_best_restaurants_on_maps,
+    "find_drive_through_restaurants_on_route": _tool_find_drive_through_restaurants_on_route,
 }
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-async def _get_or_create_channel(db: AsyncSession, chat_id: int) -> Channel:
+async def _get_or_create_channel(db: AsyncSession, ctx: ContextSnapshot) -> Channel:
     ch = (await db.execute(
-        select(Channel).where(Channel.type == "TELEGRAM", Channel.external_id == str(chat_id))
+        select(Channel).where(
+            Channel.restaurant_id == ctx.restaurant_id,
+            Channel.type == ctx.channel_type,
+            Channel.external_id == str(ctx.chat_id),
+        )
     )).scalar_one_or_none()
     if not ch:
-        ch = Channel(restaurant_id=1, type="TELEGRAM", external_id=str(chat_id))
+        ch = Channel(
+            restaurant_id=ctx.restaurant_id,
+            type=ctx.channel_type,
+            external_id=str(ctx.chat_id),
+        )
         db.add(ch)
         await db.flush()
     return ch
@@ -1472,15 +1834,22 @@ async def _get_or_create_cart(db: AsyncSession, ctx: ContextSnapshot) -> Cart:
     """Return the open cart linked to the session, creating one if needed."""
     if ctx.cart_id:
         cart = (await db.execute(
-            select(Cart).where(Cart.id == ctx.cart_id, Cart.status == "OPEN")
+            select(Cart).where(
+                Cart.id == ctx.cart_id,
+                Cart.restaurant_id == ctx.restaurant_id,
+                Cart.status == "OPEN",
+            )
         )).scalar_one_or_none()
         if cart:
             return cart
 
     # Find or create channel + session
-    ch = await _get_or_create_channel(db, ctx.chat_id)
+    ch = await _get_or_create_channel(db, ctx)
     sess = (await db.execute(
-        select(SessionModel).where(SessionModel.channel_id == ch.id)
+        select(SessionModel).where(
+            SessionModel.channel_id == ch.id,
+            SessionModel.restaurant_id == ctx.restaurant_id,
+        )
     )).scalar_one_or_none()
     if not sess:
         sess = SessionModel(

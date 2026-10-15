@@ -445,7 +445,7 @@ async def seed():
             if not order_ref_raw:
                 continue
             # Make order_ref unique
-            base_ref = f"DZK-{order_ref_raw}"
+            base_ref = f"NB-{order_ref_raw}"
             order_ref = base_ref
             counter = 1
             while order_ref in seen_order_refs:
@@ -558,7 +558,7 @@ async def seed():
             order_ref_raw = str(r.get("OrderID", "") or "").strip()
             if not order_ref_raw:
                 continue
-            base_ref = f"DZK-OFF-{order_ref_raw}"
+            base_ref = f"NB-OFF-{order_ref_raw}"
             order_ref = base_ref
             counter = 1
             while order_ref in seen_order_refs:

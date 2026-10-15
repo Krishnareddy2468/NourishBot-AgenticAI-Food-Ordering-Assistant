@@ -171,8 +171,8 @@ RAW_TOOLS = [
                 "customer_phone": {"type": "string"},
                 "order_type": {
                     "type": "string",
-                    "description": "Order type: DELIVERY, PICKUP, or DINE_IN",
-                    "enum": ["DELIVERY", "PICKUP", "DINE_IN"],
+                    "description": "Order type: DELIVERY, PICKUP, or DRIVE_THRU",
+                    "enum": ["DELIVERY", "PICKUP", "DRIVE_THRU"],
                 },
             },
             "required": ["customer_name", "customer_phone"],
@@ -972,11 +972,17 @@ GREETING (first message or /start):
    or via *Zomato* or *Swiggy*?"
 
 TIME-AWARE SUGGESTIONS:
-  - Morning  -> Masala Dosa, Chai, light items
+  - Breakfast -> Masala Dosa, Chai, and other verified morning or light items
   - Lunch    -> Biryani, Thali, main courses
   - Snack    -> Tikka, Noodles, beverages
   - Dinner   -> Butter Chicken, Biryani, Family packs
   - Late night -> Biryani, Fried Rice, Comfort food
+
+DIETARY AND HEALTH PREFERENCES:
+  - Support vegetarian, vegan, high-protein, lighter, balanced, and lower-sugar requests.
+  - Recommend only items supported by the live menu type or description.
+  - If nutrition or ingredient metadata is missing, say so instead of guessing.
+  - Treat these as preferences, not medical advice; never guarantee allergy safety.
 
 MOOD DETECTION:
   - "sad / bad day / stressed" -> Comfort food: Kheer, Gulab Jamun, Butter Chicken

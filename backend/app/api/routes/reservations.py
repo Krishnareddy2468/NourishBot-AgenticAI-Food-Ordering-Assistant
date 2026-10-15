@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.db.models.reservations import Reservation
 from app.db.models.core import Customer
-from app.auth.deps import extract_token, require_manager
+from app.auth.deps import extract_token, require_manager, tenant_id
 
 router = APIRouter(prefix="/api/v1/reservations", tags=["reservations"])
 
@@ -26,7 +26,7 @@ async def list_reservations(
     limit: int = 100,
     user=Depends(extract_token),
 ):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         query = (
             select(Reservation)
@@ -44,7 +44,9 @@ async def list_reservations(
             cust_name = None
             cust_phone = None
             if r.customer_id:
-                cust_result = await session.execute(select(Customer).where(Customer.id == r.customer_id))
+                cust_result = await session.execute(
+                    select(Customer).where(Customer.id == r.customer_id, Customer.restaurant_id == rid)
+                )
                 cust = cust_result.scalar_one_or_none()
                 if cust:
                     cust_name = cust.name
@@ -70,7 +72,7 @@ async def update_reservation_status(
     body: ReservationStatusUpdate,
     user=Depends(require_manager),
 ):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Reservation).where(Reservation.id == reservation_id, Reservation.restaurant_id == rid)

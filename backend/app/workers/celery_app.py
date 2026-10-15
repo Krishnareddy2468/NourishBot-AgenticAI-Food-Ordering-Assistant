@@ -14,7 +14,10 @@ celery_app = Celery(
     "nourishbot",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.workers.notification_worker"],
+    include=[
+        "app.workers.notification_worker",
+        "app.workers.scheduled_order_worker",
+    ],
 )
 
 celery_app.conf.update(
@@ -30,4 +33,9 @@ celery_app.conf.update(
     worker_max_tasks_per_child=200,
 )
 
-celery_app.conf.beat_schedule = {}
+celery_app.conf.beat_schedule = {
+    "activate-scheduled-orders-every-minute": {
+        "task": "app.workers.scheduled_order_worker.activate_due_orders",
+        "schedule": 60.0,
+    },
+}

@@ -47,6 +47,16 @@ async def drain_outbox() -> int:
                         "event_id": event.id,
                     },
                 )
+                if (
+                    event.event_type == "order.status_changed"
+                    and event.payload.get("activated_from_schedule")
+                ):
+                    from app.realtime.notifications import notify_order_status
+                    await notify_order_status(
+                        event.payload["order_ref"],
+                        event.payload["new_status"],
+                        event.payload.get("order_type", "PICKUP"),
+                    )
                 event.processed_at = datetime.now(timezone.utc)
                 processed += 1
             except Exception as e:

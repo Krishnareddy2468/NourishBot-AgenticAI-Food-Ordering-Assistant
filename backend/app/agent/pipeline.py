@@ -27,22 +27,24 @@ from app.agent.verifier import Verifier, VerifiedSummary
 from app.agent.responder import Responder
 from app.agent.state_machine import StateMachine, BotState
 from app.core.config import settings
+from app.agent.order_confirmation import is_explicit_confirmation
 
 logger = logging.getLogger(__name__)
 
 
 async def process_message(
     message: str,
-    chat_id: int,
+    chat_id: str | int,
     user_name: str = "",
+    channel_type: str = "TELEGRAM",
 ) -> str:
     """
-    Full pipeline for one incoming Telegram message.
+    Full pipeline for one incoming Telegram or WhatsApp message.
     Returns the assistant reply string.
     """
     # ── Stage 1: Context ──────────────────────────────────────────────────────
     t0 = time.monotonic()
-    ctx = await build_context(chat_id, user_name)
+    ctx = await build_context(chat_id, user_name, channel_type=channel_type)
     logger.info(
         "Pipeline[chat=%s] ctx built — customer=%r cart=%d orders=%d kitchen_load=%d (stage=%s duration_ms=%d)",
         chat_id,
@@ -70,7 +72,7 @@ async def process_message(
         plan.proposed_actions = slot_hint["actions"] + plan.proposed_actions
         plan.missing_slots = slot_hint.get("remaining_slots", plan.missing_slots)
 
-    plan = _guard_order_plan(plan, ctx)
+    plan = _guard_order_plan(plan, ctx, message)
     logger.info(
         "Pipeline[chat=%s] plan — goal=%s missing=%s actions=%d confirm=%s (stage=%s duration_ms=%d)",
         chat_id, plan.goal, plan.missing_slots,
@@ -101,6 +103,7 @@ async def process_message(
             delivery_address=ctx.delivery_address,
             pending_payment_order_id=ctx.pending_payment_order_id,
             pending_order_ref=ctx.pending_order_ref,
+            scheduled_for=ctx.scheduled_for,
         )
         return reply
 
@@ -177,17 +180,24 @@ async def process_message(
     delivery_address = ctx.delivery_address
     pending_payment_order_id = ctx.pending_payment_order_id
     pending_order_ref = ctx.pending_order_ref
+    scheduled_for = ctx.scheduled_for
+    pending_confirmation_id = ctx.pending_confirmation_id
 
     for action in exec_result.committed:
         if action.tool == "set_order_type":
             order_type = action.data.get("order_type", order_type)
+        elif action.tool == "set_schedule":
+            scheduled_for = action.data.get("scheduled_for", scheduled_for)
+        elif action.tool == "prepare_order_confirmation":
+            pending_confirmation_id = action.data.get("confirmation_id", pending_confirmation_id)
+        elif action.tool == "place_order":
+            pending_confirmation_id = None
+            pending_order_ref = action.data.get("order_ref", pending_order_ref)
         elif action.tool == "set_delivery_address":
             delivery_address = action.data.get("address", delivery_address)
         elif action.tool == "create_payment_intent":
             pending_payment_order_id = action.data.get("razorpay_order_id", pending_payment_order_id)
             pending_order_ref = action.data.get("order_ref", pending_order_ref)
-        elif action.tool == "place_order" and action.data.get("order_ref"):
-            pending_order_ref = action.data["order_ref"]
         elif action.tool in ("check_payment_status",) and \
                 (action.data.get("status") or "").upper() in ("CAPTURED", "AUTHORIZED"):
             pending_payment_order_id = None  # clear after capture
@@ -205,13 +215,15 @@ async def process_message(
         delivery_address=delivery_address,
         pending_payment_order_id=pending_payment_order_id,
         pending_order_ref=pending_order_ref,
+        scheduled_for=scheduled_for,
+        pending_confirmation_id=pending_confirmation_id,
     )
 
     return reply
 
 
 async def _persist(
-    chat_id: int,
+    chat_id: str | int,
     user_message: str,
     reply: str,
     plan: PlannerOutput,
@@ -224,6 +236,8 @@ async def _persist(
     delivery_address: str = "",
     pending_payment_order_id: Optional[str] = None,
     pending_order_ref: Optional[str] = None,
+    scheduled_for: Optional[str] = None,
+    pending_confirmation_id: Optional[str] = None,
 ) -> None:
     try:
         await save_pipeline_turn(
@@ -238,6 +252,9 @@ async def _persist(
             delivery_address=delivery_address or "",
             pending_payment_order_id=pending_payment_order_id,
             pending_order_ref=pending_order_ref,
+            scheduled_for=scheduled_for,
+            pending_confirmation_id=pending_confirmation_id,
+            channel_type=ctx.channel_type,
         )
     except Exception as e:
         logger.error("Pipeline: failed to persist turn for chat=%s: %s", chat_id, e)
@@ -281,6 +298,17 @@ def _extract_slot_hint(message: str, ctx: ContextSnapshot) -> dict | None:
             actions.append({"tool": "set_order_type", "args": {"order_type": order_type}})
             consumed.add("order_type")
 
+    # Deterministic ISO-8601 schedule extraction; the planner handles natural
+    # phrases such as "tomorrow at 1 PM" using the current timestamp context.
+    if "scheduled_for" in pending:
+        iso_match = re.search(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?",
+            text,
+        )
+        if iso_match:
+            actions.append({"tool": "set_schedule", "args": {"scheduled_for": iso_match.group(0)}})
+            consumed.add("scheduled_for")
+
     # Address extraction (long text with commas, not a name)
     if "delivery_address" in pending:
         cleaned = re.sub(r"\+?\d[\d\s().-]{6,}\d", "", text).strip(" \t\r\n,;:-")
@@ -302,13 +330,14 @@ def _is_action_word(text: str) -> bool:
     lowered = (text or "").strip().lower()
     blocked = {
         "order", "place", "confirm", "yes", "no", "delivery", "pickup",
+        "drive", "through", "thru", "curbside",
         "dine", "menu", "cart", "phone", "number", "cancel", "reserve",
         "book", "help", "reset", "info", "specials",
     }
     return any(w in blocked for w in re.findall(r"\w+", lowered))
 
 
-def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutput:
+def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot, message: str = "") -> PlannerOutput:
     """
     Deterministic safety pass over the LLM plan.
 
@@ -317,26 +346,39 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
     required slots are collected before `place_order`.
     """
     blocked_tools = {
-        "set_delivery_address",
         "create_payment_intent",
         "check_payment_status",
         "make_reservation",
     }
+    proposed_types = {
+        str((proposed.get("args") or {}).get("order_type") or "").upper()
+        for proposed in (plan.proposed_actions or [])
+        if proposed.get("tool") in ("set_order_type", "place_order")
+    }
+    allowed_types = ("PICKUP", "DRIVE_THRU", "DELIVERY")
+    preferred_type = next(
+        (order_type for order_type in ("DELIVERY", "DRIVE_THRU", "PICKUP") if order_type in proposed_types),
+        ctx.order_type if ctx.order_type in allowed_types else "PICKUP",
+    )
     actions = []
     for proposed in list(plan.proposed_actions or []):
         if proposed.get("tool") in blocked_tools:
             continue
         action = {**proposed, "args": dict(proposed.get("args") or {})}
         if action.get("tool") in ("set_order_type", "place_order"):
-            action["args"]["order_type"] = "PICKUP"
-            action["args"].pop("address", None)
+            requested_type = str(action["args"].get("order_type") or preferred_type).upper()
+            action["args"]["order_type"] = (
+                requested_type if requested_type in allowed_types else "PICKUP"
+            )
+            if action["args"]["order_type"] != "DELIVERY":
+                action["args"].pop("address", None)
         elif action.get("tool") == "update_customer":
             action["args"].pop("address", None)
         actions.append(action)
 
     safe_missing = [
         slot for slot in (plan.missing_slots or [])
-        if slot not in ("delivery_address", "address", "order_type")
+        if slot not in ("address", "order_type")
     ]
     action_tools = [a.get("tool") for a in actions]
     has_order_intent = (
@@ -378,15 +420,73 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
     if not ctx.customer_phone and not customer_action_args.get("phone"):
         add_missing("customer_phone")
 
-    # Product invariant: the active NourishBot concept accepts pickup only.
-    # Remove stale slots that may remain in sessions created by the legacy flow.
+    schedule_value = ctx.scheduled_for
+    for action in actions:
+        if action.get("tool") == "set_schedule":
+            schedule_value = (action.get("args") or {}).get("scheduled_for") or schedule_value
+        elif action.get("tool") == "place_order":
+            schedule_value = (action.get("args") or {}).get("scheduled_for") or schedule_value
+    if not schedule_value:
+        add_missing("scheduled_for")
+
+    address_value = ctx.delivery_address
+    for action in actions:
+        if action.get("tool") == "set_delivery_address":
+            address_value = (action.get("args") or {}).get("address") or address_value
+        elif action.get("tool") == "place_order":
+            address_value = (action.get("args") or {}).get("address") or address_value
+
+    if preferred_type == "DELIVERY" and not address_value:
+        add_missing("delivery_address")
+    elif preferred_type == "DELIVERY":
+        missing = [slot for slot in missing if slot != "delivery_address"]
+
+    # Only home delivery needs an address; clear stale address slots for collection orders.
     missing = [
         slot for slot in missing
-        if slot not in ("delivery_address", "address", "order_type")
+        if slot not in ("address", "order_type")
+        and not (slot == "delivery_address" and preferred_type != "DELIVERY")
     ]
 
     if missing:
         actions = [a for a in actions if a.get("tool") != "place_order"]
+    else:
+        has_confirmation = (
+            ctx.current_state == BotState.AWAITING_CONFIRMATION
+            and bool(ctx.pending_confirmation_id)
+            and bool(ctx.confirmation_snapshot)
+            and is_explicit_confirmation(message)
+        )
+        place_actions = [a for a in actions if a.get("tool") == "place_order"]
+        if has_confirmation and not place_actions:
+            snapshot = dict(ctx.confirmation_snapshot or {})
+            actions.append({
+                "tool": "place_order",
+                "args": {
+                    "order_type": snapshot.get("order_type"),
+                    "address": snapshot.get("delivery_address"),
+                    "scheduled_for": snapshot.get("scheduled_for"),
+                    "provider": snapshot.get("provider"),
+                    "confirmation_id": ctx.pending_confirmation_id,
+                },
+            })
+        for action in actions:
+            if action.get("tool") == "place_order":
+                if has_confirmation:
+                    snapshot = dict(ctx.confirmation_snapshot or {})
+                    action["args"]["order_type"] = snapshot.get("order_type")
+                    action["args"]["scheduled_for"] = snapshot.get("scheduled_for")
+                    action["args"]["provider"] = snapshot.get("provider")
+                    if snapshot.get("order_type") == "DELIVERY":
+                        action["args"]["address"] = snapshot.get("delivery_address")
+                    else:
+                        action["args"].pop("address", None)
+                    action["args"]["confirmation_id"] = ctx.pending_confirmation_id
+                else:
+                    action["args"]["scheduled_for"] = schedule_value
+                    if preferred_type == "DELIVERY":
+                        action["args"]["address"] = address_value
+                    action["tool"] = "prepare_order_confirmation"
 
     return PlannerOutput(
         goal=plan.goal if plan.goal in ("ORDER_ONLINE", "TAKEAWAY") else "ORDER_ONLINE",
@@ -394,7 +494,7 @@ def _guard_order_plan(plan: PlannerOutput, ctx: ContextSnapshot) -> PlannerOutpu
         constraints=plan.constraints,
         proposed_actions=actions,
         user_intent_summary=plan.user_intent_summary,
-        requires_confirmation=plan.requires_confirmation and not missing,
+        requires_confirmation=not missing and not is_explicit_confirmation(message),
     )
 
 
@@ -407,6 +507,11 @@ def _extract_phone(text: str) -> str:
 
 def _extract_order_type(text: str) -> str:
     lowered = (text or "").strip().lower()
+    if any(term in lowered for term in ("drive through", "drive-through", "drive thru", "drive-thru", "curbside")):
+        return "DRIVE_THRU"
+    if any(term in lowered for term in ("home delivery", "deliver to", "delivery", "delivered")) \
+            or re.search(r"\bdeliver(?:ed|ing)?\b", lowered):
+        return "DELIVERY"
     if "pickup" in lowered or "pick up" in lowered or "takeaway" in lowered or "take away" in lowered:
         return "PICKUP"
     return ""

@@ -35,10 +35,12 @@ from app.db.models import (
     CartItem,
     MenuItem,
     Order,
+    ConfirmationChallenge,
 )
 from app.agent.policies import RestaurantPolicy, default_policy
 from app.agent.state_machine import BotState
 from app.agent.memory_agent import get_user_memory_summary, get_top_cravings
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
@@ -48,8 +50,9 @@ IST = pytz.timezone("Asia/Kolkata")
 
 @dataclass
 class ContextSnapshot:
-    chat_id: int
-    restaurant_id: int = 1
+    chat_id: str | int
+    channel_type: str = "TELEGRAM"
+    restaurant_id: int = field(default_factory=lambda: settings.DEFAULT_RESTAURANT_ID)
     user_name: str = ""
 
     # Customer (may be None for first-time users)
@@ -86,10 +89,14 @@ class ContextSnapshot:
     top_cravings: list[str] = field(default_factory=list)
 
     # Order context (collected progressively)
-    order_type: Optional[str] = None               # DELIVERY | PICKUP | DINE_IN
+    order_type: Optional[str] = None               # PICKUP | DRIVE_THRU | DELIVERY
     delivery_address: str = ""
     pending_payment_order_id: Optional[str] = None  # Razorpay order ID
     pending_order_ref: Optional[str] = None         # order ref awaiting payment
+    scheduled_for: Optional[str] = None              # ISO-8601 future meal time
+    ordering_platform: str = "NOURISHBOT"
+    pending_confirmation_id: Optional[str] = None
+    confirmation_snapshot: Optional[dict] = None
 
     # Restaurant
     policy: Any = field(default_factory=lambda: default_policy)
@@ -122,16 +129,21 @@ class ContextSnapshot:
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 
-async def build_context(chat_id: int, user_name: str = "") -> ContextSnapshot:
+async def build_context(
+    chat_id: str | int,
+    user_name: str = "",
+    channel_type: str = "TELEGRAM",
+) -> ContextSnapshot:
     """Fetch all context from DB and return a populated ContextSnapshot."""
-    ctx = ContextSnapshot(chat_id=chat_id, user_name=user_name)
+    channel_type = (channel_type or "TELEGRAM").upper()
+    ctx = ContextSnapshot(chat_id=chat_id, user_name=user_name, channel_type=channel_type)
 
     # Time context
     now = datetime.now(IST)
     ctx.now = now
     h = now.hour
     ctx.time_of_day = (
-        "morning"     if 6  <= h < 11 else
+        "breakfast time" if 6  <= h < 11 else
         "lunch time"  if 11 <= h < 15 else
         "snack time"  if 15 <= h < 18 else
         "dinner time" if 18 <= h < 23 else
@@ -143,7 +155,8 @@ async def build_context(chat_id: int, user_name: str = "") -> ContextSnapshot:
         # ── 1. Channel ────────────────────────────────────────────────────────
         ch_result = await db.execute(
             select(Channel).where(
-                Channel.type == "TELEGRAM",
+                Channel.restaurant_id == ctx.restaurant_id,
+                Channel.type == channel_type,
                 Channel.external_id == str(chat_id),
             )
         )
@@ -155,7 +168,10 @@ async def build_context(chat_id: int, user_name: str = "") -> ContextSnapshot:
             # ── 2. Customer ───────────────────────────────────────────────────
             if channel.customer_id:
                 cust_result = await db.execute(
-                    select(Customer).where(Customer.id == channel.customer_id)
+                    select(Customer).where(
+                        Customer.id == channel.customer_id,
+                        Customer.restaurant_id == ctx.restaurant_id,
+                    )
                 )
                 customer = cust_result.scalar_one_or_none()
                 if customer:
@@ -174,16 +190,34 @@ async def build_context(chat_id: int, user_name: str = "") -> ContextSnapshot:
 
             # ── 3. Session + history + cart ───────────────────────────────────
             sess_result = await db.execute(
-                select(SessionModel).where(SessionModel.channel_id == channel.id)
+                select(SessionModel).where(
+                    SessionModel.channel_id == channel.id,
+                    SessionModel.restaurant_id == ctx.restaurant_id,
+                )
             )
             session = sess_result.scalar_one_or_none()
 
             if session:
                 ctx.session_id = session.id
+                ctx.ordering_platform = (session.ordering_platform or "NOURISHBOT").upper()
                 _parse_session_history(ctx, session.history_json)
 
                 if session.cart_id:
                     await _load_cart(ctx, db, session.cart_id)
+
+                if ctx.pending_confirmation_id:
+                    challenge = (await db.execute(
+                        select(ConfirmationChallenge).where(
+                            ConfirmationChallenge.id == ctx.pending_confirmation_id,
+                            ConfirmationChallenge.restaurant_id == ctx.restaurant_id,
+                            ConfirmationChallenge.session_id == session.id,
+                            ConfirmationChallenge.used_at.is_(None),
+                            ConfirmationChallenge.invalidated_at.is_(None),
+                            ConfirmationChallenge.expires_at > datetime.now(pytz.UTC),
+                        )
+                    )).scalar_one_or_none()
+                    if challenge:
+                        ctx.confirmation_snapshot = dict(challenge.snapshot_json or {})
 
         # ── 4. Active orders ──────────────────────────────────────────────────
         if ctx.customer_id:
@@ -222,6 +256,8 @@ def _parse_session_history(ctx: ContextSnapshot, history_json: Any) -> None:
         ctx.delivery_address = meta.get("delivery_address") or ""
         ctx.pending_payment_order_id = meta.get("pending_payment_order_id")
         ctx.pending_order_ref = meta.get("pending_order_ref")
+        ctx.scheduled_for = meta.get("scheduled_for")
+        ctx.pending_confirmation_id = meta.get("pending_confirmation_id")
         ctx.current_state = BotState.from_str(meta.get("current_state") or "IDLE")
         ctx.last_turns = (history_json.get("turns") or [])[-8:]
 
@@ -229,7 +265,11 @@ def _parse_session_history(ctx: ContextSnapshot, history_json: Any) -> None:
 async def _load_cart(ctx: ContextSnapshot, db, cart_id: int) -> None:
     """Load cart items into ctx.cart and compute cart_total_cents."""
     cart_result = await db.execute(
-        select(Cart).where(Cart.id == cart_id, Cart.status == "OPEN")
+        select(Cart).where(
+            Cart.id == cart_id,
+            Cart.restaurant_id == ctx.restaurant_id,
+            Cart.status == "OPEN",
+        )
     )
     cart = cart_result.scalar_one_or_none()
     if not cart:
@@ -237,11 +277,17 @@ async def _load_cart(ctx: ContextSnapshot, db, cart_id: int) -> None:
 
     ctx.cart_id = cart.id
     items_result = await db.execute(
-        select(CartItem).where(CartItem.cart_id == cart.id)
+        select(CartItem).where(
+            CartItem.cart_id == cart.id,
+            CartItem.restaurant_id == ctx.restaurant_id,
+        )
     )
     total = 0
     for ci in items_result.scalars().all():
-        mi_result = await db.execute(select(MenuItem).where(MenuItem.id == ci.item_id))
+        mi_result = await db.execute(select(MenuItem).where(
+            MenuItem.id == ci.item_id,
+            MenuItem.restaurant_id == ctx.restaurant_id,
+        ))
         mi = mi_result.scalar_one_or_none()
         ctx.cart.append({
             "item_id": ci.item_id,
@@ -260,7 +306,8 @@ async def _load_active_orders(ctx: ContextSnapshot, db) -> None:
     result = await db.execute(
         select(Order).where(
             Order.customer_id == ctx.customer_id,
-            Order.status.in_(["CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"]),
+            Order.restaurant_id == ctx.restaurant_id,
+            Order.status.in_(["SCHEDULED", "CREATED", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"]),
         ).order_by(Order.created_at.desc()).limit(5)
     )
     for order in result.scalars().all():
@@ -270,6 +317,8 @@ async def _load_active_orders(ctx: ContextSnapshot, db) -> None:
             "total_cents": order.total_cents,
             "order_type": order.order_type,
             "created_at": order.created_at.isoformat() if order.created_at else "",
+            "scheduled_for": order.scheduled_for.isoformat() if order.scheduled_for else "",
+            "provider": order.provider,
         })
 
 
@@ -295,17 +344,28 @@ async def _load_menu_snapshot(db, restaurant_id: int) -> list[dict]:
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-async def save_session_meta(chat_id: int, updates: dict) -> None:
+async def save_session_meta(
+    chat_id: str | int,
+    updates: dict,
+    channel_type: str = "TELEGRAM",
+) -> None:
     """Patch specific keys inside history_json.meta without touching turns."""
     async with AsyncSessionLocal() as db:
         ch_result = await db.execute(
-            select(Channel).where(Channel.type == "TELEGRAM", Channel.external_id == str(chat_id))
+            select(Channel).where(
+                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
+                Channel.type == channel_type.upper(),
+                Channel.external_id == str(chat_id),
+            )
         )
         channel = ch_result.scalar_one_or_none()
         if not channel:
             return
         sess_result = await db.execute(
-            select(SessionModel).where(SessionModel.channel_id == channel.id)
+            select(SessionModel).where(
+                SessionModel.channel_id == channel.id,
+                SessionModel.restaurant_id == channel.restaurant_id,
+            )
         )
         session = sess_result.scalar_one_or_none()
         if not session:
@@ -320,7 +380,7 @@ async def save_session_meta(chat_id: int, updates: dict) -> None:
 
 
 async def save_pipeline_turn(
-    chat_id: int,
+    chat_id: str | int,
     user_message: str,
     assistant_reply: str,
     pending_goal: Optional[str] = None,
@@ -331,30 +391,41 @@ async def save_pipeline_turn(
     delivery_address: str = "",
     pending_payment_order_id: Optional[str] = None,
     pending_order_ref: Optional[str] = None,
+    scheduled_for: Optional[str] = None,
+    pending_confirmation_id: Optional[str] = None,
+    channel_type: str = "TELEGRAM",
 ) -> None:
     """Append the completed turn to session history and save pipeline meta."""
     async with AsyncSessionLocal() as db:
         # Find or create channel
         ch_result = await db.execute(
             select(Channel).where(
-                Channel.type == "TELEGRAM",
+                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
+                Channel.type == channel_type.upper(),
                 Channel.external_id == str(chat_id),
             )
         )
         channel = ch_result.scalar_one_or_none()
         if not channel:
-            channel = Channel(restaurant_id=1, type="TELEGRAM", external_id=str(chat_id))
+            channel = Channel(
+                restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+                type=channel_type.upper(),
+                external_id=str(chat_id),
+            )
             db.add(channel)
             await db.flush()
 
         # Find or create session
         sess_result = await db.execute(
-            select(SessionModel).where(SessionModel.channel_id == channel.id)
+            select(SessionModel).where(
+                SessionModel.channel_id == channel.id,
+                SessionModel.restaurant_id == channel.restaurant_id,
+            )
         )
         session = sess_result.scalar_one_or_none()
         if not session:
             session = SessionModel(
-                restaurant_id=1,
+                restaurant_id=settings.DEFAULT_RESTAURANT_ID,
                 channel_id=channel.id,
                 state="IDLE",
                 history_json={"meta": {}, "turns": []},
@@ -382,6 +453,8 @@ async def save_pipeline_turn(
                 "delivery_address": delivery_address,
                 "pending_payment_order_id": pending_payment_order_id,
                 "pending_order_ref": pending_order_ref,
+                "scheduled_for": scheduled_for,
+                "pending_confirmation_id": pending_confirmation_id,
             },
             "turns": turns,
         }

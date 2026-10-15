@@ -1,8 +1,6 @@
 """
-LangGraph MCP Agent — Zomato + Swiggy live ordering inside Telegram.
-====================================================================
-
-Mirrors the architecture of the previous Zomatobot LangGraph backend:
+LangGraph MCP Agent — scheduled provider ordering over chat.
+============================================================
 
     Telegram message
         -> deterministic guards (greeting, reset, simple intents)
@@ -17,24 +15,101 @@ is replayed into the prompt the same way as the NourishBot orchestrator already
 does, so the same PostgreSQL session table works without schema changes.
 
 If MCP is not enabled or the tools fail to load, get_mcp_response() returns
-None and Telegram falls back to the existing NourishBot orchestrator + redirect
-links.
+None and the channel reports that the selected provider is unavailable.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
+import uuid
 from datetime import datetime
 from typing import Any
 
 from app.core.config import settings
 from app.db.crud import get_session, save_session
+from app.db.session import AsyncSessionLocal
+from app.db.models import ProviderAttempt
+from sqlalchemy import select
+from app.agent.order_confirmation import is_explicit_confirmation
 
 logger = logging.getLogger(__name__)
+
+_TRANSACTION_MARKERS = (
+    "checkout", "place_order", "create_order", "submit_order",
+    "confirm_order", "purchase",
+)
+
+
+def _is_transaction_tool(name: str) -> bool:
+    lowered = (name or "").lower()
+    return any(marker in lowered for marker in _TRANSACTION_MARKERS)
+
+
+async def _start_provider_attempt(
+    *, platform: str, channel_type: str, chat_id: str | int, fingerprint_source: str,
+) -> tuple[ProviderAttempt | None, str | None]:
+    fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
+    idempotency_key = hashlib.sha256(
+        f"{platform}|{channel_type}|{chat_id}|{fingerprint}".encode("utf-8")
+    ).hexdigest()
+    async with AsyncSessionLocal() as db:
+        existing = (await db.execute(
+            select(ProviderAttempt).where(
+                ProviderAttempt.provider == platform.upper(),
+                ProviderAttempt.idempotency_key == idempotency_key,
+            )
+        )).scalar_one_or_none()
+        if existing:
+            if existing.status == "CONFIRMED":
+                return existing, "confirmed"
+            if existing.status in {"SUBMITTING", "UNKNOWN"}:
+                return existing, "pending"
+            existing.attempt_count += 1
+            existing.status = "SUBMITTING"
+            existing.last_error = None
+            await db.commit()
+            return existing, None
+
+        attempt = ProviderAttempt(
+            id=str(uuid.uuid4()),
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            provider=platform.upper(),
+            channel_type=channel_type.upper(),
+            external_chat_id=str(chat_id),
+            operation="CONFIRM_ORDER",
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            status="SUBMITTING",
+        )
+        db.add(attempt)
+        await db.commit()
+        return attempt, None
+
+
+async def _finish_provider_attempt(
+    attempt_id: str | None,
+    *,
+    status: str,
+    provider_order_id: str | None = None,
+    error: str | None = None,
+) -> None:
+    if not attempt_id:
+        return
+    async with AsyncSessionLocal() as db:
+        attempt = (await db.execute(
+            select(ProviderAttempt).where(ProviderAttempt.id == attempt_id)
+        )).scalar_one_or_none()
+        if not attempt:
+            return
+        attempt.status = status
+        attempt.provider_order_id = provider_order_id or attempt.provider_order_id
+        attempt.last_error = (error or "")[:500] or None
+        await db.commit()
 
 
 # ── Provider Error Classification ──────────────────────────────────────────
@@ -312,7 +387,12 @@ def _get_build_lock() -> asyncio.Lock:
 
 
 def _system_prompt(platform: str, user_name: str) -> str:
-    plat_label = {"Zomato": "Zomato", "Swiggy": "Swiggy"}.get(platform, "external delivery platform")
+    plat_label = platform or "external delivery platform"
+    provider_mode = (
+        "TRANSACTIONAL DEMO MODE: a transaction tool is exposed only on an explicit confirmation turn."
+        if settings.MCP_TRANSACTIONAL_ENABLED
+        else "DISCOVERY MODE ONLY: no checkout or provider mutation tool is available. Never claim an order was placed."
+    )
     now        = datetime.now()
     hour       = now.hour
     time_label = (
@@ -322,12 +402,22 @@ def _system_prompt(platform: str, user_name: str) -> str:
         "dinner time"if 18 <= hour < 23 else
         "late night"
     )
-    return f"""You are NourishBot — a warm, witty restaurant assistant helping a Telegram user place a real order on {plat_label} via the {plat_label} MCP server.
+    return f"""You are NourishBot — a focused scheduled-meal assistant using the {plat_label} MCP server.
+
+CURRENT PROVIDER MODE: {provider_mode}
 
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                          CRITICAL SAFETY RULES                           ║
 ║               These rules are NON-NEGOTIABLE and auditable.               ║
 ╚══════════════════════════════════════════════════════════════════════════╝
+
+RULE 0: SCHEDULED MEALS ONLY
+- Instant ordering, ASAP checkout, and immediate delivery are prohibited.
+- Collect an explicit future meal date, local time, and timezone before any transactional call.
+- Only call a provider tool that natively accepts a scheduled/pre-order/fulfillment time.
+- If the connected MCP server has no scheduling-capable checkout tool, do not place the order.
+  Explain that browsing is available but scheduled checkout is unsupported by this provider.
+- Never simulate scheduling by placing an immediate order early.
 
 RULE 1: ZERO HALLUCINATION
 - ALL restaurant names, menu items, prices, ratings, ETAs, and order IDs must come from MCP tools.
@@ -335,12 +425,15 @@ RULE 1: ZERO HALLUCINATION
 - If a tool returns empty results or an error, report it plainly and ask the user for clarification.
 - If you can't find what the user wants, say: "I couldn't find that on {plat_label}. Can you describe it differently?"
 
-RULE 2: ADDRESS VALIDATION (BEFORE ANYTHING ELSE)
-- NEVER proceed to search restaurants without confirming a delivery address.
-- When user gives a pincode/area: immediately call get_saved_addresses_for_user THEN validate.
+RULE 2: LOCATION AND FULFILLMENT
+- First establish HOME DELIVERY or DRIVE_THROUGH/PICKUP.
+- For home delivery, never search the provider before confirming a delivery address.
+- When a home-delivery user gives a pincode/area: call get_saved_addresses_for_user, then validate.
 - ONLY use address_ids returned by the {plat_label} API. NEVER fabricate or guess IDs.
 - If a tool rejects an address_id, immediately re-fetch fresh addresses: "Let me refresh your saved addresses..."
-- Confirm address with user before proceeding: "Just confirming — delivering to [ADDRESS]?"
+- Confirm a home-delivery address before proceeding: "Just confirming — delivering to [ADDRESS]?"
+- For drive-through discovery, collect the user's route origin and destination, then call
+  find_drive_through_restaurants_on_route. Do not require a delivery address.
 
 RULE 3: TOOL DISCOVERY BEFORE QUOTING
 - Before mentioning ANY restaurant: call get_restaurants_for_keyword to find its res_id.
@@ -352,6 +445,7 @@ RULE 4: ORDER CONFIRMATION GATES
 - User MUST give explicit confirmation like "yes", "place it", or "go ahead".
 - If user says "no", "cancel", or "back" — immediately abort. Do not retry.
 - Checkout/payment calls require PRIOR explicit user confirmation.
+- The summary must show the scheduled meal time and timezone before confirmation.
 
 RULE 5: ERROR RECOVERY WITHOUT SPINNING
 - If a tool call fails (invalid address, menu not found, search empty), do NOT retry with guesses.
@@ -376,21 +470,32 @@ RULE 8: MCP TOOL USAGE DISCIPLINE
 - If saved IDs are provided in "SAVED MCP CONTEXT", reuse those exact address_id/res_id values instead of asking again.
 - If the user chooses by number or restaurant name and the saved context contains an ID, call the next tool with that ID.
 
+RULE 9: MAPS DISCOVERY BOUNDARY
+- Use search_best_restaurants_on_maps to discover well-rated restaurants near a place.
+- Use find_drive_through_restaurants_on_route for route-side drive-through discovery.
+- Maps results are discovery leads, not proof of provider availability, menu, price, future opening,
+  or drive-through support. After the user chooses one, search that exact restaurant on {plat_label}.
+- Never send a Google place_id to a {plat_label} tool as a provider restaurant ID.
+- Before drive-through checkout, the provider tool must explicitly support scheduled pickup,
+  drive-through, or curbside fulfillment. If it does not, stop before checkout and explain why.
+
 CONTEXT & CONSTRAINTS
 - User: {user_name or "there"}
 - Time: {time_label} ({now.strftime('%I:%M %p')})
+- Current date: {now.strftime('%Y-%m-%d')}
 - Platform: {plat_label} (tools only — no external links or fallback URLs)
 - Session state is tracked to prevent order duplicates and unauthorized actions
 
 WORKFLOW SUMMARY
 1. Greet or acknowledge the user's intent
-2. Validate/set delivery address (call get_saved_addresses_for_user if needed)
-3. Search for restaurants matching user's taste/budget (use get_restaurants_for_keyword)
-4. For chosen restaurant: fetch menu (get_menu_items_listing)
-5. Build cart with selected items
-6. Show order summary and request confirmation
-7. On explicit confirmation: place order via checkout tool
-8. Return order ID and delivery ETA
+2. Collect and validate the future meal date, time, and timezone
+3. For HOME DELIVERY: validate the delivery address. For DRIVE_THROUGH: collect route origin + destination.
+4. Discover restaurants with Maps when useful; for drive-through, search along the driving route.
+5. Search the chosen restaurant on {plat_label} and verify provider-side fulfillment support.
+6. Fetch the provider menu, build the cart, and show the exact summary and scheduled time.
+7. Ask for explicit confirmation.
+8. On confirmation, use only a provider tool that supports both scheduling and the chosen fulfillment.
+9. Return the provider's verified order ID and scheduled time.
 
 WHEN UNSURE
 - Ask the user, don't guess.
@@ -420,9 +525,7 @@ def _is_reset_intent(text: str) -> bool:
 
 def _is_confirmation_intent(text: str) -> bool:
     """Detect if user is confirming an action (yes/ok/go ahead)."""
-    t = (text or "").strip().lower().rstrip("!.?,…")
-    confirm_words = {"yes", "yep", "ok", "okay", "sure", "go", "go ahead", "place it", "confirm", "agreed"}
-    return t in confirm_words or any(word in t for word in confirm_words)
+    return is_explicit_confirmation(text)
 
 
 def _is_rejection_intent(text: str) -> bool:
@@ -446,9 +549,44 @@ def _extract_address_intent(text: str) -> str | None:
     return None
 
 
-async def _build_agent(platform: str):
+def _scheduled_safe_tool(tool: Any) -> bool:
+    """Block transactional MCP tools unless their schema exposes a schedule field."""
+    name = (getattr(tool, "name", "") or "").lower()
+    transactional = (
+        "checkout",
+        "place_order",
+        "create_order",
+        "submit_order",
+        "confirm_order",
+        "purchase",
+    )
+    if not any(marker in name for marker in transactional):
+        return True
+
+    schema = getattr(tool, "args_schema", None)
+    schema_text = ""
+    try:
+        if schema is not None and hasattr(schema, "model_json_schema"):
+            schema_text = str(schema.model_json_schema()).lower()
+        elif schema is not None and hasattr(schema, "schema"):
+            schema_text = str(schema.schema()).lower()
+    except Exception:
+        schema_text = ""
+
+    scheduling_fields = (
+        "scheduled_for",
+        "scheduled_time",
+        "schedule_time",
+        "delivery_time",
+        "fulfillment_time",
+        "preorder_time",
+    )
+    return any(field in schema_text for field in scheduling_fields)
+
+
+async def _build_agent(platform: str, allow_transaction: bool = False):
     """Build (or fetch cached) LangGraph React agent for the given platform."""
-    cache_key = platform
+    cache_key = f"{platform}:{'transactional' if allow_transaction else 'discovery'}"
     if cache_key in _agent_cache:
         return _agent_cache[cache_key]
 
@@ -461,19 +599,35 @@ async def _build_agent(platform: str):
         # Lazy import — keeps mcp_clients out of import path when MCP off.
         from app.agent.mcp_clients import get_mcp_tools_async
 
-        tools = await get_mcp_tools_async(platform)
-        if not tools:
+        provider_tools = await get_mcp_tools_async(platform)
+        if not provider_tools:
             logger.warning("MCP agent: no tools available for platform=%s; agent will not be built.", platform)
             _agent_cache[cache_key] = None
             return None
 
+        from app.agent.maps_client import build_maps_tools
+        maps_tools = build_maps_tools()
+
         # Optional: filter tools by platform prefix so a Zomato-mode chat
         # only sees Zomato tools. This keeps the model focused.
         prefix = "zomato" if platform == "Zomato" else "swiggy"
-        filtered = [t for t in tools if (getattr(t, "name", "") or "").lower().startswith(prefix)]
+        filtered = [t for t in provider_tools if (getattr(t, "name", "") or "").lower().startswith(prefix)]
         # If our naming convention doesn't match (langchain-mcp-adapters
         # may name tools <server>__<tool> or similar), fall back to all tools.
-        bound_tools = filtered or tools
+        candidate_tools = [*(filtered or provider_tools), *maps_tools]
+        bound_tools = [tool for tool in candidate_tools if _scheduled_safe_tool(tool)]
+        if not allow_transaction:
+            bound_tools = [
+                tool for tool in bound_tools
+                if not _is_transaction_tool(getattr(tool, "name", ""))
+            ]
+        blocked = len(candidate_tools) - len(bound_tools)
+        if blocked:
+            logger.warning(
+                "MCP[%s]: blocked %d tool(s) by scheduling/capability policy",
+                platform,
+                blocked,
+            )
         _tool_names_cache[cache_key] = [getattr(t, "name", str(t)) for t in bound_tools]
 
         api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
@@ -483,7 +637,7 @@ async def _build_agent(platform: str):
         _agent_cache[cache_key] = agent
         logger.info(
             "MCP agent built for platform=%s with %d/%d tools.",
-            platform, len(bound_tools), len(tools),
+            platform, len(bound_tools), len(provider_tools) + len(maps_tools),
         )
         return agent
 
@@ -492,22 +646,26 @@ async def _build_agent(platform: str):
 
 async def get_mcp_response(
     user_message: str,
-    chat_id: int,
+    chat_id: str | int,
     user_name: str,
     platform: str,
+    channel_type: str = "TELEGRAM",
 ) -> str | None:
     """
-    Run a single agent turn for a Telegram chat. Returns the assistant text
+    Run a single agent turn for a Telegram or WhatsApp chat. Returns the assistant text
     on success, or None when MCP is unavailable so the caller can fall back
     to the legacy redirect-link / NourishBot-bot flow.
     """
     if not settings.MCP_ENABLED:
         return None
-    if platform not in ("Zomato", "Swiggy"):
-        return None
-
     try:
-        agent = await _build_agent(platform)
+        agent = await _build_agent(
+            platform,
+            allow_transaction=(
+                settings.MCP_TRANSACTIONAL_ENABLED
+                and _is_confirmation_intent(user_message)
+            ),
+        )
     except Exception as e:
         logger.error("MCP agent: build failed: %s", e, exc_info=True)
         return None
@@ -517,30 +675,47 @@ async def get_mcp_response(
 
     # Cheap deterministic guard for greetings — skip a tool call.
     if _is_greeting(user_message):
-        plat_label = "Zomato" if platform == "Zomato" else "Swiggy"
+        plat_label = platform
         reply = (
             f"Hey {user_name or 'there'}! 👋 I'm connected to *{plat_label}* now. "
             "Tell me what cuisine you're craving or share your area / pin code."
         )
-        session = await get_session(chat_id)
+        session = await get_session(chat_id, channel_type)
         new_history = list(session.get("history") or [])
         new_history.append({"role": "user", "content": user_message})
         new_history.append({"role": "assistant", "content": reply})
         await save_session(chat_id, {
             "history": _trim_mcp_history(new_history),
             "ordering_platform": platform,
-        })
+        }, channel_type=channel_type)
         return reply
 
     _ensure_imports()
 
     # Replay rolling conversation history (last 8 turns) so the model has
     # continuity, just like the NourishBot orchestrator does.
-    session = await get_session(chat_id)
+    session = await get_session(chat_id, channel_type)
     full_history = list(session.get("history") or [])
     history = _visible_history(full_history, limit=8)
     saved_context = _extract_last_mcp_context(full_history)
     normalized_user_message = _normalize_followup_selection(user_message, full_history)
+    provider_attempt_id: str | None = None
+    if settings.MCP_TRANSACTIONAL_ENABLED and _is_confirmation_intent(user_message):
+        attempt, prior_state = await _start_provider_attempt(
+            platform=platform,
+            channel_type=channel_type,
+            chat_id=chat_id,
+            fingerprint_source=f"{saved_context}\n{normalized_user_message.strip().lower()}",
+        )
+        provider_attempt_id = attempt.id if attempt else None
+        if prior_state == "confirmed":
+            order_hint = f" Order ID: {attempt.provider_order_id}." if attempt and attempt.provider_order_id else ""
+            return f"This provider request was already confirmed.{order_hint}"
+        if prior_state == "pending":
+            return (
+                f"Your {platform} request has an uncertain outcome and is being verified. "
+                "I won't submit it again until its status is reconciled."
+            )
 
     # Build system prompt
     system_content = _system_prompt(platform, user_name)
@@ -589,8 +764,8 @@ async def get_mcp_response(
     messages.append(HumanMessage(content=normalized_user_message))
 
     logger.debug(
-        "MCP[%s] turn start — chat=%s user=%r normalized=%r history_turns=%d has_saved_context=%s",
-        platform, chat_id, user_message[:120], normalized_user_message[:160], len(history), bool(saved_context),
+        "MCP[%s] turn start — chat=%s history_turns=%d has_saved_context=%s",
+        platform, chat_id, len(history), bool(saved_context),
     )
 
     result = None
@@ -600,6 +775,11 @@ async def get_mcp_response(
             timeout=settings.MCP_TOOL_TIMEOUT_S * 2,
         )
     except asyncio.TimeoutError:
+        await _finish_provider_attempt(
+            provider_attempt_id,
+            status="UNKNOWN",
+            error="Provider timed out before a verifiable receipt was returned",
+        )
         logger.warning("MCP agent: timeout for chat_id=%s platform=%s", chat_id, platform)
         return (
             "Hmm, that took too long on the "
@@ -625,9 +805,17 @@ async def get_mcp_response(
                 "MCP[%s] subprocess AbortError (expected cleanup) chat=%s — tool call likely succeeded.",
                 platform, chat_id,
             )
-            # Return a graceful message since we can't get the agent response
-            return f"Got it — I've sent your request to {platform}. You'll see the confirmation shortly."
+            await _finish_provider_attempt(
+                provider_attempt_id,
+                status="UNKNOWN",
+                error="Provider connection ended before a verifiable receipt was returned",
+            )
+            return (
+                f"I couldn't verify whether {platform} accepted the request. "
+                "I have not retried it, to avoid a duplicate order. Its status needs reconciliation."
+            )
         else:
+            await _finish_provider_attempt(provider_attempt_id, status="FAILED", error=str(e))
             logger.error("MCP[%s] invoke failed chat=%s: %s", platform, chat_id, e, exc_info=True)
             from app.agent.mcp_clients import reset_platform_cache
             await reset_platform_cache(platform)
@@ -642,6 +830,8 @@ async def get_mcp_response(
     out_messages = result.get("messages") if isinstance(result, dict) else None
     detected_address_error = False
     tool_call_count = 0
+    transaction_called = False
+    provider_order_id: str | None = None
     
     if out_messages:
         for i, m in enumerate(out_messages):
@@ -653,23 +843,33 @@ async def get_mcp_response(
                     tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "?")
                     tc_args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
                     logger.debug(
-                        "MCP[%s] msg[%d] TOOL_CALL — tool=%s args=%s",
-                        platform, i, tc_name, str(tc_args)[:200],
+                        "MCP[%s] msg[%d] TOOL_CALL — tool=%s arg_keys=%s",
+                        platform, i, tc_name, sorted(tc_args.keys()) if isinstance(tc_args, dict) else [],
                     )
                     tool_call_count += 1
+                    transaction_called = transaction_called or _is_transaction_tool(str(tc_name))
                     # Extra focus on address/location args
                     if isinstance(tc_args, dict):
                         for k, v in tc_args.items():
                             if any(x in k.lower() for x in ("address", "location", "area", "lat", "lng", "pincode", "city")):
                                 logger.info(
-                                    "MCP[%s] ADDRESS ARG — tool=%s field=%s value=%r",
-                                    platform, tc_name, k, v,
+                                    "MCP[%s] sensitive location argument redacted — tool=%s field=%s",
+                                    platform, tc_name, k,
                                 )
             elif mtype in ("tool", "ToolMessage"):
                 content_str = str(content)[:500]
+                payload = _extract_json_object(str(content))
+                if payload:
+                    provider_order_id = str(
+                        payload.get("order_id")
+                        or payload.get("orderId")
+                        or payload.get("provider_order_id")
+                        or provider_order_id
+                        or ""
+                    ).strip() or None
                 logger.debug(
-                    "MCP[%s] msg[%d] TOOL_RESULT — content=%s",
-                    platform, i, content_str,
+                    "MCP[%s] msg[%d] TOOL_RESULT — chars=%d",
+                    platform, i, len(str(content)),
                 )
                 # Detect common errors that indicate bad address IDs or restaurant IDs
                 if "invalid_address" in content_str.lower() or "invalid" in content_str.lower() or \
@@ -682,8 +882,8 @@ async def get_mcp_response(
                     )
             elif mtype in ("ai", "AIMessage", "assistant") and content:
                 logger.debug(
-                    "MCP[%s] msg[%d] AI — content=%s",
-                    platform, i, str(content)[:200],
+                    "MCP[%s] msg[%d] AI — chars=%d",
+                    platform, i, len(str(content)),
                 )
         
         if detected_address_error:
@@ -710,11 +910,35 @@ async def get_mcp_response(
     if not final_text:
         final_text = "Got it — anything else you'd like me to do on " + platform + "?"
 
+    if provider_attempt_id:
+        if transaction_called and provider_order_id:
+            await _finish_provider_attempt(
+                provider_attempt_id,
+                status="CONFIRMED",
+                provider_order_id=provider_order_id,
+            )
+        elif transaction_called:
+            await _finish_provider_attempt(
+                provider_attempt_id,
+                status="UNKNOWN",
+                error="Transactional tool returned no verifiable provider order id",
+            )
+            final_text = (
+                f"I couldn't verify whether {platform} accepted the request. "
+                "I won't retry it until the provider status is reconciled, so a duplicate is not created."
+            )
+        else:
+            await _finish_provider_attempt(
+                provider_attempt_id,
+                status="FAILED",
+                error="Confirmation turn did not invoke a transactional provider tool",
+            )
+
     context_update = _build_context_from_messages(out_messages or [])
 
     logger.debug(
-        "MCP[%s] reply chat=%s tool_calls=%d context_update=%s: %r",
-        platform, chat_id, tool_call_count, bool(context_update), final_text[:120],
+        "MCP[%s] reply chat=%s tool_calls=%d context_update=%s chars=%d",
+        platform, chat_id, tool_call_count, bool(context_update), len(final_text),
     )
 
     # Persist this turn into rolling history (cap last 16)
@@ -727,7 +951,7 @@ async def get_mcp_response(
     await save_session(chat_id, {
         "history":           new_history,
         "ordering_platform": platform,
-    })
+    }, channel_type=channel_type)
 
     return final_text
 

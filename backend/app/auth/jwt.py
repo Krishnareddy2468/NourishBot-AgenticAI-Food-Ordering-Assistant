@@ -4,16 +4,14 @@ JWT authentication for NourishBot vNext staff portal.
 Generates and verifies HS256 JWTs for staff login.
 """
 
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
+from app.core.config import settings
 
 # Config
-JWT_SECRET = os.getenv("JWT_SECRET", "nourishbot-dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_MINUTES = int(os.getenv("JWT_EXPIRY_MINUTES", "480"))  # 8 hours default
 
 
 def create_access_token(
@@ -29,10 +27,10 @@ def create_access_token(
         "restaurant_id": restaurant_id,
         "role": role,
         "email": email,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRY_MINUTES),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRY_MINUTES),
         "iat": datetime.now(timezone.utc),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict:
@@ -41,7 +39,7 @@ def decode_access_token(token: str) -> dict:
 
     Returns the payload dict, or raises jwt exceptions on failure.
     """
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    return jwt.decode(token, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
 
 
 def verify_role(token_payload: dict, allowed_roles: list[str]) -> bool:

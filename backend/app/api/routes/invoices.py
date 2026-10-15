@@ -9,14 +9,14 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models.invoices import Invoice
-from app.auth.deps import extract_token
+from app.auth.deps import extract_token, tenant_id
 
 router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
 
 
 @router.get("")
 async def list_invoices(limit: int = 100, user=Depends(extract_token)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Invoice)

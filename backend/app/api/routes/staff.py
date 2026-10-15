@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.db.models.core import User
-from app.auth.deps import extract_token, require_admin
+from app.auth.deps import extract_token, require_admin, tenant_id
 from app.api.routes.auth import hash_password
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff"])
@@ -30,7 +30,7 @@ class StaffToggle(BaseModel):
 
 @router.get("")
 async def list_staff(user=Depends(extract_token)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User)
@@ -54,7 +54,7 @@ async def list_staff(user=Depends(extract_token)):
 
 @router.post("", status_code=201)
 async def create_staff(body: StaffCreate, user=Depends(require_admin)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         new_user = User(
             restaurant_id=rid,
@@ -73,7 +73,7 @@ async def create_staff(body: StaffCreate, user=Depends(require_admin)):
 
 @router.patch("/{staff_id}/active")
 async def toggle_staff_active(staff_id: int, body: StaffToggle, user=Depends(require_admin)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(User).where(User.id == staff_id, User.restaurant_id == rid)

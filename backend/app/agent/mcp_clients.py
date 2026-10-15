@@ -33,7 +33,7 @@ Public surface
         Cleanly tears down all MCP sessions. Called from FastAPI lifespan
         on shutdown.
 
-Reliability controls (mirrors the pattern from the previous Zomato build):
+Reliability controls:
 - Per-tool timeout                         (settings.MCP_TOOL_TIMEOUT_S)
 - Cooldown after a connection failure     (settings.MCP_RECONNECT_COOLDOWN_S)
 - Reconnect lock so a single failure does not stampede reconnects
@@ -95,7 +95,7 @@ def _servers_for_platform(platform: str) -> dict[str, dict[str, Any]]:
     """
     Return only the MCP server entries relevant to the given platform.
     platform = "Zomato"  → only the Zomato server
-    platform = "Swiggy"  → only the Swiggy food server (+ instamart/dineout if enabled)
+    platform = "Swiggy"  → only the Swiggy food server
     """
 
     def _stdio_spec(url: str) -> dict[str, Any]:
@@ -120,10 +120,6 @@ def _servers_for_platform(platform: str) -> dict[str, dict[str, Any]]:
     elif platform == "Swiggy":
         if settings.MCP_SWIGGY_FOOD_ENABLED:
             servers["swiggy_food"] = _stdio_spec(settings.MCP_SWIGGY_FOOD_URL)
-        if settings.MCP_SWIGGY_INSTAMART_ENABLED:
-            servers["swiggy_instamart"] = _stdio_spec(settings.MCP_SWIGGY_INSTAMART_URL)
-        if settings.MCP_SWIGGY_DINEOUT_ENABLED:
-            servers["swiggy_dineout"] = _stdio_spec(settings.MCP_SWIGGY_DINEOUT_URL)
 
     return servers
 

@@ -5,7 +5,7 @@ Agentic bot using OpenAI GPT-4o via agent_orchestrator.
 Features:
   - Persistent session state per user (PostgreSQL)
   - Inline keyboards for quick actions
-  - Canteen menu, cart, order, and pickup assistance
+  - Canteen menu, cart, scheduled collection, and home-delivery assistance
   - Typing indicator while thinking
   - /start, /menu, /order, /pickup, /cart, /help, /reset
 """
@@ -42,6 +42,7 @@ from telegram.ext import (
 from dotenv import load_dotenv
 
 from app.agent.pipeline import process_message as pipeline_process
+from app.core.config import settings
 from app.db.crud import get_session, reset_session, save_session, save_order_rating
 
 load_dotenv()
@@ -62,8 +63,9 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📋 Menu"), KeyboardButton("⭐ Specials")],
-            [KeyboardButton("🛒 Order"), KeyboardButton("🛍️ My Cart")],
-            [KeyboardButton("📦 Pickup Info"), KeyboardButton("ℹ️ Info")],
+            [KeyboardButton("🗓️ Schedule Meal"), KeyboardButton("🚗 Find on my route")],
+            [KeyboardButton("🏠 Home Delivery"), KeyboardButton("🛍️ My Cart")],
+            [KeyboardButton("🔌 Choose Provider"), KeyboardButton("ℹ️ Info")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Type a message or pick an option…",
@@ -77,14 +79,28 @@ def quick_actions_inline() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⭐ Today's Specials", callback_data="action_specials"),
         ],
         [
-            InlineKeyboardButton("🛒 Place an Order",   callback_data="action_order"),
-            InlineKeyboardButton("🛍️ View My Cart",    callback_data="action_cart"),
+            InlineKeyboardButton("🗓️ Schedule a Meal", callback_data="action_order"),
+            InlineKeyboardButton("🚗 Find on my route", callback_data="action_drive_thru"),
         ],
         [
-            InlineKeyboardButton("📦 Pickup Info",      callback_data="action_pickup"),
-            InlineKeyboardButton("ℹ️ Canteen Info",     callback_data="action_info"),
+            InlineKeyboardButton("🏠 Home Delivery", callback_data="action_delivery"),
+            InlineKeyboardButton("🛍️ View My Cart", callback_data="action_cart"),
+        ],
+        [
+            InlineKeyboardButton("🔌 Choose Provider",  callback_data="action_providers"),
+            InlineKeyboardButton("ℹ️ Service Info",     callback_data="action_info"),
         ],
     ])
+
+
+def provider_inline() -> InlineKeyboardMarkup:
+    providers = ["🍽️ NourishBot", "🟠 Swiggy", "🔴 Zomato"]
+    buttons = []
+    for display in providers:
+        name = display.split(" ", 1)[1]
+        if len(f"provider_{name}".encode("utf-8")) <= 64:
+            buttons.append(InlineKeyboardButton(display, callback_data=f"provider_{name}"))
+    return InlineKeyboardMarkup([buttons[i:i + 2] for i in range(0, len(buttons), 2)])
 
 
 # ── Rating keyboard ───────────────────────────────────────────────────────────
@@ -123,19 +139,23 @@ def _is_greeting(text: str) -> bool:
 BUTTON_INTENT_MAP = {
     "📋 Menu":            "Show me the full menu please",
     "⭐ Specials":         "What are today's specials and deals?",
-    "🛒 Order":           "I want to place an order",
+    "🗓️ Schedule Meal":  "I want to schedule a meal for a future date and time",
+    "🚗 Find on my route": "I want a scheduled drive-through pickup. Ask for my route origin and destination, then use Maps to find available restaurant candidates along the route.",
+    "🏠 Home Delivery":   "I want to schedule a meal for home delivery at a future date and time",
     "🛍️ My Cart":        "Show me my current cart",
-    "📦 Pickup Info":     "Explain how canteen pickup works",
-    "ℹ️ Info":            "Tell me about the canteen, opening times, and pickup location",
+    "🔌 Choose Provider": "Show me the available meal providers",
+    "ℹ️ Info":            "Explain scheduled meal ordering and the supported channels",
 }
 
 CALLBACK_INTENT_MAP = {
     "action_menu":     "Show me the full menu please",
     "action_specials": "What are today's specials and deals?",
-    "action_order":    "I want to place an order",
+    "action_order":    "I want to schedule a meal for a future date and time",
+    "action_drive_thru":"I want a scheduled drive-through pickup. Ask for my route origin and destination, then use Maps to find available restaurant candidates along the route.",
+    "action_delivery":  "I want to schedule a meal for home delivery at a future date and time",
     "action_cart":     "Show me my current cart",
-    "action_pickup":   "Explain how canteen pickup works",
-    "action_info":     "Tell me about the canteen, opening times, and pickup location",
+    "action_providers":"Show me the available meal providers",
+    "action_info":     "Explain scheduled meal ordering and the supported channels",
 }
 
 
@@ -168,21 +188,32 @@ async def _do_think_and_reply(
 ) -> None:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-    # Active product routing: every customer message stays in the in-house
-    # canteen pipeline. The model proposes; deterministic tools validate writes.
+    session = await get_session(chat_id)
+    platform = session.get("ordering_platform") or "NourishBot"
+
     try:
-        reply = await pipeline_process(
-            message=user_message,
-            chat_id=chat_id,
-            user_name=user_name,
-        )
+        if platform in ("NourishBot", ""):
+            reply = await pipeline_process(
+                message=user_message,
+                chat_id=chat_id,
+                user_name=user_name,
+                channel_type="TELEGRAM",
+            )
+        else:
+            from app.agent.mcp_agent import get_mcp_response
+            reply = await get_mcp_response(user_message, chat_id, user_name, platform)
+            if reply is None:
+                reply = (
+                    f"{platform} scheduled ordering is unavailable right now. "
+                    "Choose NourishBot, Swiggy, or Zomato; I will not place an instant order."
+                )
     except Exception as e:
         logger.error("Canteen pipeline failed: %s", e, exc_info=True)
         reply = None
 
     if reply is None:
         reply = (
-            "Sorry, I had trouble reaching the canteen system for a moment. "
+            "Sorry, I had trouble reaching the meal service for a moment. "
             "Please try again — I need the live menu/cart DB before I can order safely."
         )
 
@@ -203,7 +234,7 @@ async def _do_think_and_reply(
 # ── /start ────────────────────────────────────────────────────────────────────
 
 async def _send_quick_actions(update: Update):
-    """Show the active canteen-ordering actions."""
+    """Show the active scheduled-meal actions."""
     await update.effective_message.reply_text(
         "What would you like to do? Choose an option or describe your meal naturally.",
         parse_mode=ParseMode.MARKDOWN,
@@ -217,17 +248,15 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = user.first_name if user else "there"
 
     await reset_session(chat_id, user_name)
-    await save_session(chat_id, {"ordering_platform": "NourishBot"})
-
     welcome = (
-        f"👋 Hey *{user_name}*! Welcome to *NourishBot Canteen* 🍽️\n\n"
-        f"I'm your AI pre-order assistant. I can help you explore the demo menu, "
-        f"prepare a cart, place a pickup order, and check when it is ready."
+        f"👋 Hey *{user_name}*! Welcome to *NourishBot* 🍽️\n\n"
+        f"Plan breakfast, lunch, snacks, or dinner for pickup, drive-through, or home delivery. "
+        f"Instant ordering is disabled—every meal needs a future date and time."
     )
     await update.message.reply_text(
         welcome,
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=main_keyboard(),
+        reply_markup=provider_inline(),
     )
     await _send_quick_actions(update)
 
@@ -241,13 +270,13 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /order ─────────────────────────────────────────────────────────────────────
 
 async def cmd_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _think_and_reply(update, context, "I want to place an order")
+    await _think_and_reply(update, context, "I want to schedule a meal for a future date and time")
 
 
 # ── /pickup ────────────────────────────────────────────────────────────────────
 
 async def cmd_pickup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _think_and_reply(update, context, "Explain how canteen pickup works")
+    await _think_and_reply(update, context, "Explain NourishBot pickup and external provider fulfillment")
 
 
 # ── /cart ──────────────────────────────────────────────────────────────────────
@@ -275,13 +304,14 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🤖 *What I can do for you:*\n\n"
         "📋 /menu — Browse the full menu\n"
-        "🛒 /order — Place a food order\n"
-        "📦 /pickup — Learn how pickup works\n"
+        "🛒 /order — Schedule a future meal\n"
+        "📦 /pickup — Learn how fulfillment works\n"
         "🛍️ /cart — View your cart\n"
         "🔄 /reset — Start a fresh conversation\n"
         "❓ /help — Show this message\n\n"
         "Or just *chat naturally* — I'll understand! 😊\n"
-        "Try: _\"I want 2 vegetable biryanis for pickup\"_"
+        "Try: _\"Find vegetarian drive-through restaurants from Madhapur to Hyderabad Airport, then schedule one for tomorrow at 1 PM IST\"_\n\n"
+        "Every order needs a future time. Instant ordering is disabled."
     )
     await update.message.reply_text(
         help_text,
@@ -343,6 +373,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     intent = CALLBACK_INTENT_MAP.get(query.data)
+    if query.data and query.data.startswith("provider_"):
+        platform = query.data.removeprefix("provider_")
+        await save_session(chat_id, {"ordering_platform": platform})
+        await query.edit_message_text(
+            f"✅ *{platform}* selected. Tell me the meal, future date, and time you want to schedule.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    if query.data == "action_providers":
+        await query.message.reply_text("Choose a scheduled-meal provider:", reply_markup=provider_inline())
+        return
     if not intent:
         return
 
@@ -354,6 +395,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text or ""
 
+    if raw == "🔌 Choose Provider":
+        await update.message.reply_text("Choose a scheduled-meal provider:", reply_markup=provider_inline())
+        return
+
     # Offer quick actions for a fresh greeting without interrupting an active cart.
     if _is_greeting(raw) and raw not in BUTTON_INTENT_MAP:
         chat_id = update.effective_chat.id
@@ -363,7 +408,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user      = update.effective_user
             user_name = (user.first_name if user else "") or sess.get("user_name") or "there"
 
-            greeting_line = f"👋 Hey *{user_name}*! Welcome to *NourishBot Canteen* 🍽️"
+            greeting_line = f"👋 Hey *{user_name}*! Welcome to *NourishBot* 🍽️"
             await update.message.reply_text(
                 greeting_line,
                 parse_mode=ParseMode.MARKDOWN,
@@ -380,10 +425,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Location message handler ──────────────────────────────────────────────────
 
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "NourishBot is pickup-only and does not need your live location. "
-        "Choose Pickup Info to see how collection works.",
-        reply_markup=main_keyboard(),
+    location = update.message.location
+    await _think_and_reply(
+        update,
+        context,
+        (
+            f"My current location is {location.latitude:.6f},{location.longitude:.6f}. "
+            "Use it as my route origin. If I want drive-through, ask for my destination; "
+            "if I want home delivery, ask for the complete delivery address."
+        ),
     )
 
 

@@ -15,7 +15,7 @@ from app.db.models import (
     DiningTable, TableSession, TableSessionOrder,
     Order, OrderItem, MenuItem, Invoice,
 )
-from app.auth.deps import require_waiter, require_manager, extract_token
+from app.auth.deps import require_waiter, require_manager, extract_token, tenant_id
 
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
 
@@ -38,7 +38,7 @@ class UpdateTableRequest(BaseModel):
 async def list_tables(user=Depends(extract_token)):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(DiningTable).where(DiningTable.restaurant_id == user.get("restaurant_id", 1)).order_by(DiningTable.id)
+            select(DiningTable).where(DiningTable.restaurant_id == tenant_id(user)).order_by(DiningTable.id)
         )
         tables = result.scalars().all()
         return [
@@ -56,7 +56,7 @@ async def list_tables(user=Depends(extract_token)):
 
 @router.post("", status_code=201)
 async def create_table(body: CreateTableRequest, user=Depends(require_manager)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         table = DiningTable(
             restaurant_id=rid,
@@ -79,7 +79,7 @@ async def create_table(body: CreateTableRequest, user=Depends(require_manager)):
 
 @router.patch("/{table_id}")
 async def update_table(table_id: int, body: UpdateTableRequest, user=Depends(require_manager)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(DiningTable).where(DiningTable.id == table_id, DiningTable.restaurant_id == rid)
@@ -99,7 +99,7 @@ async def update_table(table_id: int, body: UpdateTableRequest, user=Depends(req
 
 @router.delete("/{table_id}", status_code=204)
 async def delete_table(table_id: int, user=Depends(require_manager)):
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(DiningTable).where(DiningTable.id == table_id, DiningTable.restaurant_id == rid)
@@ -122,7 +122,7 @@ class OpenSessionRequest(BaseModel):
 @router.get("/sessions")
 async def list_sessions(status: Optional[str] = None, user=Depends(extract_token)):
     async with AsyncSessionLocal() as session:
-        query = select(TableSession).where(TableSession.restaurant_id == user.get("restaurant_id", 1))
+        query = select(TableSession).where(TableSession.restaurant_id == tenant_id(user))
         if status:
             query = query.where(TableSession.status == status)
         result = await session.execute(query.order_by(TableSession.id.desc()))
@@ -142,9 +142,14 @@ async def list_sessions(status: Optional[str] = None, user=Depends(extract_token
 
 
 @router.post("/sessions", status_code=201)
-async def open_table_session(body: OpenSessionRequest, user=Depends(extract_token)):
+async def open_table_session(body: OpenSessionRequest, user=Depends(require_waiter)):
     async with AsyncSessionLocal() as session:
-        rid = user.get("restaurant_id", 1)
+        rid = tenant_id(user)
+        table = (await session.execute(
+            select(DiningTable).where(DiningTable.id == body.table_id, DiningTable.restaurant_id == rid)
+        )).scalar_one_or_none()
+        if not table or not table.active:
+            raise HTTPException(404, "Active table not found")
         ts = TableSession(
             restaurant_id=rid,
             table_id=body.table_id,
@@ -159,7 +164,7 @@ async def open_table_session(body: OpenSessionRequest, user=Depends(extract_toke
 
         from app.realtime.events import table_session_opened
         from app.realtime.ws_manager import ws_manager
-        await ws_manager.broadcast(rid, table_session_opened(ts.id, body.table_id).to_dict())
+        await ws_manager.broadcast(rid, table_session_opened(ts.id, body.table_id, rid).to_dict())
 
         return {
             "id": ts.id,
@@ -175,10 +180,11 @@ class SessionStatusUpdate(BaseModel):
 
 
 @router.patch("/sessions/{session_id}")
-async def update_session(session_id: int, body: SessionStatusUpdate, user=Depends(extract_token)):
+async def update_session(session_id: int, body: SessionStatusUpdate, user=Depends(require_waiter)):
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(TableSession).where(TableSession.id == session_id)
+            select(TableSession).where(TableSession.id == session_id, TableSession.restaurant_id == rid)
         )
         ts = result.scalar_one_or_none()
         if not ts:
@@ -191,23 +197,32 @@ async def update_session(session_id: int, body: SessionStatusUpdate, user=Depend
 
 
 @router.get("/sessions/{session_id}/orders")
-async def get_session_orders(session_id: int, user=Depends(extract_token)):
+async def get_session_orders(session_id: int, user=Depends(require_waiter)):
     """Return all orders + items for a table session (for waiter KDS readiness view)."""
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as db:
+        table_session = (await db.execute(
+            select(TableSession).where(TableSession.id == session_id, TableSession.restaurant_id == rid)
+        )).scalar_one_or_none()
+        if not table_session:
+            raise HTTPException(404, "Session not found")
         tso_result = await db.execute(
-            select(TableSessionOrder).where(TableSessionOrder.table_session_id == session_id)
+            select(TableSessionOrder).where(
+                TableSessionOrder.table_session_id == session_id,
+                TableSessionOrder.restaurant_id == rid,
+            )
         )
         links = tso_result.scalars().all()
         orders_out = []
         for link in links:
             order_result = await db.execute(
-                select(Order).where(Order.id == link.order_id)
+                select(Order).where(Order.id == link.order_id, Order.restaurant_id == rid)
             )
             order = order_result.scalar_one_or_none()
             if not order:
                 continue
             items_result = await db.execute(
-                select(OrderItem).where(OrderItem.order_id == order.id)
+                select(OrderItem).where(OrderItem.order_id == order.id, OrderItem.restaurant_id == rid)
             )
             items = items_result.scalars().all()
             all_done = all(i.status == "DONE" for i in items) if items else False
@@ -234,19 +249,19 @@ async def get_session_orders(session_id: int, user=Depends(extract_token)):
 
 
 @router.post("/sessions/{session_id}/orders", status_code=201)
-async def add_table_order(session_id: int, body: dict, user=Depends(extract_token)):
+async def add_table_order(session_id: int, body: dict, user=Depends(require_waiter)):
     items_data = body.get("items", [])
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         ts_result = await session.execute(
-            select(TableSession).where(TableSession.id == session_id)
+            select(TableSession).where(TableSession.id == session_id, TableSession.restaurant_id == rid)
         )
         ts = ts_result.scalar_one_or_none()
         if not ts or ts.status != "OPEN":
             raise HTTPException(400, "Table session not found or not open")
 
-        order_ref = f"DZK-{uuid.uuid4().hex[:6].upper()}"
+        order_ref = f"NB-{uuid.uuid4().hex[:6].upper()}"
         total = 0
-        rid = user.get("restaurant_id", 1)
         order = Order(
             restaurant_id=rid,
             order_ref=order_ref,
@@ -262,7 +277,7 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
             item_id = item_data.get("item_id")
             qty = item_data.get("qty", 1)
             mi_result = await session.execute(
-                select(MenuItem).where(MenuItem.id == item_id)
+                select(MenuItem).where(MenuItem.id == item_id, MenuItem.restaurant_id == rid)
             )
             mi = mi_result.scalar_one_or_none()
             if mi:
@@ -292,20 +307,28 @@ async def add_table_order(session_id: int, body: dict, user=Depends(extract_toke
 
 
 @router.post("/sessions/{session_id}/fire")
-async def fire_to_kitchen(session_id: int, user=Depends(extract_token)):
+async def fire_to_kitchen(session_id: int, user=Depends(require_waiter)):
     from app.realtime.events import order_sent_to_kitchen, order_status_changed
     from app.realtime.ws_manager import ws_manager
 
-    rid = user.get("restaurant_id", 1)
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
+        table_session = (await session.execute(
+            select(TableSession).where(TableSession.id == session_id, TableSession.restaurant_id == rid)
+        )).scalar_one_or_none()
+        if not table_session:
+            raise HTTPException(404, "Session not found")
         tso_result = await session.execute(
-            select(TableSessionOrder).where(TableSessionOrder.table_session_id == session_id)
+            select(TableSessionOrder).where(
+                TableSessionOrder.table_session_id == session_id,
+                TableSessionOrder.restaurant_id == rid,
+            )
         )
         links = tso_result.scalars().all()
         fired = []
         for link in links:
             order_result = await session.execute(
-                select(Order).where(Order.id == link.order_id)
+                select(Order).where(Order.id == link.order_id, Order.restaurant_id == rid)
             )
             order = order_result.scalar_one_or_none()
             if order and order.status == "CREATED":
@@ -324,23 +347,27 @@ async def fire_to_kitchen(session_id: int, user=Depends(extract_token)):
 
 
 @router.post("/sessions/{session_id}/invoice")
-async def generate_invoice(session_id: int, user=Depends(extract_token)):
+async def generate_invoice(session_id: int, user=Depends(require_waiter)):
+    rid = tenant_id(user)
     async with AsyncSessionLocal() as session:
         ts_result = await session.execute(
-            select(TableSession).where(TableSession.id == session_id)
+            select(TableSession).where(TableSession.id == session_id, TableSession.restaurant_id == rid)
         )
         ts = ts_result.scalar_one_or_none()
         if not ts:
             raise HTTPException(404, "Session not found")
 
         tso_result = await session.execute(
-            select(TableSessionOrder).where(TableSessionOrder.table_session_id == session_id)
+            select(TableSessionOrder).where(
+                TableSessionOrder.table_session_id == session_id,
+                TableSessionOrder.restaurant_id == rid,
+            )
         )
         links = tso_result.scalars().all()
         subtotal = 0
         for link in links:
             order_result = await session.execute(
-                select(Order).where(Order.id == link.order_id)
+                select(Order).where(Order.id == link.order_id, Order.restaurant_id == rid)
             )
             order = order_result.scalar_one_or_none()
             if order:
@@ -363,7 +390,7 @@ async def generate_invoice(session_id: int, user=Depends(extract_token)):
 
         from app.realtime.events import table_session_closed
         from app.realtime.ws_manager import ws_manager
-        await ws_manager.broadcast(ts.restaurant_id, table_session_closed(session_id, ts.table_id).to_dict())
+        await ws_manager.broadcast(ts.restaurant_id, table_session_closed(session_id, ts.table_id, rid).to_dict())
 
         return {
             "invoice_no": invoice.invoice_no,
