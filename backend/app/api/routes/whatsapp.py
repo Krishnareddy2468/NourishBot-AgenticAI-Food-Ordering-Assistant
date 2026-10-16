@@ -51,14 +51,14 @@ def _message_text(message: dict) -> str:
     return ""
 
 
-async def _send_text(to: str, text: str) -> None:
+async def _send_text(to: str, text: str) -> bool:
     if not all([
         settings.WHATSAPP_GRAPH_API_VERSION,
         settings.WHATSAPP_PHONE_NUMBER_ID,
         settings.WHATSAPP_ACCESS_TOKEN,
     ]):
         logger.error("WhatsApp reply skipped because Cloud API credentials are incomplete")
-        return
+        return False
 
     url = (
         f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_API_VERSION}/"
@@ -75,6 +75,7 @@ async def _send_text(to: str, text: str) -> None:
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
+    return True
 
 
 async def _process_message(wa_id: str, user_name: str, text: str) -> None:
@@ -86,6 +87,15 @@ async def _process_message(wa_id: str, user_name: str, text: str) -> None:
         )
         if account_reply is not None:
             await _send_text(wa_id, account_reply)
+            return
+        from app.agent.meal_planner_commands import handle_meal_planner_command
+        planning_reply = await handle_meal_planner_command(
+            text,
+            chat_id=wa_id,
+            channel_type="WHATSAPP",
+        )
+        if planning_reply is not None:
+            await _send_text(wa_id, planning_reply)
             return
         if text.startswith("My current location is ") and not await channel_has_consent(
             chat_id=wa_id,

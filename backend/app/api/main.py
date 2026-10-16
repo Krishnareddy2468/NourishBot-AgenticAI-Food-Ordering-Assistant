@@ -208,6 +208,7 @@ from app.api.routes.whatsapp import router as whatsapp_router
 from app.api.routes.customer_privacy import router as customer_privacy_router
 from app.api.routes.scheduler import router as scheduler_router
 from app.api.routes.providers import router as providers_router
+from app.api.routes.meal_plans import router as meal_plans_router
 
 api.include_router(auth_router)
 api.include_router(menu_router)
@@ -223,6 +224,7 @@ api.include_router(whatsapp_router)
 api.include_router(customer_privacy_router)
 api.include_router(scheduler_router)
 api.include_router(providers_router)
+api.include_router(meal_plans_router)
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────

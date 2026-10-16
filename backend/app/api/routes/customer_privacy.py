@@ -68,6 +68,24 @@ async def _linked_browser_id(request: Request) -> str:
     return external_id
 
 
+async def linked_customer_channel(request: Request) -> Channel:
+    """Resolve the tenant/customer owned by the opaque linked browser cookie."""
+    raw = request.cookies.get(settings.CUSTOMER_IDENTITY_COOKIE_NAME)
+    if not raw:
+        raise HTTPException(401, "No linked customer web identity")
+    external_id = _browser_identity(raw)
+    async with AsyncSessionLocal() as db:
+        channel = (await db.execute(select(Channel).where(
+            Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
+            Channel.type == "WEB",
+            Channel.external_id == external_id,
+            Channel.customer_id.is_not(None),
+        ))).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(401, "Customer web identity is not linked")
+    return channel
+
+
 @router.post("/identity/link")
 async def link_web_identity(body: LinkCodeRequest, request: Request, response: Response):
     _prevent_sensitive_caching(response)

@@ -128,6 +128,16 @@ class Settings:
     SCHEDULE_JOB_MAX_ATTEMPTS: int = int(os.getenv("SCHEDULE_JOB_MAX_ATTEMPTS", "5"))
     SCHEDULE_JOB_BATCH_SIZE: int = int(os.getenv("SCHEDULE_JOB_BATCH_SIZE", "50"))
     SCHEDULE_LEASE_SECONDS: int = int(os.getenv("SCHEDULE_LEASE_SECONDS", "120"))
+    MEAL_PLAN_MAX_HORIZON_DAYS: int = int(os.getenv("MEAL_PLAN_MAX_HORIZON_DAYS", "31"))
+    ROUTINE_MATERIALIZATION_HORIZON_DAYS: int = int(
+        os.getenv("ROUTINE_MATERIALIZATION_HORIZON_DAYS", "14")
+    )
+    PLAN_CONFIRMATION_REMINDER_HOURS: int = int(
+        os.getenv("PLAN_CONFIRMATION_REMINDER_HOURS", "24")
+    )
+    PLANNED_MEAL_REMINDER_MINUTES: int = int(
+        os.getenv("PLANNED_MEAL_REMINDER_MINUTES", "60")
+    )
     SCHEDULE_RETRY_BASE_SECONDS: int = int(os.getenv("SCHEDULE_RETRY_BASE_SECONDS", "30"))
     SCHEDULE_RETRY_MAX_SECONDS: int = int(os.getenv("SCHEDULE_RETRY_MAX_SECONDS", "1800"))
     SCHEDULER_HEARTBEAT_STALE_SECONDS: int = int(os.getenv("SCHEDULER_HEARTBEAT_STALE_SECONDS", "180"))
@@ -240,8 +250,14 @@ class Settings:
             self.OUTBOX_BATCH_SIZE,
             self.OUTBOX_CONCURRENCY,
             self.OUTBOX_MAX_ATTEMPTS,
+            self.MEAL_PLAN_MAX_HORIZON_DAYS,
+            self.ROUTINE_MATERIALIZATION_HORIZON_DAYS,
+            self.PLAN_CONFIRMATION_REMINDER_HOURS,
+            self.PLANNED_MEAL_REMINDER_MINUTES,
         ) <= 0:
             missing.append("scheduler/outbox limits(positive integers)")
+        if self.ROUTINE_MATERIALIZATION_HORIZON_DAYS > self.MEAL_PLAN_MAX_HORIZON_DAYS:
+            missing.append("ROUTINE_MATERIALIZATION_HORIZON_DAYS(<= MEAL_PLAN_MAX_HORIZON_DAYS)")
         if missing:
             raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 

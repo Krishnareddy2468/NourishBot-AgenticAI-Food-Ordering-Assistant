@@ -92,6 +92,11 @@ language model:
 A phone number alone never merges customer profiles. Cross-channel linking requires control of
 an existing verified channel and the target channel.
 
+Linked Telegram and WhatsApp customers can also use deterministic planner commands such as
+`plan my day`, `plan my week vegetarian under ₹2000`, `show my meal plan`,
+`confirm meal plan 12`, `confirm planned meal 45`, `pause routine 3`,
+`resume routine 3`, or `skip routine 3 2026-10-21`.
+
 ## Safety architecture
 
 ```text
@@ -114,6 +119,10 @@ Release-critical controls include:
 - Immutable provider capability versions with exact tool-schema hashes and `UNVERIFIED`, `VERIFIED`, `DEGRADED`, or `DISABLED` state
 - Explicit Mode A discovery, Mode B user-controlled handoff, and verified Mode C transactional behavior shown to chat users
 - Append-only redacted provider receipts plus status-before-retry reconciliation for every uncertain outcome
+- Complete daily and weekly draft plans with breakfast, lunch, snacks, and dinner slots
+- Deterministic diet, verified-allergy, health-goal, history, and budget-aware recommendations
+- Saved meal/full-day templates and duplicate-safe recurring routines with pause, resume, skip, edit, and reschedule actions
+- Consent-gated Telegram and WhatsApp reminders that never imply a plan has placed an order
 - One-time confirmation snapshots, stable idempotency keys, and durable unknown-outcome records
 - A strict customer-chat tool allowlist that blocks staff mutations before database access
 - Tenant-scoped staff APIs and authenticated WebSocket subscriptions
@@ -142,6 +151,9 @@ Release-critical controls include:
 | WhatsApp webhook | Customer meal planning through WhatsApp Cloud API |
 | `/api/v1/customer/identity/link` | Link an opaque web identity with a one-time code created on an existing channel |
 | `/api/v1/customer/privacy*` | View consent, change consent, export memory, or permanently delete memory |
+| `/api/v1/customer/meal-plans*` | Generate, inspect, edit, and confirm complete draft meal plans |
+| `/api/v1/customer/meal-templates*` | Save and list single-meal or full-day templates |
+| `/api/v1/customer/meal-routines*` | Create and manage bounded recurring meal routines |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
 | `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
 | `/api/v1/providers/capabilities` | Staff-visible provider modes, verified capabilities, and schema versions |

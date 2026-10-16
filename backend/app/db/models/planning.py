@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Time,
     Text,
     UniqueConstraint,
     event,
@@ -26,9 +27,16 @@ class MealPlan(Base, RestaurantMixin):
     customer_id = Column(BigInteger, ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(Text, nullable=False)
     status = Column(Text, nullable=False, server_default=text("'DRAFT'"))
+    scope = Column(Text, nullable=False, server_default=text("'WEEKLY'"))
     starts_on = Column(Date, nullable=False)
     ends_on = Column(Date, nullable=False)
     timezone = Column(Text, nullable=False, server_default=text("'Asia/Kolkata'"))
+    constraints_json = Column(JSONB, nullable=False, default=dict)
+    estimated_total_cents = Column(Integer, nullable=False, server_default="0")
+    currency = Column(Text, nullable=False, server_default=text("'INR'"))
+    revision = Column(Integer, nullable=False, server_default="1")
+    confirmation_snapshot_hash = Column(Text)
+    confirmed_at = Column(DateTime(timezone=True))
     created_by_channel_id = Column(BigInteger, ForeignKey("channels.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -61,6 +69,10 @@ class MealRoutine(Base, RestaurantMixin):
     meal_period = Column(Text, nullable=False)
     timezone = Column(Text, nullable=False, server_default=text("'Asia/Kolkata'"))
     recurrence_rule = Column(Text, nullable=False)
+    time_of_day = Column(Time, nullable=False, server_default=text("'12:30:00'"))
+    materialization_horizon_days = Column(Integer, nullable=False, server_default="14")
+    materialized_through = Column(Date)
+    version = Column(Integer, nullable=False, server_default="1")
     next_materialization_at = Column(DateTime(timezone=True), index=True)
     paused_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -102,6 +114,7 @@ class MealSchedule(Base, RestaurantMixin):
     meal_plan_id = Column(BigInteger, ForeignKey("meal_plans.id", ondelete="SET NULL"), index=True)
     template_id = Column(BigInteger, ForeignKey("meal_templates.id", ondelete="SET NULL"))
     routine_id = Column(BigInteger, ForeignKey("meal_routines.id", ondelete="SET NULL"), index=True)
+    menu_item_id = Column(BigInteger, ForeignKey("menu_items.id", ondelete="SET NULL"), index=True)
     order_id = Column(BigInteger, ForeignKey("orders.id", ondelete="SET NULL"), unique=True, index=True)
     title = Column(Text, nullable=False)
     meal_period = Column(Text, nullable=False, server_default=text("'UNSPECIFIED'"))
@@ -112,8 +125,60 @@ class MealSchedule(Base, RestaurantMixin):
     submission_window_end = Column(DateTime(timezone=True))
     timezone = Column(Text, nullable=False, server_default=text("'Asia/Kolkata'"))
     source = Column(Text, nullable=False, server_default=text("'WEB'"))
+    selection_json = Column(JSONB, nullable=False, default=dict)
+    constraints_json = Column(JSONB, nullable=False, default=dict)
+    estimated_cost_cents = Column(Integer, nullable=False, server_default="0")
+    currency = Column(Text, nullable=False, server_default=text("'INR'"))
+    diet_tags = Column(JSONB, nullable=False, default=list)
+    allergen_tags = Column(JSONB, nullable=False, default=list)
+    occurrence_key = Column(Text, unique=True, index=True)
+    revision = Column(Integer, nullable=False, server_default="1")
+    confirmed_at = Column(DateTime(timezone=True))
+    skipped_at = Column(DateTime(timezone=True))
+    rescheduled_from = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class MealRoutineException(Base, RestaurantMixin):
+    """One explicit skip or reschedule decision for a routine occurrence."""
+
+    __tablename__ = "meal_routine_exceptions"
+    __table_args__ = (
+        UniqueConstraint("routine_id", "occurrence_date", name="uq_meal_routine_exception_date"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    restaurant_id = Column(BigInteger, ForeignKey("restaurants.id"), nullable=False, index=True)
+    routine_id = Column(
+        BigInteger,
+        ForeignKey("meal_routines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    occurrence_date = Column(Date, nullable=False)
+    action = Column(Text, nullable=False)  # SKIP | RESCHEDULE
+    replacement_for = Column(DateTime(timezone=True))
+    reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class MealPlanningEvent(Base, RestaurantMixin):
+    """Append-only audit history for plan, meal, template, and routine changes."""
+
+    __tablename__ = "meal_planning_events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    restaurant_id = Column(BigInteger, ForeignKey("restaurants.id"), nullable=False, index=True)
+    customer_id = Column(BigInteger, ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
+    meal_plan_id = Column(BigInteger, ForeignKey("meal_plans.id", ondelete="CASCADE"), index=True)
+    meal_schedule_id = Column(BigInteger, ForeignKey("meal_schedules.id", ondelete="CASCADE"), index=True)
+    routine_id = Column(BigInteger, ForeignKey("meal_routines.id", ondelete="CASCADE"), index=True)
+    event_type = Column(Text, nullable=False, index=True)
+    actor_type = Column(Text, nullable=False)
+    actor_id = Column(Text)
+    metadata_json = Column(JSONB, nullable=False, default=dict)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
 
 
 class OrderEvent(Base, RestaurantMixin):
@@ -164,6 +229,6 @@ def _reject_event_mutation(_mapper, _connection, target) -> None:
     raise ValueError(f"{target.__class__.__name__} records are append-only")
 
 
-for _event_model in (OrderEvent, ScheduleEvent):
+for _event_model in (OrderEvent, ScheduleEvent, MealPlanningEvent):
     event.listen(_event_model, "before_update", _reject_event_mutation)
     event.listen(_event_model, "before_delete", _reject_event_mutation)

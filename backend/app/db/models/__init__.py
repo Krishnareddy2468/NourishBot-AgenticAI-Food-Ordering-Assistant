@@ -43,6 +43,8 @@ from app.db.models.planning import (
     MealRoutine,
     MealBudget,
     MealSchedule,
+    MealRoutineException,
+    MealPlanningEvent,
     OrderEvent,
     ScheduleEvent,
 )
@@ -88,6 +90,8 @@ __all__ = [
     "MealRoutine",
     "MealBudget",
     "MealSchedule",
+    "MealRoutineException",
+    "MealPlanningEvent",
     "OrderEvent",
     "ScheduleEvent",
     "ScheduledJob",

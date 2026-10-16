@@ -163,10 +163,10 @@ Webhook events do not have a replay/idempotency ledger, and all events other tha
 | ------------------------------------------- | ----------------- | ----------------------------------------------------------- |
 | Identity across Telegram, WhatsApp, and web | Partial           | Verified identity linking and account ownership             |
 | Consent-based memory                        | Missing           | Consent, enable/disable, export/delete, retention           |
-| Daily and weekly planner                    | Missing           | Plans, days, meal slots, and plan items                     |
-| Saved meal templates                        | Missing           | Template CRUD and conversational actions                    |
-| Meal modification                           | Partial           | Persisted plan and order-draft modification                 |
-| Reminders                                   | Missing           | Durable reminder jobs and delivery receipts                 |
+| Daily and weekly planner                    | Complete          | Four-slot daily and seven-day draft plans with constraints  |
+| Saved meal templates                        | Complete          | Single-meal and full-day template persistence               |
+| Meal modification                           | Complete          | Persisted edits invalidate confirmation snapshots           |
+| Reminders                                   | Complete          | Consent-gated durable Telegram and WhatsApp reminders       |
 | Provider Mode A: discovery                  | Complete          | Registry-guarded read-only tools and visible mode messaging  |
 | Provider Mode B: handoff                    | Complete          | User-controlled provider handoff without platform checkout   |
 | Provider Mode C: transaction                | Gated             | Available only after capability and exact-schema verification|
@@ -179,8 +179,8 @@ Webhook events do not have a replay/idempotency ledger, and all events other tha
 | Reliable retry behavior                     | Missing           | Leases, backoff, reconciliation, and dead-letter state      |
 | Uncertain outcomes                          | Complete          | Durable `UNKNOWN` state and status-before-retry reconciliation |
 | Customer dashboard                          | Missing           | Calendar, history, templates, preferences, spending         |
-| Budget controls                             | Missing           | Periods, limits, estimates, and actual spending ledger      |
-| Recurring routines                          | Missing           | Recurrence, pause, skip, edit, and materialized schedules   |
+| Budget controls                             | Partial           | Plan limits and estimates implemented; spending ledger remains |
+| Recurring routines                          | Complete          | Versioned rules, lifecycle actions, and bounded materialization |
 | Analytics                                   | Partial           | Correct time semantics and operational/business metrics     |
 | Security and privacy                        | Incomplete        | Tenant isolation, tracking privacy, consent, audit trail    |
 | Comprehensive tests                         | Missing           | Unit, integration, E2E, security, provider contract tests   |
@@ -549,26 +549,41 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Deliver the primary V2 customer value: structured meal planning rather than one-off ordering.
 
+**Implementation status:** Complete in the working tree on 2026-10-16. Migration `0014` must be applied before the updated API and workers start.
+
 ### Work
 
-- [ ] Add daily and weekly meal plans.
-- [ ] Add breakfast, lunch, snacks, and dinner meal slots.
-- [ ] Generate recommendations using diet, allergies, health goals, budget, time, and history.
-- [ ] Add editable meal-plan drafts.
-- [ ] Add saved meal and full-day templates.
-- [ ] Add recurrence rules for weekdays, weekends, and custom schedules.
-- [ ] Add pause, skip, resume, edit, and reschedule actions.
-- [ ] Materialize recurrence instances within a controlled horizon.
-- [ ] Add confirmation and reminder messages over Telegram and WhatsApp.
-- [ ] Prevent allergy conflicts with deterministic validation.
+- [X] Add daily and weekly meal plans.
+- [X] Add breakfast, lunch, snacks, and dinner meal slots.
+- [X] Generate recommendations using diet, allergies, health goals, budget, time, and history.
+- [X] Add editable meal-plan drafts.
+- [X] Add saved meal and full-day templates.
+- [X] Add recurrence rules for weekdays, weekends, and custom schedules.
+- [X] Add pause, skip, resume, edit, and reschedule actions.
+- [X] Materialize recurrence instances within a controlled horizon.
+- [X] Add confirmation and reminder messages over Telegram and WhatsApp.
+- [X] Prevent allergy conflicts with deterministic validation.
 
 ### Acceptance criteria
 
-- [ ] A user can create and modify a complete weekly plan.
-- [ ] A routine can be paused or skipped without creating duplicate jobs.
-- [ ] Allergy conflicts are blocked by code.
-- [ ] Budget and diet constraints are visible in the generated plan.
-- [ ] Every planned meal remains a draft until confirmed.
+- [X] A user can create and modify a complete weekly plan.
+- [X] A routine can be paused or skipped without creating duplicate jobs.
+- [X] Allergy conflicts are blocked by code.
+- [X] Budget and diet constraints are visible in the generated plan.
+- [X] Every planned meal remains a draft until confirmed.
+
+### Phase 5 validation evidence
+
+- Backend tests: 96 passed, including 13 dedicated Phase 5 tests.
+- Python source compilation passes with the bytecode cache redirected outside the source tree.
+- Alembic migration chain: `0014` is the single head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0013 <-> 0014` passes.
+- Complete-plan generation creates four standard slots per day and twenty-eight slots per week.
+- Diet and allergy checks are deterministic; allergy-constrained recommendations fail closed without verified metadata.
+- Plan constraints, recommendation reasons, estimated meal costs, and total budget remain visible in stored and API responses.
+- Routine occurrence keys, row locking, exceptions, and versioned reminder keys prevent duplicate materialization and jobs.
+- Planning confirmation receipts are stable hashes and do not create orders or call provider tools.
+- Reminder jobs require current consent and use the durable scheduler's retry and manual-review behavior.
 
 ## Phase 6 — Maps and Route-Aware Fulfillment
 

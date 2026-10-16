@@ -26,6 +26,8 @@ from app.domain.scheduling import (
     ACTIVATE_ORDER,
     CONFIRMATION_REMINDER,
     FULFILLMENT_REMINDER,
+    PLAN_CONFIRMATION_REMINDER,
+    PLANNED_MEAL_REMINDER,
     RESCHEDULE_REQUIRED,
     retry_delay_seconds,
 )
@@ -242,6 +244,73 @@ def _has_reminder_consent(session: Session, order: Order) -> bool:
     return decision is True
 
 
+def _has_customer_reminder_consent(session: Session, restaurant_id: int, customer_id: int) -> bool:
+    decision = session.execute(
+        select(CustomerConsent.granted)
+        .where(
+            CustomerConsent.restaurant_id == restaurant_id,
+            CustomerConsent.customer_id == customer_id,
+            CustomerConsent.purpose == "REMINDERS",
+        )
+        .order_by(CustomerConsent.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return decision is True
+
+
+def _send_plan_notification(session: Session, job: ScheduledJob) -> JobResult:
+    schedule = session.execute(
+        select(MealSchedule)
+        .where(MealSchedule.id == job.meal_schedule_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if schedule is None:
+        raise SchedulerJobError(
+            "MEAL_SCHEDULE_NOT_FOUND",
+            "The planning reminder no longer references a meal",
+            retryable=False,
+            next_action="CANCEL",
+        )
+    if not _has_customer_reminder_consent(
+        session,
+        schedule.restaurant_id,
+        schedule.customer_id,
+    ):
+        return JobResult("SKIPPED_NO_CONSENT", {"consent": "REMINDERS_NOT_GRANTED"})
+
+    desired_text = schedule.desired_for.isoformat()
+    if job.job_type == PLAN_CONFIRMATION_REMINDER:
+        if schedule.state != "DRAFT":
+            return JobResult("SKIPPED_IDEMPOTENT", {"meal_state": schedule.state})
+        message = (
+            f"Meal-plan reminder: {schedule.meal_period.title()} — {schedule.title} is still a draft "
+            f"for {desired_text}. Confirm or edit it first. No order has been placed."
+        )
+    else:
+        if schedule.state != "CONFIRMED":
+            return JobResult("SKIPPED_IDEMPOTENT", {"meal_state": schedule.state})
+        message = (
+            f"Your planned {schedule.meal_period.lower()} — {schedule.title} — is coming up at "
+            f"{desired_text}. This is a plan reminder; no order has been placed."
+        )
+
+    from app.realtime.notifications import notify_customer_id
+
+    delivered = asyncio.run(notify_customer_id(
+        restaurant_id=schedule.restaurant_id,
+        customer_id=schedule.customer_id,
+        message=message,
+        preferred_channel=schedule.source,
+    ))
+    if not delivered:
+        raise SchedulerJobError(
+            "NOTIFICATION_UNAVAILABLE",
+            "Customer planning notification channel did not confirm delivery",
+            next_action="RETRY_NOTIFICATION",
+        )
+    return JobResult("DELIVERED", {"channel_delivery": "CONFIRMED"})
+
+
 def _send_job_notification(session: Session, job: ScheduledJob, order: Order) -> JobResult:
     if job.job_type != RESCHEDULE_REQUIRED and not _has_reminder_consent(session, order):
         return JobResult("SKIPPED_NO_CONSENT", {"consent": "REMINDERS_NOT_GRANTED"})
@@ -287,6 +356,9 @@ def _execute_job(session: Session, job: ScheduledJob, now: datetime) -> JobResul
     deadline_missed = bool(job.deadline_at and now > job.deadline_at)
     if deadline_missed and job.job_type != ACTIVATE_ORDER:
         return JobResult("SKIPPED_DEADLINE", {"deadline_at": job.deadline_at.isoformat()})
+
+    if job.job_type in {PLAN_CONFIRMATION_REMINDER, PLANNED_MEAL_REMINDER}:
+        return _send_plan_notification(session, job)
 
     order = (
         session.execute(select(Order).where(Order.id == job.order_id).with_for_update()).scalar_one_or_none()

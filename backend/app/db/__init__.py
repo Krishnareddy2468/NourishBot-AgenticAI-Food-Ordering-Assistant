@@ -37,6 +37,13 @@ from app.db.models import (
     SchedulerHeartbeat,
     ProviderCapabilityVersion,
     ProviderReceipt,
+    MealPlan,
+    MealTemplate,
+    MealRoutine,
+    MealBudget,
+    MealSchedule,
+    MealRoutineException,
+    MealPlanningEvent,
 )
 
 __all__ = [
@@ -74,4 +81,11 @@ __all__ = [
     "SchedulerHeartbeat",
     "ProviderCapabilityVersion",
     "ProviderReceipt",
+    "MealPlan",
+    "MealTemplate",
+    "MealRoutine",
+    "MealBudget",
+    "MealSchedule",
+    "MealRoutineException",
+    "MealPlanningEvent",
 ]

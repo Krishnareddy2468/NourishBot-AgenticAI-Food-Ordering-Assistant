@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy import select
 
-from app.db.session import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal, get_session_factory
 from app.db.models import Order, Customer, Channel
 from app.core.config import settings
 
@@ -55,7 +55,7 @@ async def notify_customer(
     Send a Telegram notification to the customer associated with an order.
     Returns True if notification was sent successfully.
     """
-    async with AsyncSessionLocal() as db:
+    async with get_session_factory()() as db:
         # Find order → customer → channel → chat_id
         order = (await db.execute(
             select(Order).where(
@@ -101,12 +101,47 @@ async def notify_customer(
     if channel_type == "WHATSAPP":
         from app.api.routes.whatsapp import _send_text
         try:
-            await _send_text(str(external_id), message)
-            return True
+            return await _send_text(str(external_id), message)
         except Exception as exc:
             logger.error("Failed to send WhatsApp notification to %s: %s", external_id, exc)
             return False
     return await _send_telegram_message(int(external_id), message)
+
+
+async def notify_customer_id(
+    *,
+    restaurant_id: int,
+    customer_id: int,
+    message: str,
+    preferred_channel: str | None = None,
+) -> bool:
+    """Deliver a planning message over the customer's Telegram or WhatsApp channel."""
+    async with get_session_factory()() as db:
+        query = select(Channel).where(
+            Channel.restaurant_id == restaurant_id,
+            Channel.customer_id == customer_id,
+            Channel.type.in_(["TELEGRAM", "WHATSAPP"]),
+        )
+        channels = (await db.execute(query.order_by(Channel.id.desc()))).scalars().all()
+    if preferred_channel:
+        preferred = preferred_channel.upper()
+        channels.sort(key=lambda channel: channel.type != preferred)
+    for channel in channels:
+        if channel.type == "WHATSAPP":
+            from app.api.routes.whatsapp import _send_text
+            try:
+                if await _send_text(str(channel.external_id), message):
+                    return True
+            except Exception as exc:
+                logger.error("Failed to send WhatsApp planning notification: %s", exc)
+        else:
+            try:
+                if await _send_telegram_message(int(channel.external_id), message):
+                    return True
+            except (TypeError, ValueError):
+                logger.error("Telegram planning channel has an invalid identifier")
+    logger.warning("No planning notification channel delivered for customer %s", customer_id)
+    return False
 
 
 def _build_message(order_ref: str, event_type: str, order_type: str = "DELIVERY") -> str:

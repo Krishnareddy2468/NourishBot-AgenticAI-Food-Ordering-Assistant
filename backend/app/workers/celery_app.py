@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.workers.notification_worker",
         "app.workers.scheduled_order_worker",
         "app.workers.privacy_worker",
+        "app.workers.meal_routine_worker",
     ],
 )
 
@@ -42,5 +43,9 @@ celery_app.conf.beat_schedule = {
     "enforce-privacy-retention-daily": {
         "task": "app.workers.privacy_worker.enforce_privacy_retention",
         "schedule": 86400.0,
+    },
+    "materialize-meal-routines-hourly": {
+        "task": "app.workers.meal_routine_worker.materialize_meal_routines",
+        "schedule": 3600.0,
     },
 }

@@ -201,6 +201,16 @@ async def _do_think_and_reply(
         await update.effective_message.reply_text(account_reply, reply_markup=main_keyboard())
         return
 
+    from app.agent.meal_planner_commands import handle_meal_planner_command
+    planning_reply = await handle_meal_planner_command(
+        user_message,
+        chat_id=chat_id,
+        channel_type="TELEGRAM",
+    )
+    if planning_reply is not None:
+        await update.effective_message.reply_text(planning_reply, reply_markup=main_keyboard())
+        return
+
     session = await get_session(chat_id)
     platform = session.get("ordering_platform") or "NourishBot"
 
