@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.agent.privacy_service import handle_customer_account_command
+from app.auth.jwt import decode_access_token
 from app.core.config import settings
-from app.db.models import Channel
+from app.db.models import Channel, User
 from app.db.session import AsyncSessionLocal
 
 router = APIRouter(prefix="/api/v1/customer", tags=["customer-privacy"])
@@ -52,38 +53,54 @@ def _prevent_sensitive_caching(response: Response) -> None:
 
 
 async def _linked_browser_id(request: Request) -> str:
-    raw = request.cookies.get(settings.CUSTOMER_IDENTITY_COOKIE_NAME)
-    if not raw:
-        raise HTTPException(401, "No linked customer web identity")
-    external_id = _browser_identity(raw)
-    async with AsyncSessionLocal() as db:
-        channel = (await db.execute(select(Channel).where(
-            Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
-            Channel.type == "WEB",
-            Channel.external_id == external_id,
-            Channel.customer_id.is_not(None),
-        ))).scalar_one_or_none()
-    if not channel:
-        raise HTTPException(401, "Customer web identity is not linked")
-    return external_id
+    return (await linked_customer_channel(request)).external_id
 
 
 async def linked_customer_channel(request: Request) -> Channel:
-    """Resolve the tenant/customer owned by the opaque linked browser cookie."""
+    """Resolve either a linked opaque browser identity or authenticated customer account."""
+    # An authenticated account is authoritative. A stale linked-browser cookie
+    # must never select a different customer's records after account sign-in.
+    session_token = request.cookies.get(settings.AUTH_COOKIE_NAME)
+    if session_token:
+        try:
+            payload = decode_access_token(session_token)
+            if str(payload.get("role")) != "CUSTOMER":
+                raise ValueError("not a customer account")
+            user_id = int(payload["user_id"])
+            restaurant_id = int(payload["restaurant_id"])
+        except Exception as exc:
+            raise HTTPException(401, "Invalid or expired customer account") from exc
+        async with AsyncSessionLocal() as db:
+            channel = (await db.execute(
+                select(Channel)
+                .join(User, User.customer_id == Channel.customer_id)
+                .where(
+                    User.id == user_id,
+                    User.restaurant_id == restaurant_id,
+                    User.role == "CUSTOMER",
+                    User.active.is_(True),
+                    Channel.restaurant_id == restaurant_id,
+                    Channel.type == "WEB",
+                    Channel.external_id == f"account:{user_id}",
+                    Channel.customer_id.is_not(None),
+                )
+            )).scalar_one_or_none()
+        if channel:
+            return channel
+
     raw = request.cookies.get(settings.CUSTOMER_IDENTITY_COOKIE_NAME)
-    if not raw:
-        raise HTTPException(401, "No linked customer web identity")
-    external_id = _browser_identity(raw)
-    async with AsyncSessionLocal() as db:
-        channel = (await db.execute(select(Channel).where(
-            Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
-            Channel.type == "WEB",
-            Channel.external_id == external_id,
-            Channel.customer_id.is_not(None),
-        ))).scalar_one_or_none()
-    if not channel:
-        raise HTTPException(401, "Customer web identity is not linked")
-    return channel
+    if raw:
+        external_id = _browser_identity(raw)
+        async with AsyncSessionLocal() as db:
+            channel = (await db.execute(select(Channel).where(
+                Channel.restaurant_id == settings.DEFAULT_RESTAURANT_ID,
+                Channel.type == "WEB",
+                Channel.external_id == external_id,
+                Channel.customer_id.is_not(None),
+            ))).scalar_one_or_none()
+        if channel:
+            return channel
+    raise HTTPException(401, "Customer identity is not linked")
 
 
 @router.post("/identity/link")

@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from app.auth.deps import extract_token
 from app.auth.jwt import JWT_ALGORITHM, create_access_token
 from app.core.config import settings
-from app.db.models import OAuthIdentity, Restaurant, User
+from app.db.models import Channel, Customer, OAuthIdentity, Restaurant, User
 from app.db.session import AsyncSessionLocal
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -124,6 +124,51 @@ async def _ensure_registration_restaurant(session) -> bool:
         )
     )
     return True
+
+
+async def _provision_customer_profile(session, user: User) -> None:
+    """Bind a website CUSTOMER account to the domain customer/channel identity."""
+    if user.role != CUSTOMER_ROLE:
+        return
+    if user.id is None:
+        await session.flush()
+    customer = None
+    if user.customer_id:
+        customer = await session.get(Customer, user.customer_id)
+    if customer is None and user.email:
+        customer = await session.scalar(select(Customer).where(
+            Customer.restaurant_id == user.restaurant_id,
+            func.lower(Customer.email) == user.email.lower(),
+        ).order_by(Customer.id).limit(1))
+    if customer is None:
+        customer = Customer(
+            restaurant_id=user.restaurant_id,
+            name=user.name,
+            phone=f"web-account-{user.id}",
+            email=user.email,
+        )
+        session.add(customer)
+        await session.flush()
+    user.customer_id = customer.id
+    external_id = f"account:{user.id}"
+    channel = await session.scalar(select(Channel).where(
+        Channel.restaurant_id == user.restaurant_id,
+        Channel.type == "WEB",
+        Channel.external_id == external_id,
+    ))
+    if channel is None:
+        now = datetime.now(timezone.utc)
+        session.add(Channel(
+            restaurant_id=user.restaurant_id,
+            type="WEB",
+            external_id=external_id,
+            customer_id=customer.id,
+            verified_at=now,
+            verification_method="AUTHENTICATED_WEB_ACCOUNT",
+            linked_at=now,
+        ))
+    elif channel.customer_id != customer.id:
+        raise HTTPException(status_code=409, detail="Web account identity is already linked")
 
 
 def create_oauth_state() -> tuple[str, str, str, str]:
@@ -239,6 +284,8 @@ async def signup(body: SignupRequest, response: Response):
         )
         session.add(user)
         try:
+            await session.flush()
+            await _provision_customer_profile(session, user)
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -381,11 +428,16 @@ async def google_oauth_callback(request: Request):
                     email=email,
                 )
             )
+            await _provision_customer_profile(session, user)
             try:
                 await session.commit()
             except IntegrityError:
                 await session.rollback()
                 return _oauth_error("This Google account is already linked")
+            await session.refresh(user)
+        elif user.role == CUSTOMER_ROLE and not user.customer_id:
+            await _provision_customer_profile(session, user)
+            await session.commit()
             await session.refresh(user)
 
     if not user.active:

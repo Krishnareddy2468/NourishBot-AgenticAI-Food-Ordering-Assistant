@@ -125,6 +125,9 @@ Release-critical controls include:
 - Deterministic diet, verified-allergy, health-goal, history, and budget-aware recommendations
 - Saved meal/full-day templates and duplicate-safe recurring routines with pause, resume, skip, edit, and reschedule actions
 - Consent-gated Telegram and WhatsApp reminders that never imply a plan has placed an order
+- Authenticated customer dashboard for weekly plans, routines, preferences, privacy, budgets, provider status, and fulfillment history
+- Tenant-scoped staff analytics based on desired, submitted, and completed timestamps rather than browser event time
+- Append-only spending ledger used by both customer budget totals and completed-revenue reporting
 - One-time confirmation snapshots, stable idempotency keys, and durable unknown-outcome records
 - A strict customer-chat tool allowlist that blocks staff mutations before database access
 - Tenant-scoped staff APIs and authenticated WebSocket subscriptions
@@ -161,12 +164,14 @@ Release-critical controls include:
 | `/api/v1/customer/routes*` | Save or delete consented origin/destination routes |
 | `/api/v1/customer/fulfillment/*` | Discover, verify, and recover route-aware fulfillment choices |
 | `/api/v1/customer/route-history` | Inspect or delete retained route-decision history |
+| `/api/v1/customer/dashboard` | Private customer calendar, controls, budget, spending, provider status, and order history |
+| `/api/v1/analytics/operations` | Manager-only tenant analytics for scheduling, providers, fulfillment, and completed revenue |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
 | `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
 | `/api/v1/providers/capabilities` | Staff-visible provider modes, verified capabilities, and schema versions |
 | `/api/v1/providers/attempts*` | Manager-only provider receipts, tracking, cancellation, and reconciliation |
 | `/login` | Customer signup, password sign-in, Google OAuth, and existing staff sign-in |
-| `/account` | Non-privileged customer account home |
+| `/account` | Private customer meal-planning, routine, privacy, budget, and order dashboard |
 | `/workspace` | Authenticated staff role selection; customer accounts redirect to `/account` |
 | `/admin` | Upcoming schedules, live operations, menu, and staff overview |
 | `/kitchen` | Activated order and item preparation queue |

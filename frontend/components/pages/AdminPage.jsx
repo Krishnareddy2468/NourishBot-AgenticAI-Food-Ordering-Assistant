@@ -3,16 +3,13 @@
  * Admin portal — sidebar nav with real views.
  */
 
-import { useState, useEffect, useMemo, startTransition, useCallback } from 'react'
+import { useState, useEffect, startTransition, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, BarChart3,
   ChefHat, Tag, Bell, RefreshCw, Zap, UtensilsCrossed, LogOut, Loader2,
   Users, ArrowLeftRight, Truck, CalendarClock,
 } from 'lucide-react'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts'
 import { useAuth } from '../../context/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -22,6 +19,7 @@ import OrdersView from './views/OrdersView'
 import MenuView from './views/MenuView'
 import EmployeesView from './views/EmployeesView'
 import DeliveriesView from './views/DeliveriesView'
+import AnalyticsView from './views/AnalyticsView'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -37,37 +35,6 @@ function LiveClock() {
   const [t, setT] = useState(new Date())
   useEffect(() => { const id = setInterval(() => setT(new Date()), 1000); return () => clearInterval(id) }, [])
   return <div className="time-chip">{t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-}
-
-function AnalyticsView({ orders }) {
-  const byHour = useMemo(() => {
-    const hours = Array.from({ length: 13 }, (_, i) => ({ hour: `${i + 10}h`, orders: 0 }))
-    orders.forEach(o => {
-      const h = o.createdAt ? new Date(o.createdAt).getHours() - 10 : -1
-      if (h >= 0 && h < 13) hours[h].orders += 1
-    })
-    return hours
-  }, [orders])
-  return (
-    <div style={{ padding: 16 }}>
-      <h3 style={{ marginBottom: 16 }}>Scheduled meals by Hour</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={byHour}>
-          <defs>
-            <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#888' }} />
-          <YAxis tick={{ fontSize: 11, fill: '#888' }} />
-          <Tooltip contentStyle={{ background: '#1A1A28', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }} />
-          <Area type="monotone" dataKey="orders" stroke="#FF6B35" fill="url(#rev)" strokeWidth={2} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  )
 }
 
 function KDSView({ orders, upsertOrder }) {
@@ -185,7 +152,7 @@ export default function AdminPage() {
       case 'kitchen': return <KDSView orders={orders} upsertOrder={upsertOrder} />
       case 'employees': return <EmployeesView />
       case 'deliveries': return <DeliveriesView />
-      case 'analytics': return <AnalyticsView orders={orders} />
+      case 'analytics': return <AnalyticsView />
       default: return <DashboardView orders={orders} />
     }
   }

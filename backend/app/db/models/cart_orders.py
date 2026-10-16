@@ -75,6 +75,8 @@ class Order(Base, RestaurantMixin):
     submission_window_start = Column(DateTime(timezone=True), nullable=True)
     submission_window_end = Column(DateTime(timezone=True), nullable=True)
     activated_at = Column(DateTime(timezone=True), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
     failed_at = Column(DateTime(timezone=True), nullable=True)
     expired_at = Column(DateTime(timezone=True), nullable=True)

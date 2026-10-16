@@ -630,35 +630,51 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Give customers control over plans, routines, consent, and spending while improving staff visibility.
 
+**Implementation status:** Complete in the working tree on 2026-10-16. Migration `0016` must be applied before the updated API starts.
+
 ### Customer dashboard
 
-- [ ] Weekly meal calendar.
-- [ ] Upcoming confirmed meals.
-- [ ] Draft meal plans.
-- [ ] Templates and recurring routines.
-- [ ] Order and provider-attempt history.
-- [ ] Diet, allergy, and health preferences.
-- [ ] Consent and privacy controls.
-- [ ] Budget limits and spending summaries.
-- [ ] Provider mode/capability status.
-- [ ] Reminder, cancellation, skip, and reschedule controls.
+- [X] Weekly meal calendar.
+- [X] Upcoming confirmed meals.
+- [X] Draft meal plans.
+- [X] Templates and recurring routines.
+- [X] Order and provider-attempt history.
+- [X] Diet, allergy, and health preferences.
+- [X] Consent and privacy controls.
+- [X] Budget limits and spending summaries.
+- [X] Provider mode/capability status.
+- [X] Reminder, cancellation, skip, and reschedule controls.
 
 ### Staff analytics
 
-- [ ] Scheduled volume by desired meal time.
-- [ ] Submission and fulfillment success rates.
-- [ ] Scheduler lag and missed-window metrics.
-- [ ] Provider failure and unknown-outcome rates.
-- [ ] Completed revenue by fulfillment date.
-- [ ] Delivery, pickup, and drive-through performance.
-- [ ] Cancellation and rescheduling reasons.
+- [X] Scheduled volume by desired meal time.
+- [X] Submission and fulfillment success rates.
+- [X] Scheduler lag and missed-window metrics.
+- [X] Provider failure and unknown-outcome rates.
+- [X] Completed revenue by fulfillment date.
+- [X] Delivery, pickup, and drive-through performance.
+- [X] Cancellation and rescheduling reasons.
 
 ### Acceptance criteria
 
-- [ ] Customer data is scoped to the authenticated customer.
-- [ ] Staff data is scoped to the authenticated tenant.
-- [ ] Analytics use scheduled, submitted, and completed timestamps correctly.
-- [ ] Budget totals reconcile with the immutable spending ledger.
+- [X] Customer data is scoped to the authenticated customer.
+- [X] Staff data is scoped to the authenticated tenant.
+- [X] Analytics use scheduled, submitted, and completed timestamps correctly.
+- [X] Budget totals reconcile with the immutable spending ledger.
+
+### Phase 7 validation evidence
+
+- Backend tests: 116 passed, including 8 dedicated Phase 7 tests.
+- Production Next.js build passes with all customer and staff routes prerendered or compiled successfully.
+- Python source compilation passes; migration `0016` is the single Alembic head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0015 <-> 0016` passes.
+- The authenticated web customer is linked to one tenant-scoped customer profile and verified account channel.
+- Customer dashboard queries constrain every plan, schedule, routine, order, attempt, budget, consent, and ledger read to the resolved customer scope.
+- Staff operational analytics require a manager session and constrain every query to the authenticated restaurant tenant.
+- Orders record distinct submission and completion timestamps; completed customer orders append one immutable ledger entry.
+- PostgreSQL and SQLAlchemy both reject spending-ledger updates and deletes.
+- Customer controls cover preferences, budget, plan confirmation, reminder consent, routine pause/resume, occurrence skip/reschedule, and eligible order cancellation.
+- Staff analytics report desired-time demand, scheduler lag, missed windows, provider outcomes, fulfillment-mode performance, completion revenue, and lifecycle reasons.
 
 ## Phase 8 — Production Validation and Public Release
 

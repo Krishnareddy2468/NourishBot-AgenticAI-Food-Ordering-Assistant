@@ -47,6 +47,7 @@ from app.db.models import (
     SavedLocation,
     SavedRoute,
     RouteDiscovery,
+    SpendingLedgerEntry,
 )
 
 __all__ = [
@@ -94,4 +95,5 @@ __all__ = [
     "SavedLocation",
     "SavedRoute",
     "RouteDiscovery",
+    "SpendingLedgerEntry",
 ]

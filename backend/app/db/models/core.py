@@ -36,6 +36,7 @@ class User(Base, RestaurantMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     restaurant_id = Column(BigInteger, ForeignKey("restaurants.id"), nullable=False, index=True, server_default="1")
+    customer_id = Column(BigInteger, ForeignKey("customers.id", ondelete="SET NULL"), unique=True, index=True)
     name = Column(Text, nullable=False)
     phone = Column(Text)
     email = Column(Text, unique=True)
@@ -53,6 +54,7 @@ class User(Base, RestaurantMixin):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    customer_profile = relationship("Customer", foreign_keys=[customer_id])
 
 
 class OAuthIdentity(Base):

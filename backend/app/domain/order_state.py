@@ -7,6 +7,7 @@ caller's transaction. It never commits, so the state and history remain atomic.
 from datetime import datetime, timezone
 from typing import Any
 
+from app.db.models.analytics import SpendingLedgerEntry
 from app.db.models.planning import OrderEvent, ScheduleEvent
 
 
@@ -166,6 +167,24 @@ def transition_order(
     now = occurred_at or datetime.now(timezone.utc)
     order.status = target
     order.fulfillment_state = FULFILLMENT_BY_ORDER_STATE[target]
+    if target in {"ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"}:
+        if getattr(order, "submitted_at", None) is None:
+            order.submitted_at = now
+    if target in {"DELIVERED", "COMPLETED"} and getattr(order, "completed_at", None) is None:
+        order.completed_at = now
+        customer_id = getattr(order, "customer_id", None)
+        amount_cents = int(getattr(order, "total_cents", 0) or 0)
+        if customer_id and amount_cents:
+            session.add(SpendingLedgerEntry(
+                restaurant_id=order.restaurant_id,
+                customer_id=customer_id,
+                order_id=order.id,
+                entry_type="COMPLETED_SPEND",
+                amount_cents=amount_cents,
+                currency="INR",
+                metadata_json={"order_state": target, "source": source.upper()},
+                occurred_at=now,
+            ))
     if target == "CANCELLED":
         order.cancelled_at = now
         order.terminal_reason = reason_code or "CANCELLED"

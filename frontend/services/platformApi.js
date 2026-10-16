@@ -444,3 +444,64 @@ export async function fetchInvoices() {
   const res = await apiFetch(`${API_BASE}/api/v1/invoices`, { headers: buildHeaders() })
   return parseResponse(res)
 }
+
+// ── Customer dashboard ──────────────────────────────────────────────────────
+
+export async function fetchCustomerDashboard(weekStart = '') {
+  const query = weekStart ? `?week_start=${encodeURIComponent(weekStart)}` : ''
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/dashboard${query}`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
+
+export async function updateCustomerPreferences(payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/dashboard/preferences`, {
+    method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function updateCustomerBudget(payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/dashboard/budget`, {
+    method: 'PUT', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function updateCustomerConsent(purpose, granted) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/privacy/consent`, {
+    method: 'POST', headers: buildHeaders(), body: JSON.stringify({ purpose, granted }),
+  })
+  return parseResponse(res)
+}
+
+export async function confirmCustomerMealPlan(planId) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-plans/${planId}/confirm`, {
+    method: 'POST', headers: buildHeaders(),
+  })
+  return parseResponse(res)
+}
+
+export async function applyCustomerRoutineAction(routineId, payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-routines/${routineId}/actions`, {
+    method: 'POST', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function cancelCustomerOrder(orderId) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/orders/${orderId}/cancel`, {
+    method: 'POST', headers: buildHeaders(),
+  })
+  return parseResponse(res)
+}
+
+// ── Staff operational analytics ─────────────────────────────────────────────
+
+export async function fetchOperationsAnalytics(dateFrom = '', dateTo = '') {
+  const params = new URLSearchParams()
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  const suffix = params.toString() ? `?${params}` : ''
+  const res = await apiFetch(`${API_BASE}/api/v1/analytics/operations${suffix}`, { headers: buildHeaders() })
+  return parseResponse(res)
+}
