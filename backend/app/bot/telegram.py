@@ -1,7 +1,7 @@
 """
 Telegram Bot — NourishBot Restaurant
 =================================
-Agentic bot using OpenAI GPT-4o via agent_orchestrator.
+Agentic bot using Google Gemini through the verified pipeline.
 Features:
   - Persistent session state per user (PostgreSQL)
   - Inline keyboards for quick actions

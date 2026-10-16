@@ -21,7 +21,7 @@ Memorise these. They are the numbers I will be asked for.
 | Loop bound | `AGENT_MAX_ITERATIONS = 6` | `backend/app/core/config.py:49` |
 | States | 11 (`IDLE` … `SUPPORT_CASE`) | `backend/app/agent/state_machine.py:20-31` |
 | Events | 18 | `state_machine.py:42-66` |
-| Models | `gpt-4o` → `gpt-4o-mini` → `gpt-3.5-turbo` | `config.py:46-48` |
+| Models | `gemini-3.8-flash` → `gemini-3.5-flash-lite` → `gemini-2.5-flash` | `config.py` |
 | MCP timeout | 45s per tool, 90s per agent turn | `config.py:93`, `mcp_agent.py:598` |
 | DB pool | 10 + 20 overflow (main loop) | `backend/app/db/session.py:22-28` |
 | Outbox poll | every 1.0s, 100 rows a batch | `backend/app/workers/outbox_worker.py:23-24` |
@@ -232,7 +232,7 @@ than by having a separate codebase.
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 2. PLAN      planner.Planner.plan()          ← LLM #1       │
-│    OpenAI in JSON mode. Returns:                            │
+│    Gemini in structured JSON mode. Returns:                 │
 │      goal, missing_slots, constraints,                      │
 │      proposed_actions[], requires_confirmation              │
 │    Capped at 6 actions. Unknown tools dropped.              │
@@ -626,8 +626,8 @@ Again it is per-path, and the paths genuinely differ.
 **MCP path** — a real 3-tier chain via LangChain (`mcp_agent.py:267-290`):
 
 ```
-gpt-4o   ──fails──►  gpt-4o-mini  ──fails──►  gpt-3.5-turbo  ──fails──►  raise
-(primary)            (cheap, stable)          (legacy)
+gemini-3.8-flash ──fails──► gemini-3.5-flash-lite ──fails──► gemini-2.5-flash ──fails──► raise
+(primary)                  (cost-efficient)                  (compatibility fallback)
 ```
 
 built with `primary.with_fallbacks([fallback1, fallback2])`, all three
@@ -636,12 +636,11 @@ configurable by env var. On top of that sits `ProviderError.classify()`
 failure, service unavailable, timeout, bad request or unknown, and maps each to
 a message a customer can actually read.
 
-**In-house pipeline** — no model chain. The planner and responder use
-`OPENAI_PRIMARY` only. What they have instead is two attempts with a *smaller
-prompt* on the retry, then a deterministic non-LLM fallback: the planner returns
-`goal="SUPPORT"` (`planner.py:109`) and the responder renders a plain template
-from the verified facts (`responder.py:208`). So the in-house path degrades to
-"correct but plain English", never to an exception.
+**In-house pipeline** — the planner and responder use the same configured Gemini
+fallback chain through the shared asynchronous client. The planner also retries
+with a smaller prompt after invalid JSON, while the responder retains a
+deterministic template fallback from verified facts. The path therefore degrades
+to "correct but plain English" instead of surfacing a provider exception.
 
 **The honest weakness**, and I would volunteer it because it is the interesting
 part of the question: `with_fallbacks()` retries on *any* exception. It does not
@@ -667,7 +666,7 @@ duplicate Telegram polling and duplicate outbox broadcasts. So the honest first
 answer is that the system does not scale horizontally at all yet, and that has
 to be fixed before any other number matters.
 
-**2. OpenAI rate limits and latency.** Every in-house turn is two sequential
+**2. Gemini rate limits and latency.** Every in-house turn is two sequential
 LLM calls. At a couple of seconds each that is a hard floor of roughly 3-5
 seconds per reply, and it is not something I can optimise away with better
 Python. Under load I hit tokens-per-minute limits and every user queues behind
@@ -675,14 +674,11 @@ the same bucket. Mitigations: cache the planner output for repeated intents,
 drop the responder call entirely for template-able replies (order confirmed,
 cart shown), and batch or shard across keys.
 
-**3. The thread pool.** This one is specific and I like it as an answer because
-it is non-obvious. The planner and responder use the *synchronous* OpenAI client
-pushed into `loop.run_in_executor(None, ...)` (`planner.py:233`,
-`responder.py:62`). `None` means the default executor — bounded, shared, and the
-same pool FastAPI uses for every other blocking call. Each in-flight LLM call
-occupies a thread for its full duration. A few hundred concurrent turns and the
-pool is saturated, at which point *everything* blocks, including health checks.
-The fix is `AsyncOpenAI` and awaiting it properly.
+**3. External model concurrency.** The planner and responder now await Gemini's
+asynchronous SDK directly, so model latency no longer consumes FastAPI's shared
+thread pool. Concurrency still needs explicit request budgets, provider quotas,
+timeouts, and backpressure so a traffic spike cannot create an unbounded number
+of pending model calls.
 
 **4. Database connections.** `pool_size=10, max_overflow=20` on the main engine,
 so 30 connections maximum — and the Telegram loop gets its *own* engine with
@@ -890,12 +886,11 @@ Note the multi-tenant seam: every model carries `restaurant_id` via
 `RestaurantMixin` and broadcasts are scoped by it. The system was shaped for
 multiple restaurants even though it runs one today.
 
-### E6. Why is the planner's OpenAI call synchronous?
+### E6. Does the planner block the event loop while calling Gemini?
 
-It should not be. `planner.py:233` and `responder.py:62` both use the sync
-client inside `run_in_executor(None, ...)`. It works, but it consumes a shared
-thread pool slot for the whole call. `AsyncOpenAI` would remove that entirely.
-I would call this a straightforward mistake rather than defend it — see Q19.
+No. The planner and responder share `core/gemini_client.py`, which awaits the
+Gemini asynchronous SDK directly. The remaining production concerns are quota,
+timeouts, cancellation, and bounded concurrency rather than thread starvation.
 
 ### E7. How does the model avoid inventing a restaurant ID?
 
@@ -930,7 +925,7 @@ almost free to add and would have paid for itself during the `AbortError` hunt.
 
 Day 1-2: the five tests from Q22, plus CI that runs them.
 Day 3: finish the outbox — producer in-transaction, `attempts`, `SKIP LOCKED`.
-Day 4: `AsyncOpenAI` everywhere, kill the thread pool problem.
+Day 4: add Gemini concurrency budgets, timeout metrics, and provider-level backpressure.
 Day 5: per-chat advisory lock and the real idempotency key.
 
 Not the checkpointer migration — that is valuable but it is a refactor, and a

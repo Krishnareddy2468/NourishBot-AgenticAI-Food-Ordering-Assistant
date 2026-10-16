@@ -50,12 +50,12 @@ class Settings:
     WHATSAPP_APP_SECRET: str = os.getenv("WHATSAPP_APP_SECRET", "")
     WHATSAPP_GRAPH_API_VERSION: str = os.getenv("WHATSAPP_GRAPH_API_VERSION", "")
 
-    # ── OpenAI LLM ──────────────────────────────────────────────────────────────
-    OPENAI_API_KEY:      str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_PRIMARY:      str = os.getenv("OPENAI_PRIMARY_MODEL",    "gpt-4o")
-    OPENAI_FALLBACK:     str = os.getenv("OPENAI_FALLBACK_MODEL",   "gpt-4o-mini")
-    OPENAI_FALLBACK_2:   str = os.getenv("OPENAI_FALLBACK_2_MODEL", "gpt-3.5-turbo")
-    OPENAI_MAX_TOKENS:   int = 1024
+    # ── Google Gemini LLM ───────────────────────────────────────────────────────
+    GEMINI_API_KEY:       str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_PRIMARY:       str = os.getenv("GEMINI_PRIMARY_MODEL", "gemini-3.8-flash")
+    GEMINI_FALLBACK:      str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+    GEMINI_FALLBACK_2:    str = os.getenv("GEMINI_FALLBACK_2_MODEL", "gemini-2.5-flash")
+    GEMINI_MAX_TOKENS:    int = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
     AGENT_MAX_ITERATIONS: int = 6
 
     # ── Razorpay (vNext) ────────────────────────────────────────────────────
@@ -248,8 +248,8 @@ class Settings:
         telegram_enabled = os.getenv("TELEGRAM_BOT_ENABLED", "true").lower() in ("1", "true", "yes")
         if telegram_enabled and not self.TELEGRAM_TOKEN:
             missing.append("TELEGRAM_TOKEN")
-        if not self.OPENAI_API_KEY:
-            missing.append("OPENAI_API_KEY")
+        if not self.GEMINI_API_KEY:
+            missing.append("GEMINI_API_KEY")
         if not self.DATABASE_URL:
             missing.append("DATABASE_URL")
         if not self.DATABASE_URL_SYNC:

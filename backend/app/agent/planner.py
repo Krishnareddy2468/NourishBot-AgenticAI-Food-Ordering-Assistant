@@ -1,7 +1,7 @@
 """
 Planner — Stage 2 of the NourishBot Pipeline.
 
-One LLM call (OpenAI, JSON mode) that reads the ContextSnapshot +
+One Gemini call (structured JSON mode) that reads the ContextSnapshot +
 user message and outputs a structured PlannerOutput:
 
   {
@@ -26,11 +26,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from openai import OpenAI
-
 from app.agent.context_builder import ContextSnapshot
 from app.agent.state_machine import BotState
 from app.core.config import settings
+from app.core.gemini_client import generate_text
 
 logger = logging.getLogger(__name__)
 
@@ -227,20 +226,9 @@ def _format_history(turns: list[dict]) -> str:
 # ── Planner class ─────────────────────────────────────────────────────────────
 
 class Planner:
-    _client: OpenAI | None = None
-
-    @classmethod
-    def _get_client(cls) -> OpenAI:
-        if cls._client is None:
-            cls._client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        return cls._client
-
     @classmethod
     async def plan(cls, message: str, ctx: ContextSnapshot) -> PlannerOutput:
-        """Call OpenAI in JSON mode and return a validated PlannerOutput."""
-        import asyncio
-        loop = asyncio.get_running_loop()
-        client = cls._get_client()
+        """Call Gemini in structured JSON mode and validate the planner output."""
 
         for attempt in range(2):
             prompt = (
@@ -249,22 +237,17 @@ class Planner:
                 else _build_minimal_prompt(message, ctx)
             )
             try:
-                response = await loop.run_in_executor(
-                    None,
-                    lambda p=prompt: client.chat.completions.create(
-                        model=settings.OPENAI_PRIMARY,
-                        messages=[{"role": "user", "content": p}],
-                        response_format={"type": "json_object"},
-                        temperature=0.1,
-                        max_tokens=2048,
-                    ),
+                raw, _finish_reason, model = await generate_text(
+                    prompt,
+                    temperature=0.1,
+                    json_mode=True,
+                    max_output_tokens=settings.GEMINI_MAX_TOKENS,
                 )
-                raw = (response.choices[0].message.content or "").strip()
                 data = json.loads(raw)
                 out = PlannerOutput.from_dict(data)
                 logger.info(
-                    "Planner[chat=%s] goal=%s actions=%d intent=%r",
-                    ctx.chat_id, out.goal, len(out.proposed_actions), out.user_intent_summary,
+                    "Planner[chat=%s model=%s] goal=%s actions=%d intent=%r",
+                    ctx.chat_id, model, out.goal, len(out.proposed_actions), out.user_intent_summary,
                 )
                 return out
             except json.JSONDecodeError as e:

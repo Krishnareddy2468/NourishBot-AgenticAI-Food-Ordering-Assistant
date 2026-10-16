@@ -1,7 +1,7 @@
 """
 Agent Orchestrator v2 — NourishBot Restaurant Bot
 ==============================================
-Uses OpenAI GPT-4o with function-calling tools.
+Retained tool catalogue for the retired pre-pipeline orchestrator.
 
 Architecture: Planner → Executor → Verifier
   - Planner:  LLM decides which tools to call
@@ -20,14 +20,11 @@ State machine:
 """
 
 import json
-import os
 import logging
-import uuid
 import asyncio
 from datetime import datetime
 from typing import Any
 
-from openai import OpenAI
 from dotenv import load_dotenv
 
 from app.db.crud import (
@@ -56,24 +53,7 @@ def _sa(coro):
         return asyncio.run(coro)
 
 
-# ── OpenAI setup ──────────────────────────────────────────────────────────────
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "") or settings.OPENAI_API_KEY
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is not set in .env")
-
-_client = OpenAI(api_key=OPENAI_API_KEY)
-
-PRIMARY_MODEL   = settings.OPENAI_PRIMARY
-FALLBACK_MODEL  = settings.OPENAI_FALLBACK
-
-
-def _to_openai_tools(raw_tools: list[dict]) -> list[dict]:
-    """Convert flat {name, description, parameters} to OpenAI tool format."""
-    return [{"type": "function", "function": t} for t in raw_tools]
-
-
-# ── Tool definitions (OpenAI function-calling format) ──────────────────────────
+# ── Legacy tool definitions (JSON Schema format) ───────────────────────────────
 
 RAW_TOOLS = [
     {
@@ -1044,11 +1024,11 @@ HARD RULES
 """
 
 
-# ── Planner: build OpenAI messages ────────────────────────────────────────────
+# ── Legacy prompt messages ─────────────────────────────────────────────────────
 
 def _build_messages(session: dict, user_message: str) -> list[dict]:
     """
-    Build OpenAI-format messages list with system prompt + history + user message.
+    Build generic role/content messages with system prompt, history, and user text.
     """
     system_prompt = build_system_prompt(session)
 
@@ -1070,111 +1050,6 @@ def _build_messages(session: dict, user_message: str) -> list[dict]:
 # ── Main orchestrator ─────────────────────────────────────────────────────────
 
 def get_bot_response(user_message: str, chat_id: int, user_name: str = "") -> str:
-    """
-    Main entry point — Planner → Executor → Verifier loop.
-
-    1. Planner:  Prepares LLM context (session + history + message)
-    2. Executor: Runs the LLM, executes tool calls deterministically
-    3. Verifier: Validates results against policies before committing
-    """
+    """Reject the retired orchestrator; the verified pipeline is the only entrypoint."""
     from app.agent.entrypoint import reject_legacy_agent
     reject_legacy_agent("app.agent.orchestrator.get_bot_response")
-
-    trace_id = uuid.uuid4().hex[:8]
-    logger.info("[%s] chat_id=%s msg=%r", trace_id, chat_id, user_message[:80])
-
-    session = _sa(get_session(chat_id))
-    if not session.get("user_name") and user_name:
-        session["user_name"] = user_name
-
-    # ── Planner ────────────────────────────────────────────────────────────────
-    messages = _build_messages(session, user_message)
-    openai_tools = _to_openai_tools(RAW_TOOLS)
-
-    # ── Executor + Verifier loop ──────────────────────────────────────────────
-    max_iterations = settings.AGENT_MAX_ITERATIONS
-    session_updates_accumulated: dict = {}
-    final_text: str = ""
-
-    for iteration in range(max_iterations):
-        # Try primary model, fall back on error
-        response = None
-        for model_name in (PRIMARY_MODEL, FALLBACK_MODEL):
-            try:
-                response = _client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    tools=openai_tools,
-                    max_tokens=settings.OPENAI_MAX_TOKENS,
-                    temperature=0.4,
-                )
-                break
-            except Exception as e:
-                logger.warning("[%s] Model %s failed: %s", trace_id, model_name, e)
-                if model_name == FALLBACK_MODEL:
-                    logger.error("[%s] Both models failed.", trace_id)
-                    return (
-                        "Sorry, I'm having a small hiccup right now! "
-                        "Please try again in a moment."
-                    )
-
-        choice = response.choices[0]
-        msg = choice.message
-
-        tool_calls = msg.tool_calls or []
-        if not tool_calls:
-            final_text = (msg.content or "").strip()
-            break
-
-        # Add assistant message with tool calls to conversation
-        messages.append({
-            "role": "assistant",
-            "content": msg.content,
-            "tool_calls": [
-                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                for tc in tool_calls
-            ],
-        })
-
-        # ── Executor: run each tool ────────────────────────────────────────────
-        for tc in tool_calls:
-            tool_name = tc.function.name
-            try:
-                tool_args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                tool_args = {}
-            logger.info("[%s] Tool call: %s(%s)", trace_id, tool_name, tool_args)
-
-            session.update(session_updates_accumulated)
-            result, updates = execute_tool(tool_name, tool_args, session)
-
-            # ── Verifier: validate before committing ──────────────────────────
-            result, updates = verify_result(tool_name, result, updates)
-
-            session_updates_accumulated.update(updates)
-            logger.info("[%s] Tool result: %s", trace_id, str(result)[:200])
-
-            # Feed tool result back to conversation
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result, ensure_ascii=False),
-            })
-
-    if not final_text:
-        final_text = "Sorry, I couldn't process that. Could you try again?"
-
-    # ── Persist ────────────────────────────────────────────────────────────────
-    new_history = list(session.get("history", []) or [])
-    new_history.append({"role": "user",      "content": user_message})
-    new_history.append({"role": "assistant", "content": final_text})
-    new_history = new_history[-16:]
-    session_updates_accumulated["history"] = new_history
-
-    session.update(session_updates_accumulated)
-    if not session.get("user_name") and user_name:
-        session["user_name"] = user_name
-    _sa(save_session(chat_id, session))
-
-    logger.info("[%s] Reply: %r", trace_id, final_text[:120])
-    return final_text

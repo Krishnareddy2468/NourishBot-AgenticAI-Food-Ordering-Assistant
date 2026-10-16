@@ -43,7 +43,7 @@ From a restaurant bot (current) → to a personal AI food concierge that serves 
 
 **Why now:**
 
-- Gemini 2.5 / GPT-4o multimodal capabilities are mature enough for production agentic systems
+- Gemini multimodal capabilities are mature enough for production agentic systems
 - WhatsApp Business API is now available at scale in India
 - UPI is ubiquitous — payment friction is solved
 - India has 500M+ smartphone users with no truly intelligent food layer
@@ -1072,7 +1072,7 @@ WhatsApp Integration:
 
 Voice Processing:
   → Gemini audio understanding (native, already in API)
-  → Fallback: OpenAI Whisper for transcription
+  → Fallback: Google Cloud Speech-to-Text for transcription
 
 Notification System:
   → Celery beat for scheduled proactive messages

@@ -5,7 +5,7 @@ LangGraph MCP Agent — scheduled provider ordering over chat.
     Telegram message
         -> deterministic guards (greeting, reset, simple intents)
         -> LangGraph ReAct agent
-            - OpenAI GPT-4o chat model (bound to MCP tools)
+            - Google Gemini chat model (bound to MCP tools)
             - Tools come from langchain-mcp-adapters (Zomato + Swiggy)
             - System prompt enforces no-hallucination + concise replies
         -> Final assistant text returned to Telegram
@@ -342,12 +342,12 @@ def _visible_history(history: list[dict[str, Any]], limit: int = 8) -> list[dict
 _LC_IMPORTS_DONE = False
 
 def _ensure_imports() -> None:
-    global _LC_IMPORTS_DONE, ChatOpenAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
+    global _LC_IMPORTS_DONE, ChatGoogleGenerativeAI, HumanMessage, SystemMessage, AIMessage  # noqa: PLW0603
     global create_react_agent  # noqa: PLW0603
     if _LC_IMPORTS_DONE:
         return
     try:
-        from langchain_openai import ChatOpenAI as _ChatOpenAI
+        from langchain_google_genai import ChatGoogleGenerativeAI as _ChatGoogleGenerativeAI
         from langchain_core.messages import (
             HumanMessage as _HumanMessage,
             SystemMessage as _SystemMessage,
@@ -358,7 +358,7 @@ def _ensure_imports() -> None:
         raise RuntimeError(
             "LangGraph MCP agent stack not installed. Run: pip install -r requirements.txt"
         ) from e
-    ChatOpenAI         = _ChatOpenAI
+    ChatGoogleGenerativeAI = _ChatGoogleGenerativeAI
     HumanMessage       = _HumanMessage
     SystemMessage      = _SystemMessage
     AIMessage          = _AIMessage
@@ -368,29 +368,26 @@ def _ensure_imports() -> None:
 
 def _build_llm_with_fallbacks(api_key: str) -> Any:
     """
-    Build an OpenAI LLM with a 2-tier fallback chain:
-      gpt-4o       (primary — fast, capable)
-        └─ gpt-4o-mini   (fallback 1 — cheaper, stable)
-             └─ gpt-3.5-turbo  (fallback 2 — legacy reliable)
+    Build a Gemini LLM with a two-tier fallback chain.
 
     LangChain's .with_fallbacks() automatically retries the next model when
     the previous one raises any exception (rate-limit, server error, etc.)
     """
     def _llm(model: str) -> Any:
-        return ChatOpenAI(
+        return ChatGoogleGenerativeAI(
             model=model,
-            api_key=api_key,
+            google_api_key=api_key,
             temperature=0.4,
-            max_tokens=settings.OPENAI_MAX_TOKENS,
+            max_output_tokens=settings.GEMINI_MAX_TOKENS,
         )
 
-    primary   = _llm(settings.OPENAI_PRIMARY)
-    fallback1 = _llm(settings.OPENAI_FALLBACK)
-    fallback2 = _llm(settings.OPENAI_FALLBACK_2)
+    primary   = _llm(settings.GEMINI_PRIMARY)
+    fallback1 = _llm(settings.GEMINI_FALLBACK)
+    fallback2 = _llm(settings.GEMINI_FALLBACK_2)
     return primary.with_fallbacks([fallback1, fallback2])
 
 
-ChatOpenAI = None  # type: ignore[assignment]
+ChatGoogleGenerativeAI = None  # type: ignore[assignment]
 HumanMessage           = None  # type: ignore[assignment]
 SystemMessage          = None  # type: ignore[assignment]
 AIMessage              = None  # type: ignore[assignment]
@@ -674,7 +671,9 @@ async def _build_agent(platform: str, allow_transaction: bool = False):
         _tool_names_cache[cache_key] = [getattr(t, "name", str(t)) for t in bound_tools]
         _tool_names_cache[platform] = _tool_names_cache[cache_key]
 
-        api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
+        api_key = os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
         llm = _build_llm_with_fallbacks(api_key)
 
         agent = create_react_agent(llm, bound_tools)

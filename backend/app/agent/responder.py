@@ -18,27 +18,18 @@ import json
 import logging
 from typing import Any
 
-from openai import OpenAI
-
 from app.agent.context_builder import ContextSnapshot
 from app.agent.verifier import VerifiedSummary
 from app.agent.persona import (
     detect_language, tone_for_context, KitchenSignal,
 )
 from app.core.config import settings
+from app.core.gemini_client import generate_text
 
 logger = logging.getLogger(__name__)
 
 
 class Responder:
-    _client: OpenAI | None = None
-
-    @classmethod
-    def _get_client(cls) -> OpenAI:
-        if cls._client is None:
-            cls._client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        return cls._client
-
     @classmethod
     async def respond(
         cls,
@@ -55,28 +46,19 @@ class Responder:
         # The prompt gives it all the context it needs to compose a natural reply.
         prompt = _build_responder_prompt(summary, ctx, original_message)
         try:
-            import asyncio
-            loop = asyncio.get_running_loop()
-            client = cls._get_client()
-
             for attempt in range(2):
-                response = await loop.run_in_executor(
-                    None,
-                    lambda p=prompt: client.chat.completions.create(
-                        model=settings.OPENAI_PRIMARY,
-                        messages=[{"role": "user", "content": p}],
-                        temperature=0.7,
-                        max_tokens=2048,
-                    ),
+                text, finish, model = await generate_text(
+                    prompt,
+                    temperature=0.7,
+                    max_output_tokens=settings.GEMINI_MAX_TOKENS,
                 )
-                text = (response.choices[0].message.content or "").strip()
 
                 # Check finish reason for truncation
-                finish = response.choices[0].finish_reason or ""
-                if finish in ("length", "content_filter"):
+                normalized_finish = finish.upper()
+                if "MAX_TOKENS" in normalized_finish or "SAFETY" in normalized_finish:
                     logger.warning(
-                        "Responder truncated/blocked (chat=%s) finish=%s len=%d tail=%r",
-                        ctx.chat_id, finish, len(text), text[-60:] if text else "",
+                        "Responder truncated/blocked (chat=%s model=%s finish=%s len=%d tail=%r",
+                        ctx.chat_id, model, finish, len(text), text[-60:] if text else "",
                     )
                     if attempt == 0:
                         prompt = _build_minimal_responder_prompt(summary, ctx, original_message)

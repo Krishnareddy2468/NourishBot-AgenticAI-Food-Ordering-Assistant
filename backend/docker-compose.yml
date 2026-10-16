@@ -12,7 +12,7 @@
 #       provider's transaction schema has been verified to support scheduling.
 #
 # Before either profile, copy .env.example to .env and fill in:
-#   TELEGRAM_TOKEN, OPENAI_API_KEY  (required)
+#   TELEGRAM_TOKEN, GEMINI_API_KEY  (required)
 # For the mcp profile only, run ONCE on this host:
 #   npx -y mcp-remote https://mcp-server.zomato.com/mcp
 #   npx -y mcp-remote https://mcp.swiggy.com/food

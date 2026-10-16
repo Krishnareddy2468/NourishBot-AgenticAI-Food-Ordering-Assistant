@@ -70,7 +70,7 @@ Rotation order:
 3. Razorpay webhook and API secrets.
 4. WhatsApp app secret, verify token, and access token.
 5. Google OAuth and Maps credentials.
-6. OpenAI and Telegram credentials.
+6. Gemini and Telegram credentials.
 7. MCP OAuth cache and provider credentials.
 
 Immediately rotate any value that appears in logs, source control, support messages, or an unapproved device. Confirm that Redis endpoint logging remains credential-redacted.

@@ -220,7 +220,7 @@ provider contracts, smoke tests, or approvals have not been proven.
 - PostgreSQL for orders, sessions, menus, customers, and outbox events
 - Redis for session caching, webhook idempotency, and Celery
 - Celery worker and beat for scheduled-order activation
-- OpenAI-compatible agent pipeline and LangGraph MCP adapter
+- Google Gemini agent pipeline and LangGraph MCP adapter
 - Google Maps Places API (New) and Routes API for restaurant and route discovery
 - Telegram Bot API and WhatsApp Cloud API
 - Next.js 14, React, and WebSockets
@@ -345,7 +345,9 @@ Copy [backend/.env.example](backend/.env.example) and configure:
 | `PROVIDER_RESPONSE_RETENTION_DAYS` | Age after which provider response/error excerpts are redacted |
 | `MCP_TRANSACTIONAL_ENABLED` | Development-only transaction gate; production rejects it until provider verification is implemented |
 | `*_RATE_LIMIT_PER_MINUTE` | Per-client API, login, and webhook request ceilings |
-| `OPENAI_API_KEY` | Planner and response generation |
+| `GEMINI_API_KEY` | Gemini planner, responder, and LangGraph agent access |
+| `GEMINI_*_MODEL` | Primary and fallback Gemini model identifiers |
+| `GEMINI_MAX_OUTPUT_TOKENS` | Maximum generated tokens per Gemini response |
 | `TELEGRAM_TOKEN` | Telegram bot token when polling is enabled |
 | `WHATSAPP_*` | Cloud API token, phone ID, verification token, app secret, and API version |
 | `MIN_SCHEDULE_LEAD_MINUTES` | Earliest allowed future order |
@@ -412,7 +414,7 @@ Implemented in this repository:
 
 Still environment-dependent before public traffic:
 
-- Real Telegram, WhatsApp, OpenAI, database, Redis, Maps, and provider credentials
+- Real Telegram, WhatsApp, Gemini, database, Redis, Maps, and provider credentials
 - WhatsApp business verification and webhook registration
 - Confirmation that Swiggy and Zomato support the required scheduled transaction and fulfillment modes
 - Staging end-to-end, security, concurrency, and load-test results
