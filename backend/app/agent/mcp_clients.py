@@ -47,6 +47,7 @@ import time
 from typing import Any
 
 from app.core.config import settings
+from app.providers.redaction import redact_text
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,7 @@ async def get_mcp_tools_async(platform: str) -> list:
             return _tools_caches[platform]
         except Exception as e:
             _last_failure_ts[platform] = time.time()
-            logger.error("MCP[%s]: failed to connect / list tools: %s", platform, e, exc_info=True)
+            logger.error("MCP[%s]: failed to connect / list tools: %s", platform, redact_text(str(e)))
             return []
 
 
@@ -211,6 +212,6 @@ async def close_all_async() -> None:
             if aclose and callable(aclose):
                 await aclose()
         except Exception as e:  # pragma: no cover
-            logger.warning("MCP[%s]: clean shutdown raised: %s", platform, e)
+            logger.warning("MCP[%s]: clean shutdown raised: %s", platform, redact_text(str(e)))
     _clients.clear()
     _tools_caches.clear()

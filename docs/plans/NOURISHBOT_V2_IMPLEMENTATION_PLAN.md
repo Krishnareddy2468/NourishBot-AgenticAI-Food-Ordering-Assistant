@@ -167,17 +167,17 @@ Webhook events do not have a replay/idempotency ledger, and all events other tha
 | Saved meal templates                        | Missing           | Template CRUD and conversational actions                    |
 | Meal modification                           | Partial           | Persisted plan and order-draft modification                 |
 | Reminders                                   | Missing           | Durable reminder jobs and delivery receipts                 |
-| Provider Mode A: discovery                  | Partial           | Formal capability registry and safe UI messaging            |
-| Provider Mode B: handoff                    | Missing           | Signed handoff flow with user-controlled checkout           |
-| Provider Mode C: transaction                | Unsafe/unverified | Verified scheduling, fulfillment, receipt, and recovery     |
-| Provider capability registry                | Missing           | Versioned capability snapshots and health state             |
+| Provider Mode A: discovery                  | Complete          | Registry-guarded read-only tools and visible mode messaging  |
+| Provider Mode B: handoff                    | Complete          | User-controlled provider handoff without platform checkout   |
+| Provider Mode C: transaction                | Gated             | Available only after capability and exact-schema verification|
+| Provider capability registry                | Complete          | Immutable versions, schema hashes, receipts, and health state|
 | Scheduled delivery                          | Partial           | Desired time, provider slot, submission time, ready-by time |
 | Route-aware pickup                          | Partial           | Eligibility verification and consented route persistence    |
 | Restaurant search                           | Partial           | Dietary, budget, route, and availability scoring            |
 | Explicit confirmation                       | Unsafe            | Snapshot-bound deterministic confirmation                   |
-| Cancellation/rescheduling                   | Partial           | Provider-aware workflows and audit events                   |
+| Cancellation/rescheduling                   | Partial           | Provider cancellation is capability-gated; rescheduling remains planned |
 | Reliable retry behavior                     | Missing           | Leases, backoff, reconciliation, and dead-letter state      |
-| Uncertain outcomes                          | Missing           | `UNKNOWN` state and status-before-retry                   |
+| Uncertain outcomes                          | Complete          | Durable `UNKNOWN` state and status-before-retry reconciliation |
 | Customer dashboard                          | Missing           | Calendar, history, templates, preferences, spending         |
 | Budget controls                             | Missing           | Periods, limits, estimates, and actual spending ledger      |
 | Recurring routines                          | Missing           | Recurrence, pause, skip, edit, and materialized schedules   |
@@ -495,19 +495,21 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Make provider behavior explicit, testable, and safe.
 
+**Implementation status:** Complete in the working tree on 2026-10-16. Migration `0013` must be applied during deployment before the updated application starts. External providers remain conservatively in Mode A until their live capabilities and exact tool schemas are verified.
+
 ### Work
 
-- [ ] Define a provider adapter interface.
-- [ ] Add a versioned provider capability registry.
-- [ ] Record tool schema/version hashes and verification timestamps.
-- [ ] Add capability states: `UNVERIFIED`, `VERIFIED`, `DEGRADED`, `DISABLED`.
-- [ ] Implement Mode A discovery.
-- [ ] Implement Mode B user-controlled handoff.
-- [ ] Enable Mode C only for verified capabilities.
-- [ ] Persist every provider attempt and response receipt.
-- [ ] Add status-before-retry reconciliation.
-- [ ] Add provider cancellation and tracking adapters where supported.
-- [ ] Redact tokens, addresses, phone numbers, and payment fields from logs.
+- [X] Define a provider adapter interface.
+- [X] Add a versioned provider capability registry.
+- [X] Record tool schema/version hashes and verification timestamps.
+- [X] Add capability states: `UNVERIFIED`, `VERIFIED`, `DEGRADED`, `DISABLED`.
+- [X] Implement Mode A discovery.
+- [X] Implement Mode B user-controlled handoff.
+- [X] Enable Mode C only for verified capabilities.
+- [X] Persist every provider attempt and response receipt.
+- [X] Add status-before-retry reconciliation.
+- [X] Add provider cancellation and tracking adapters where supported.
+- [X] Redact tokens, addresses, phone numbers, and payment fields from logs.
 
 ### Capability fields
 
@@ -526,10 +528,22 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 ### Acceptance criteria
 
-- [ ] Unsupported capabilities cannot reach transactional tools.
-- [ ] Users can see whether a provider is discovery, handoff, or transactional.
-- [ ] Mode C always returns a verified receipt or enters `UNKNOWN`.
-- [ ] An `UNKNOWN` attempt is reconciled before any retry.
+- [X] Unsupported capabilities cannot reach transactional tools.
+- [X] Users can see whether a provider is discovery, handoff, or transactional.
+- [X] Mode C always returns a verified receipt or enters `UNKNOWN`.
+- [X] An `UNKNOWN` attempt is reconciled before any retry.
+
+### Phase 4 validation evidence
+
+- Provider adapters, capability policy, schema inventory, redaction, Mode C receipt handling, API exposure, and migration invariants have 12 dedicated unit tests.
+- Backend tests: 83 passed.
+- Python source compilation passes with the bytecode cache redirected outside the source tree.
+- Alembic migration chain: `0013` is the single head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0012 <-> 0013` passes.
+- Tool-schema changes automatically create a new `UNVERIFIED` discovery version instead of inheriting transactional authority.
+- Transactional tools require verified Mode C plus schedule and idempotency fields on the live tool schema.
+- Missing order IDs and ambiguous provider results enter durable `UNKNOWN` state and are reconciled through status lookup before retry.
+- Provider payloads and errors are redacted before persistence or application logging.
 
 ## Phase 5 — Meal Planner and Recurring Routines
 

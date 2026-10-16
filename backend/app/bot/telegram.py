@@ -407,8 +407,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data and query.data.startswith("provider_"):
         platform = query.data.removeprefix("provider_")
         await save_session(chat_id, {"ordering_platform": platform})
+        if platform == "NourishBot":
+            mode_text = "Mode C — in-house transactional scheduling"
+        else:
+            from app.providers.service import provider_experience
+            experience = await provider_experience(platform)
+            mode_text = experience["mode_label"]
         await query.edit_message_text(
-            f"✅ *{platform}* selected. Tell me the meal, future date, and time you want to schedule.",
+            f"✅ *{platform}* selected ({mode_text}). Tell me the meal, future date, and time you want to schedule.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return

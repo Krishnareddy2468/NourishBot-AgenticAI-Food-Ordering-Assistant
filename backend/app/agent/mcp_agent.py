@@ -36,22 +36,31 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import ProviderAttempt
 from sqlalchemy import select
 from app.agent.order_confirmation import is_explicit_confirmation
+from app.providers.base import CapabilityState, ProviderMode, ProviderPolicy
+from app.providers.redaction import content_hash, redact_text, redact_value
+from app.providers.registry import (
+    current_policy,
+    is_cancel_tool,
+    is_status_tool,
+    is_transaction_tool as registry_is_transaction_tool,
+    sync_tool_inventory,
+    tool_allowed,
+)
+from app.providers.service import persist_tool_receipts, provider_handoff_url, reconcile_attempt
 
 logger = logging.getLogger(__name__)
 
-_TRANSACTION_MARKERS = (
-    "checkout", "place_order", "create_order", "submit_order",
-    "confirm_order", "purchase",
-)
-
-
 def _is_transaction_tool(name: str) -> bool:
-    lowered = (name or "").lower()
-    return any(marker in lowered for marker in _TRANSACTION_MARKERS)
+    return registry_is_transaction_tool(name)
 
 
 async def _start_provider_attempt(
-    *, platform: str, channel_type: str, chat_id: str | int, fingerprint_source: str,
+    *,
+    platform: str,
+    channel_type: str,
+    chat_id: str | int,
+    fingerprint_source: str,
+    policy: ProviderPolicy,
 ) -> tuple[ProviderAttempt | None, str | None]:
     fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
     idempotency_key = hashlib.sha256(
@@ -67,11 +76,15 @@ async def _start_provider_attempt(
         if existing:
             if existing.status == "CONFIRMED":
                 return existing, "confirmed"
-            if existing.status in {"SUBMITTING", "UNKNOWN"}:
+            if existing.status == "UNKNOWN":
+                return existing, "reconcile_required"
+            if existing.status == "SUBMITTING":
                 return existing, "pending"
             existing.attempt_count += 1
             existing.status = "SUBMITTING"
             existing.last_error = None
+            existing.reconciliation_required = False
+            existing.next_action = None
             existing.submitted_at = datetime.now(timezone.utc)
             existing.completed_at = None
             await db.commit()
@@ -84,6 +97,9 @@ async def _start_provider_attempt(
             channel_type=channel_type.upper(),
             external_chat_id=str(chat_id),
             operation="CONFIRM_ORDER",
+            mode=ProviderMode.TRANSACTIONAL.value,
+            capability_version_id=policy.version_id,
+            tool_schema_hash=policy.tool_schema_hash,
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
             status="SUBMITTING",
@@ -112,9 +128,13 @@ async def _finish_provider_attempt(
         attempt.status = status
         attempt.provider_order_id = provider_order_id or attempt.provider_order_id
         if provider_order_id:
-            attempt.receipt_json = {"provider_order_id": provider_order_id}
-        attempt.last_error = (error or "")[:500] or None
-        if status in {"CONFIRMED", "FAILED"}:
+            receipt = {"provider_order_id": provider_order_id, "status": status}
+            attempt.receipt_json = receipt
+            attempt.response_hash = content_hash(receipt)
+        attempt.last_error = redact_text(error or "")[:500] or None
+        attempt.reconciliation_required = status == "UNKNOWN"
+        attempt.next_action = "RECONCILE_BEFORE_RETRY" if status == "UNKNOWN" else None
+        if status in {"CONFIRMED", "FAILED", "CANCELLED"}:
             attempt.completed_at = datetime.now(timezone.utc)
         await db.commit()
 
@@ -381,6 +401,7 @@ create_react_agent     = None  # type: ignore[assignment]
 
 _agent_cache: dict[str, Any] = {}
 _tool_names_cache: dict[str, list[str]] = {}
+_policy_cache: dict[str, ProviderPolicy] = {}
 _build_lock: asyncio.Lock | None = None  # lazy-init: see _get_build_lock
 
 
@@ -393,13 +414,23 @@ def _get_build_lock() -> asyncio.Lock:
     return _build_lock
 
 
-def _system_prompt(platform: str, user_name: str) -> str:
+def _system_prompt(platform: str, user_name: str, policy: ProviderPolicy) -> str:
     plat_label = platform or "external delivery platform"
-    provider_mode = (
-        "TRANSACTIONAL DEMO MODE: a transaction tool is exposed only on an explicit confirmation turn."
-        if settings.MCP_TRANSACTIONAL_ENABLED
-        else "DISCOVERY MODE ONLY: no checkout or provider mutation tool is available. Never claim an order was placed."
-    )
+    if policy.mode == ProviderMode.TRANSACTIONAL and policy.allows_transactional_mode:
+        provider_mode = (
+            "MODE C — VERIFIED TRANSACTIONAL: mutation tools are exposed only on an explicit "
+            "confirmation turn and must return a verifiable receipt."
+        )
+    elif policy.mode == ProviderMode.HANDOFF:
+        provider_mode = (
+            "MODE B — USER-CONTROLLED HANDOFF: discovery is available, but checkout occurs only "
+            "on the provider's own surface. Never claim NourishBot placed the order."
+        )
+    else:
+        provider_mode = (
+            "MODE A — DISCOVERY ONLY: no checkout or provider mutation tool is available. "
+            "Never claim an order was placed."
+        )
     now        = datetime.now()
     hour       = now.hour
     time_label = (
@@ -593,14 +624,7 @@ def _scheduled_safe_tool(tool: Any) -> bool:
 
 async def _build_agent(platform: str, allow_transaction: bool = False):
     """Build (or fetch cached) LangGraph React agent for the given platform."""
-    cache_key = f"{platform}:{'transactional' if allow_transaction else 'discovery'}"
-    if cache_key in _agent_cache:
-        return _agent_cache[cache_key]
-
     async with _get_build_lock():
-        if cache_key in _agent_cache:
-            return _agent_cache[cache_key]
-
         _ensure_imports()
 
         # Lazy import — keeps mcp_clients out of import path when MCP off.
@@ -609,8 +633,15 @@ async def _build_agent(platform: str, allow_transaction: bool = False):
         provider_tools = await get_mcp_tools_async(platform)
         if not provider_tools:
             logger.warning("MCP agent: no tools available for platform=%s; agent will not be built.", platform)
-            _agent_cache[cache_key] = None
             return None
+
+        async with AsyncSessionLocal() as db:
+            policy = await sync_tool_inventory(db, platform, provider_tools)
+        _policy_cache[platform] = policy
+        transaction_turn = allow_transaction and policy.allows_transactional_mode
+        cache_key = f"{platform}:v{policy.version}:{'transactional' if transaction_turn else policy.mode.value.lower()}"
+        if cache_key in _agent_cache:
+            return _agent_cache[cache_key]
 
         from app.agent.maps_client import build_maps_tools
         maps_tools = build_maps_tools()
@@ -621,14 +652,15 @@ async def _build_agent(platform: str, allow_transaction: bool = False):
         filtered = [t for t in provider_tools if (getattr(t, "name", "") or "").lower().startswith(prefix)]
         # If our naming convention doesn't match (langchain-mcp-adapters
         # may name tools <server>__<tool> or similar), fall back to all tools.
-        candidate_tools = [*(filtered or provider_tools), *maps_tools]
-        bound_tools = [tool for tool in candidate_tools if _scheduled_safe_tool(tool)]
-        if not allow_transaction:
-            bound_tools = [
-                tool for tool in bound_tools
-                if not _is_transaction_tool(getattr(tool, "name", ""))
-            ]
-        blocked = len(candidate_tools) - len(bound_tools)
+        candidate_provider_tools = filtered or provider_tools
+        bound_provider_tools = [
+            tool
+            for tool in candidate_provider_tools
+            if _scheduled_safe_tool(tool)
+            and tool_allowed(policy, tool, transaction_turn=transaction_turn)
+        ]
+        bound_tools = [*bound_provider_tools, *maps_tools]
+        blocked = len(candidate_provider_tools) - len(bound_provider_tools)
         if blocked:
             logger.warning(
                 "MCP[%s]: blocked %d tool(s) by scheduling/capability policy",
@@ -636,6 +668,7 @@ async def _build_agent(platform: str, allow_transaction: bool = False):
                 blocked,
             )
         _tool_names_cache[cache_key] = [getattr(t, "name", str(t)) for t in bound_tools]
+        _tool_names_cache[platform] = _tool_names_cache[cache_key]
 
         api_key = os.getenv("OPENAI_API_KEY") or settings.OPENAI_API_KEY
         llm = _build_llm_with_fallbacks(api_key)
@@ -663,28 +696,60 @@ async def get_mcp_response(
     on success, or None when MCP is unavailable so the caller can fall back
     to the legacy redirect-link / NourishBot-bot flow.
     """
+    async with AsyncSessionLocal() as db:
+        policy = await current_policy(db, platform)
+    confirmation_turn = _is_confirmation_intent(user_message)
+    if policy.state == CapabilityState.DISABLED:
+        return f"{platform} is currently disabled. Please choose another provider."
+    if policy.mode == ProviderMode.HANDOFF and confirmation_turn:
+        url = provider_handoff_url(platform)
+        if not url:
+            return f"{platform} handoff is not configured right now. No order was placed."
+        return (
+            f"{platform} is in Mode B (user-controlled handoff). Complete and verify the scheduled "
+            f"checkout on the provider's own page: {url}"
+        )
     if not settings.MCP_ENABLED:
+        if policy.mode == ProviderMode.HANDOFF:
+            url = provider_handoff_url(platform)
+            return f"{platform} is available through Mode B handoff: {url}" if url else None
         return None
     try:
         agent = await _build_agent(
             platform,
             allow_transaction=(
                 settings.MCP_TRANSACTIONAL_ENABLED
-                and _is_confirmation_intent(user_message)
+                and confirmation_turn
             ),
         )
     except Exception as e:
-        logger.error("MCP agent: build failed: %s", e, exc_info=True)
+        logger.error("MCP agent: build failed: %s", redact_text(str(e)))
         return None
 
     if agent is None:
         return None
 
+    policy = _policy_cache.get(platform, policy)
+    if confirmation_turn and not (
+        settings.MCP_TRANSACTIONAL_ENABLED and policy.allows_transactional_mode
+    ):
+        if policy.mode == ProviderMode.HANDOFF:
+            url = provider_handoff_url(platform)
+            return (
+                f"{platform} is in Mode B (user-controlled handoff). Complete checkout here: {url}"
+                if url
+                else f"{platform} handoff is not configured. No order was placed."
+            )
+        return (
+            f"{platform} is in Mode A (discovery only). Scheduled transactional ordering is not "
+            "verified, so I did not submit an order."
+        )
+
     # Cheap deterministic guard for greetings — skip a tool call.
     if _is_greeting(user_message):
         plat_label = platform
         reply = (
-            f"Hey {user_name or 'there'}! 👋 I'm connected to *{plat_label}* now. "
+            f"Hey {user_name or 'there'}! 👋 *{plat_label}* is in {policy.mode.value.title()} mode. "
             "Tell me what cuisine you're craving or share your area / pin code."
         )
         session = await get_session(chat_id, channel_type)
@@ -707,12 +772,13 @@ async def get_mcp_response(
     saved_context = _extract_last_mcp_context(full_history)
     normalized_user_message = _normalize_followup_selection(user_message, full_history)
     provider_attempt_id: str | None = None
-    if settings.MCP_TRANSACTIONAL_ENABLED and _is_confirmation_intent(user_message):
+    if settings.MCP_TRANSACTIONAL_ENABLED and confirmation_turn and policy.allows_transactional_mode:
         attempt, prior_state = await _start_provider_attempt(
             platform=platform,
             channel_type=channel_type,
             chat_id=chat_id,
             fingerprint_source=f"{saved_context}\n{normalized_user_message.strip().lower()}",
+            policy=policy,
         )
         provider_attempt_id = attempt.id if attempt else None
         if prior_state == "confirmed":
@@ -723,9 +789,27 @@ async def get_mcp_response(
                 f"Your {platform} request has an uncertain outcome and is being verified. "
                 "I won't submit it again until its status is reconciled."
             )
+        if prior_state == "reconcile_required" and attempt:
+            reconciliation = await reconcile_attempt(attempt.id)
+            if reconciliation.outcome == "CONFIRMED":
+                order_hint = f" Order ID: {reconciliation.provider_order_id}." if reconciliation.provider_order_id else ""
+                return f"The earlier {platform} request is confirmed.{order_hint}"
+            if reconciliation.outcome == "UNKNOWN":
+                return (
+                    f"Your earlier {platform} request is still uncertain. I checked its status and "
+                    "will not retry until the provider returns a definitive result."
+                )
+            attempt, _ = await _start_provider_attempt(
+                platform=platform,
+                channel_type=channel_type,
+                chat_id=chat_id,
+                fingerprint_source=f"{saved_context}\n{normalized_user_message.strip().lower()}",
+                policy=policy,
+            )
+            provider_attempt_id = attempt.id if attempt else None
 
     # Build system prompt
-    system_content = _system_prompt(platform, user_name)
+    system_content = _system_prompt(platform, user_name, policy)
     
     # Enhance system prompt with valid saved addresses on each turn
     # This ensures the model always has fresh, correct address_ids to work with
@@ -746,7 +830,7 @@ async def get_mcp_response(
             chosen_tools = filtered_tools or live_tools
             _tool_names_cache[platform] = [getattr(t, "name", str(t)) for t in chosen_tools]
     except Exception as e:
-        logger.debug("MCP[%s]: could not prefetch tools for context: %s", platform, e)
+        logger.debug("MCP[%s]: could not prefetch tools for context: %s", platform, redact_text(str(e)))
 
     messages: list = [SystemMessage(content=system_content)]
     tool_names = _tool_names_cache.get(platform) or []
@@ -823,11 +907,13 @@ async def get_mcp_response(
             )
         else:
             await _finish_provider_attempt(provider_attempt_id, status="FAILED", error=str(e))
-            logger.error("MCP[%s] invoke failed chat=%s: %s", platform, chat_id, e, exc_info=True)
+            logger.error("MCP[%s] invoke failed chat=%s: %s", platform, chat_id, redact_text(str(e)))
             from app.agent.mcp_clients import reset_platform_cache
             await reset_platform_cache(platform)
-            _agent_cache.pop(platform, None)
-            _tool_names_cache.pop(platform, None)
+            for cache in (_agent_cache, _tool_names_cache):
+                for key in list(cache):
+                    if key == platform or key.startswith(f"{platform}:"):
+                        cache.pop(key, None)
             return None
 
     if result is None:
@@ -839,6 +925,9 @@ async def get_mcp_response(
     tool_call_count = 0
     transaction_called = False
     provider_order_id: str | None = None
+    tool_receipt_records: list[dict[str, Any]] = []
+    pending_tool_records: dict[str, dict[str, Any]] = {}
+    pending_tool_order: list[dict[str, Any]] = []
     
     if out_messages:
         for i, m in enumerate(out_messages):
@@ -855,6 +944,29 @@ async def get_mcp_response(
                     )
                     tool_call_count += 1
                     transaction_called = transaction_called or _is_transaction_tool(str(tc_name))
+                    tc_id = (
+                        tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                    )
+                    operation = (
+                        "TRANSACTION"
+                        if _is_transaction_tool(str(tc_name))
+                        else "CANCEL_ORDER"
+                        if is_cancel_tool(str(tc_name))
+                        else "GET_ORDER_STATUS"
+                        if is_status_tool(str(tc_name))
+                        else "DISCOVERY"
+                    )
+                    receipt_record = {
+                        "operation": operation,
+                        "tool_name": str(tc_name),
+                        "request": tc_args if isinstance(tc_args, dict) else {"value": str(tc_args)},
+                        "response": {},
+                        "outcome": "NO_RESPONSE",
+                    }
+                    tool_receipt_records.append(receipt_record)
+                    pending_tool_order.append(receipt_record)
+                    if tc_id:
+                        pending_tool_records[str(tc_id)] = receipt_record
                     # Extra focus on address/location args
                     if isinstance(tc_args, dict):
                         for k, v in tc_args.items():
@@ -874,6 +986,17 @@ async def get_mcp_response(
                         or provider_order_id
                         or ""
                     ).strip() or None
+                tool_call_id = getattr(m, "tool_call_id", None)
+                receipt_record = pending_tool_records.get(str(tool_call_id)) if tool_call_id else None
+                if receipt_record is None:
+                    receipt_record = next(
+                        (record for record in pending_tool_order if record["outcome"] == "NO_RESPONSE"),
+                        None,
+                    )
+                if receipt_record is not None:
+                    receipt_record["response"] = payload or {"text": redact_text(str(content))[:2000]}
+                    receipt_record["outcome"] = "RETURNED"
+                    receipt_record["provider_order_id"] = provider_order_id
                 logger.debug(
                     "MCP[%s] msg[%d] TOOL_RESULT — chars=%d",
                     platform, i, len(str(content)),
@@ -885,7 +1008,7 @@ async def get_mcp_response(
                     detected_address_error = True
                     logger.warning(
                         "MCP[%s] msg[%d] detected address/menu error: %s",
-                        platform, i, content_str[:100],
+                        platform, i, redact_text(content_str[:100]),
                     )
             elif mtype in ("ai", "AIMessage", "assistant") and content:
                 logger.debug(
@@ -940,6 +1063,27 @@ async def get_mcp_response(
                 status="FAILED",
                 error="Confirmation turn did not invoke a transactional provider tool",
             )
+
+    try:
+        await persist_tool_receipts(
+            provider=platform,
+            mode=policy.mode.value,
+            channel_type=channel_type,
+            external_chat_id=chat_id,
+            records=tool_receipt_records,
+            attempt_id=provider_attempt_id,
+            capability_version_id=policy.version_id,
+            tool_schema_hash=policy.tool_schema_hash,
+        )
+    except Exception as exc:
+        # A confirmed transaction already has its minimal receipt on the
+        # ProviderAttempt. Do not turn a successful provider call into a retry.
+        logger.error(
+            "MCP[%s] receipt persistence failed chat=%s: %s",
+            platform,
+            chat_id,
+            redact_text(str(exc)),
+        )
 
     context_update = _build_context_from_messages(out_messages or [])
 

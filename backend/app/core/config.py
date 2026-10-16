@@ -242,8 +242,6 @@ class Settings:
             self.OUTBOX_MAX_ATTEMPTS,
         ) <= 0:
             missing.append("scheduler/outbox limits(positive integers)")
-        if self.is_production and self.MCP_TRANSACTIONAL_ENABLED:
-            missing.append("MCP_TRANSACTIONAL_ENABLED(false until provider capability verification is implemented)")
         if missing:
             raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 

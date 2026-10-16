@@ -111,6 +111,9 @@ Release-critical controls include:
 - Mandatory explicit confirmation
 - Database price and availability revalidation
 - Discovery-only MCP access by default; transactional tools stay disabled until provider capability verification exists
+- Immutable provider capability versions with exact tool-schema hashes and `UNVERIFIED`, `VERIFIED`, `DEGRADED`, or `DISABLED` state
+- Explicit Mode A discovery, Mode B user-controlled handoff, and verified Mode C transactional behavior shown to chat users
+- Append-only redacted provider receipts plus status-before-retry reconciliation for every uncertain outcome
 - One-time confirmation snapshots, stable idempotency keys, and durable unknown-outcome records
 - A strict customer-chat tool allowlist that blocks staff mutations before database access
 - Tenant-scoped staff APIs and authenticated WebSocket subscriptions
@@ -141,6 +144,8 @@ Release-critical controls include:
 | `/api/v1/customer/privacy*` | View consent, change consent, export memory, or permanently delete memory |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
 | `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
+| `/api/v1/providers/capabilities` | Staff-visible provider modes, verified capabilities, and schema versions |
+| `/api/v1/providers/attempts*` | Manager-only provider receipts, tracking, cancellation, and reconciliation |
 | `/login` | Customer signup, password sign-in, Google OAuth, and existing staff sign-in |
 | `/account` | Non-privileged customer account home |
 | `/workspace` | Authenticated staff role selection; customer accounts redirect to `/account` |

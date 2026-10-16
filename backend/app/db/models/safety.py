@@ -1,6 +1,6 @@
 """Safety records for confirmation-bound ordering and provider reconciliation."""
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -47,17 +47,30 @@ class ProviderAttempt(Base, RestaurantMixin):
     channel_type = Column(Text, nullable=False)
     external_chat_id = Column(Text, nullable=False, index=True)
     operation = Column(Text, nullable=False)
+    mode = Column(Text, nullable=False, server_default="DISCOVERY")
+    capability_version_id = Column(
+        BigInteger,
+        ForeignKey("provider_capability_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    tool_schema_hash = Column(Text, nullable=True)
     idempotency_key = Column(Text, nullable=False)
     request_fingerprint = Column(Text, nullable=False)
-    status = Column(Text, nullable=False, index=True)  # SUBMITTING|CONFIRMED|FAILED|UNKNOWN
+    status = Column(Text, nullable=False, index=True)  # SUBMITTING|CONFIRMED|FAILED|UNKNOWN|CANCELLED
     attempt_count = Column(Integer, nullable=False, default=1, server_default="1")
     provider_request_id = Column(Text, nullable=True)
     provider_order_id = Column(Text, nullable=True)
     response_excerpt = Column(Text, nullable=True)
     receipt_json = Column(JSONB, nullable=True)
+    response_hash = Column(Text, nullable=True)
     last_error = Column(Text, nullable=True)
     next_retry_at = Column(DateTime(timezone=True), nullable=True)
     reconciled_at = Column(DateTime(timezone=True), nullable=True)
+    reconciliation_required = Column(Boolean, nullable=False, server_default="false")
+    reconciliation_count = Column(Integer, nullable=False, server_default="0")
+    last_reconciliation_at = Column(DateTime(timezone=True), nullable=True)
+    next_action = Column(Text, nullable=True)
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

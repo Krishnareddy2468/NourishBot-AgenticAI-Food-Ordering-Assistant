@@ -35,6 +35,8 @@ from app.db.models import (
     ScheduledJob,
     ScheduledJobAttempt,
     SchedulerHeartbeat,
+    ProviderCapabilityVersion,
+    ProviderReceipt,
 )
 
 __all__ = [
@@ -70,4 +72,6 @@ __all__ = [
     "ScheduledJob",
     "ScheduledJobAttempt",
     "SchedulerHeartbeat",
+    "ProviderCapabilityVersion",
+    "ProviderReceipt",
 ]

@@ -113,8 +113,14 @@ async def _process_message(wa_id: str, user_name: str, text: str) -> None:
                 {"ordering_platform": selected},
                 channel_type="WHATSAPP",
             )
+            if selected == "NourishBot":
+                mode_text = "Mode C in-house scheduling"
+            else:
+                from app.providers.service import provider_experience
+                experience = await provider_experience(selected)
+                mode_text = experience["mode_label"]
             reply = (
-                f"{selected} selected. Tell me the meal and the future date, time, "
+                f"{selected} selected ({mode_text}). Tell me the meal and the future date, time, "
                 "and timezone you want. Instant ordering is disabled."
             )
         else:
