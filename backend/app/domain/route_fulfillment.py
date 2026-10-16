@@ -272,6 +272,7 @@ def decide_provider_fulfillment(
     requested_type: str,
     place_id: str,
     restaurant_name: str,
+    transactional_release_enabled: bool = False,
 ) -> FulfillmentDecision:
     """Require matching, verified provider evidence; safely downgrade drive-through."""
     requested = normalize_fulfillment_type(requested_type)
@@ -287,7 +288,7 @@ def decide_provider_fulfillment(
     }[requested]
 
     if verified_policy and restaurant_matches and future_available and capability and requested in supported:
-        checkout_eligible = policy.allows_transactional_mode
+        checkout_eligible = transactional_release_enabled and policy.allows_transactional_mode
         return FulfillmentDecision(
             requested.value,
             requested.value,
@@ -310,7 +311,7 @@ def decide_provider_fulfillment(
             and FulfillmentType.PICKUP in supported
         )
         if pickup_verified:
-            checkout_eligible = policy.allows_transactional_mode
+            checkout_eligible = transactional_release_enabled and policy.allows_transactional_mode
             return FulfillmentDecision(
                 requested.value,
                 FulfillmentType.PICKUP.value,
@@ -320,7 +321,7 @@ def decide_provider_fulfillment(
                 (
                     "Drive-through could not be verified; using ordinary scheduled pickup instead."
                     if checkout_eligible
-                    else "Drive-through could not be verified. Ordinary pickup is verified, but checkout must continue in the provider experience."
+                    else "Drive-through could not be verified. Ordinary scheduled pickup is verified, but checkout must continue in the provider experience."
                 ),
             )
 

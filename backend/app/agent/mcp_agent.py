@@ -416,7 +416,11 @@ def _get_build_lock() -> asyncio.Lock:
 
 def _system_prompt(platform: str, user_name: str, policy: ProviderPolicy) -> str:
     plat_label = platform or "external delivery platform"
-    if policy.mode == ProviderMode.TRANSACTIONAL and policy.allows_transactional_mode:
+    if (
+        settings.provider_transactions_enabled(platform)
+        and policy.mode == ProviderMode.TRANSACTIONAL
+        and policy.allows_transactional_mode
+    ):
         provider_mode = (
             "MODE C — VERIFIED TRANSACTIONAL: mutation tools are exposed only on an explicit "
             "confirmation turn and must return a verifiable receipt."
@@ -718,7 +722,7 @@ async def get_mcp_response(
         agent = await _build_agent(
             platform,
             allow_transaction=(
-                settings.MCP_TRANSACTIONAL_ENABLED
+                settings.provider_transactions_enabled(platform)
                 and confirmation_turn
             ),
         )
@@ -731,7 +735,7 @@ async def get_mcp_response(
 
     policy = _policy_cache.get(platform, policy)
     if confirmation_turn and not (
-        settings.MCP_TRANSACTIONAL_ENABLED and policy.allows_transactional_mode
+        settings.provider_transactions_enabled(platform) and policy.allows_transactional_mode
     ):
         if policy.mode == ProviderMode.HANDOFF:
             url = provider_handoff_url(platform)
@@ -772,7 +776,7 @@ async def get_mcp_response(
     saved_context = _extract_last_mcp_context(full_history)
     normalized_user_message = _normalize_followup_selection(user_message, full_history)
     provider_attempt_id: str | None = None
-    if settings.MCP_TRANSACTIONAL_ENABLED and confirmation_turn and policy.allows_transactional_mode:
+    if settings.provider_transactions_enabled(platform) and confirmation_turn and policy.allows_transactional_mode:
         attempt, prior_state = await _start_provider_attempt(
             platform=platform,
             channel_type=channel_type,

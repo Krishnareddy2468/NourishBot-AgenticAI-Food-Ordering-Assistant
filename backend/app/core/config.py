@@ -22,6 +22,7 @@ class Settings:
     LOGS_DIR:     Path = ROOT_DIR / "logs"
     LOG_FILE:     Path = ROOT_DIR / "logs" / "nourishbot.log"
     LOG_LEVEL:    str  = os.getenv("LOG_LEVEL", "INFO").upper()
+    LOG_FORMAT:   str  = os.getenv("LOG_FORMAT", "json" if ENVIRONMENT == "production" else "text").lower()
     CREDS_PATH:   Path = ROOT_DIR / "config" / "credentials.json"
 
     # ── Redis ─────────────────────────────────────────────────────────────────
@@ -93,6 +94,11 @@ class Settings:
     # MCP agent instead of just opening external app links.
     MCP_ENABLED: bool = os.getenv("MCP_ENABLED", "false").lower() in ("1", "true", "yes")
     MCP_TRANSACTIONAL_ENABLED: bool = os.getenv("MCP_TRANSACTIONAL_ENABLED", "false").lower() in ("1", "true", "yes")
+    # Final kill switch. External provider mutations require both flags. Keep
+    # this false until the Phase 8 production evidence gate passes.
+    PUBLIC_TRANSACTIONAL_RELEASE: bool = os.getenv(
+        "PUBLIC_TRANSACTIONAL_RELEASE", "false"
+    ).lower() in ("1", "true", "yes")
     # Path to the npx executable used to spawn mcp-remote. Override if your
     # node install lives somewhere unusual. mcp-remote handles OAuth on its
     # own loopback callback and caches tokens under ~/.mcp-auth/ by default.
@@ -148,6 +154,16 @@ class Settings:
     OUTBOX_RETRY_BASE_SECONDS: int = int(os.getenv("OUTBOX_RETRY_BASE_SECONDS", "5"))
     OUTBOX_RETRY_MAX_SECONDS: int = int(os.getenv("OUTBOX_RETRY_MAX_SECONDS", "300"))
 
+    # ── Operations and release evidence ──────────────────────────────────────
+    EXPECTED_ALEMBIC_HEAD: str = os.getenv("EXPECTED_ALEMBIC_HEAD", "0016").strip()
+    MONITORING_ALERTS_ENABLED: bool = os.getenv(
+        "MONITORING_ALERTS_ENABLED", "false"
+    ).lower() in ("1", "true", "yes")
+    RELEASE_EVIDENCE_FILE: str = os.getenv("RELEASE_EVIDENCE_FILE", "").strip()
+    ALERT_SCHEDULER_LAG_SECONDS: int = int(os.getenv("ALERT_SCHEDULER_LAG_SECONDS", "300"))
+    ALERT_OUTBOX_LAG_SECONDS: int = int(os.getenv("ALERT_OUTBOX_LAG_SECONDS", "300"))
+    ALERT_DEAD_LETTER_COUNT: int = int(os.getenv("ALERT_DEAD_LETTER_COUNT", "1"))
+
     # ── FastAPI ────────────────────────────────────────────────────────────────
     PORT:          int = int(os.getenv("PORT", "8000"))
     API_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
@@ -181,6 +197,43 @@ class Settings:
     @property
     def google_oauth_enabled(self) -> bool:
         return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET and self.GOOGLE_REDIRECT_URI)
+
+    @property
+    def external_transactions_enabled(self) -> bool:
+        """Report whether any provider is approved for external mutations."""
+        return any(
+            self.provider_transactions_enabled(provider)
+            for provider in ("SWIGGY", "ZOMATO")
+        )
+
+    def provider_transactions_enabled(self, provider: str) -> bool:
+        """Require passing evidence for the exact provider being mutated.
+
+        The evidence file is deliberately evaluated at the point of use so a
+        missing, malformed, or expired artifact closes the gate without relying
+        on an operator to inspect the readiness endpoint first.
+        """
+        if not (
+            self.is_production
+            and self.MONITORING_ALERTS_ENABLED
+            and self.MCP_TRANSACTIONAL_ENABLED
+            and self.PUBLIC_TRANSACTIONAL_RELEASE
+        ):
+            return False
+        if not self.RELEASE_EVIDENCE_FILE:
+            return False
+        try:
+            from app.operations.release_gate import evaluate_release_evidence, load_release_evidence
+
+            evidence = load_release_evidence(self.RELEASE_EVIDENCE_FILE)
+            if not evaluate_release_evidence(evidence)["release_gate_passed"]:
+                return False
+            provider_record = (evidence.get("provider_contracts") or {}).get(provider.upper()) or {}
+            # The full evaluator has already checked the live sandbox result,
+            # schema hash, and freshness for every TRANSACTIONAL record.
+            return str(provider_record.get("mode") or "").upper() == "TRANSACTIONAL"
+        except (OSError, ValueError, TypeError, KeyError):
+            return False
 
     # ── Synthetic canteen information ──────────────────────────────────────────
     RESTAURANT_NAME:     str = "NourishBot Demo Canteen"
@@ -222,6 +275,8 @@ class Settings:
             missing.append("ALLOWED_ORIGINS(explicit production origins)")
         if self.AUTH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
             missing.append("AUTH_COOKIE_SAMESITE(lax|strict|none)")
+        if self.LOG_FORMAT not in {"text", "json"}:
+            missing.append("LOG_FORMAT(text|json)")
         if bool(self.GOOGLE_CLIENT_ID) != bool(self.GOOGLE_CLIENT_SECRET):
             missing.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (configure both or neither)")
         if self.OAUTH_STATE_TTL_SECONDS <= 0:
@@ -258,6 +313,21 @@ class Settings:
             missing.append("scheduler/outbox limits(positive integers)")
         if self.ROUTINE_MATERIALIZATION_HORIZON_DAYS > self.MEAL_PLAN_MAX_HORIZON_DAYS:
             missing.append("ROUTINE_MATERIALIZATION_HORIZON_DAYS(<= MEAL_PLAN_MAX_HORIZON_DAYS)")
+        if min(
+            self.ALERT_SCHEDULER_LAG_SECONDS,
+            self.ALERT_OUTBOX_LAG_SECONDS,
+            self.ALERT_DEAD_LETTER_COUNT,
+        ) <= 0:
+            missing.append("operations alert thresholds(positive integers)")
+        if self.PUBLIC_TRANSACTIONAL_RELEASE:
+            if not self.is_production:
+                missing.append("PUBLIC_TRANSACTIONAL_RELEASE(requires ENVIRONMENT=production)")
+            if not self.MCP_TRANSACTIONAL_ENABLED:
+                missing.append("MCP_TRANSACTIONAL_ENABLED(required for transactional release)")
+            if not self.MONITORING_ALERTS_ENABLED:
+                missing.append("MONITORING_ALERTS_ENABLED(required for transactional release)")
+            if not self.RELEASE_EVIDENCE_FILE:
+                missing.append("RELEASE_EVIDENCE_FILE(required for transactional release)")
         if missing:
             raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 

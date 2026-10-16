@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -122,6 +123,45 @@ api.add_middleware(
 
 
 @api.middleware("http")
+async def request_observability(request: Request, call_next):
+    """Attach a correlation id and emit one structured, payload-free access event."""
+    supplied = request.headers.get("x-request-id", "").strip()
+    request_id = supplied[:64] if supplied and supplied.replace("-", "").isalnum() else uuid.uuid4().hex
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        route = request.scope.get("route")
+        logger.exception(
+            "Unhandled request failure",
+            extra={
+                "event": "http_request_failed",
+                "request_id": request_id,
+                "method": request.method,
+                # Use the route template, never a URL that may contain a
+                # tracking token, order reference, or another identifier.
+                "path": getattr(route, "path", "unmatched"),
+            },
+        )
+        raise
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    route = request.scope.get("route")
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "Request completed",
+        extra={
+            "event": "http_request_completed",
+            "request_id": request_id,
+            "method": request.method,
+            "path": getattr(route, "path", "unmatched"),
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+    return response
+
+
+@api.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -174,7 +214,10 @@ async def rate_limit(request: Request, call_next):
     try:
         from app.core.redis_client import get_redis
         redis = await get_redis()
-        if redis is not None:
+        if redis is None:
+            if settings.is_production:
+                return JSONResponse(status_code=503, content={"detail": "Request protection is unavailable"})
+        else:
             client = request.client.host if request.client else "unknown"
             minute = int(time.time() // 60)
             key = f"rate:{bucket}:{client}:{minute}"
@@ -189,6 +232,8 @@ async def rate_limit(request: Request, call_next):
                 )
     except Exception as exc:
         logger.warning("Rate limiter unavailable: %s", exc)
+        if settings.is_production:
+            return JSONResponse(status_code=503, content={"detail": "Request protection is unavailable"})
     return await call_next(request)
 
 
@@ -212,6 +257,7 @@ from app.api.routes.meal_plans import router as meal_plans_router
 from app.api.routes.fulfillment import router as fulfillment_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.analytics import router as analytics_router
+from app.api.routes.operations import router as operations_router
 
 api.include_router(auth_router)
 api.include_router(menu_router)
@@ -231,6 +277,7 @@ api.include_router(meal_plans_router)
 api.include_router(fulfillment_router)
 api.include_router(dashboard_router)
 api.include_router(analytics_router)
+api.include_router(operations_router)
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────

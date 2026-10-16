@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import ConfirmationChallenge
+from app.domain.scheduling import normalize_scheduled_time
 
 
 def is_explicit_confirmation(message: str) -> bool:
@@ -26,9 +27,10 @@ def is_explicit_confirmation(message: str) -> bool:
 
 def normalize_schedule(value: str) -> str:
     parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        raise ValueError("Scheduled time must include a timezone.")
-    return parsed.astimezone(timezone.utc).isoformat()
+    try:
+        return normalize_scheduled_time(parsed).isoformat()
+    except ValueError as exc:
+        raise ValueError("Scheduled time must include a timezone.") from exc
 
 
 def build_snapshot(*, ctx: Any, args: dict, items: list[dict]) -> dict:

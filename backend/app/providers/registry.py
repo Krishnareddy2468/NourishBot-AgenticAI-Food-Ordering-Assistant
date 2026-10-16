@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from app.core.config import settings
 from app.db.models import ProviderCapabilityVersion
 from app.providers.base import CapabilityState, ProviderCapabilities, ProviderMode, ProviderPolicy
 from app.providers.redaction import content_hash
@@ -197,6 +198,9 @@ def tool_allowed(policy: ProviderPolicy, tool: Any, *, transaction_turn: bool) -
 
 
 def public_policy(policy: ProviderPolicy) -> dict[str, Any]:
+    ordering_available = bool(
+        settings.provider_transactions_enabled(policy.provider) and policy.allows_transactional_mode
+    )
     return {
         "provider": policy.provider,
         "version": policy.version,
@@ -205,4 +209,6 @@ def public_policy(policy: ProviderPolicy) -> dict[str, Any]:
         "capabilities": policy.capabilities.as_dict(),
         "tool_schema_hash": policy.tool_schema_hash,
         "adapter_version": policy.adapter_version,
+        "ordering_available": ordering_available,
+        "release_gate": "OPEN" if ordering_available else "SAFE_MODE",
     }

@@ -19,10 +19,15 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --from=builder /app/frontend/.next/standalone ./
-COPY --from=builder /app/frontend/.next/static ./frontend/.next/static
-COPY --from=builder /app/frontend/public ./frontend/public
+COPY --from=builder --chown=node:node /app/frontend/.next/standalone ./
+COPY --from=builder --chown=node:node /app/frontend/.next/static ./frontend/.next/static
+COPY --from=builder --chown=node:node /app/frontend/public ./frontend/public
 
 EXPOSE 3000
+
+USER node
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1
 
 CMD ["node", "frontend/server.js"]

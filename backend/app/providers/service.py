@@ -23,11 +23,16 @@ async def provider_experience(provider: str) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         policy = await current_policy(db, provider)
     result = public_policy(policy)
-    result["mode_label"] = {
+    declared_label = {
         ProviderMode.DISCOVERY: "Mode A — discovery",
         ProviderMode.HANDOFF: "Mode B — user-controlled handoff",
         ProviderMode.TRANSACTIONAL: "Mode C — verified transactional",
     }[policy.mode]
+    result["mode_label"] = (
+        declared_label
+        if result["ordering_available"] or policy.mode != ProviderMode.TRANSACTIONAL
+        else "Mode A — safe discovery (transactional release gate closed)"
+    )
     result["handoff_url"] = provider_handoff_url(provider) if policy.mode == ProviderMode.HANDOFF else None
     return result
 
@@ -182,6 +187,7 @@ async def verify_selected_fulfillment(
             requested_type=requested.value,
             place_id=place_id,
             restaurant_name=restaurant_name,
+            transactional_release_enabled=settings.provider_transactions_enabled(provider),
         )
         outcome = "VERIFIED" if decision.provider_verified else "INCONCLUSIVE"
     except Exception as exc:

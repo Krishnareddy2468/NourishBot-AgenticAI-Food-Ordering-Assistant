@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.api.routes.providers import router as providers_router
+from app.core.config import settings
 from app.db.models import ProviderCapabilityVersion, ProviderReceipt
 from app.providers.base import CapabilityState, ProviderCapabilities, ProviderMode, ProviderPolicy
 from app.providers.mcp_adapter import MCPProviderAdapter
@@ -136,7 +137,12 @@ def test_provider_redaction_removes_nested_credentials_contact_and_payment_data(
 
 
 @pytest.mark.asyncio
-async def test_mode_c_without_provider_order_id_returns_unknown_not_success():
+async def test_mode_c_without_provider_order_id_returns_unknown_not_success(monkeypatch):
+    monkeypatch.setattr(
+        type(settings),
+        "provider_transactions_enabled",
+        lambda _self, _provider: True,
+    )
     capabilities = ProviderCapabilities(
         scheduled_ordering=True,
         order_status_lookup=True,
@@ -158,6 +164,30 @@ async def test_mode_c_without_provider_order_id_returns_unknown_not_success():
     })
     assert result.outcome == "UNKNOWN"
     assert result.provider_order_id is None
+
+
+@pytest.mark.asyncio
+async def test_adapter_refuses_submission_while_public_release_gate_is_closed(monkeypatch):
+    monkeypatch.setattr(
+        type(settings),
+        "provider_transactions_enabled",
+        lambda _self, _provider: False,
+    )
+    capabilities = ProviderCapabilities(
+        scheduled_ordering=True,
+        order_status_lookup=True,
+        stable_idempotency=True,
+    )
+    adapter = MCPProviderAdapter(
+        "Zomato",
+        [Tool("place_order", {"scheduled_for": {}, "idempotency_key": {}}, {"order_id": "P-7"})],
+        policy(mode="TRANSACTIONAL", state="VERIFIED", capabilities=capabilities),
+    )
+    with pytest.raises(RuntimeError, match="release gate is closed"):
+        await adapter.submit_scheduled_order({
+            "scheduled_for": "2026-10-20T13:00:00+05:30",
+            "idempotency_key": "stable-key",
+        })
 
 
 @pytest.mark.asyncio

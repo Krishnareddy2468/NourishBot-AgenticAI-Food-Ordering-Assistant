@@ -264,7 +264,7 @@ export default function EditorialSections() {
 
       <footer className="ed-footer">
         <NourishLogo className="nourish-logo-footer" tagline="Meals that fit your day." />
-        <nav aria-label="Footer navigation"><a href="#how-it-works">How it works</a><a href="#discover">Discover</a><a href="#meal-planning">Meal planning</a><Link href="/login">Sign in</Link></nav>
+        <nav aria-label="Footer navigation"><a href="#how-it-works">How it works</a><a href="#discover">Discover</a><a href="#meal-planning">Meal planning</a><Link href="/privacy">Privacy</Link><Link href="/login">Sign in</Link></nav>
         <p>Discovery information is verified through connected services where available. A plan or provider handoff is not a placed order until you explicitly confirm it.</p>
         <span className="ed-footer-copy">© 2026 NourishBot</span>
       </footer>

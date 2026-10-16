@@ -59,11 +59,17 @@ USER nourishbot
 #                        MCP_AUTH_DIR and mount the OAuth cache securely
 ENV PORT=8000 \
     LOG_LEVEL=INFO \
+    LOG_FORMAT=json \
     MCP_ENABLED=false \
+    MCP_TRANSACTIONAL_ENABLED=false \
+    PUBLIC_TRANSACTIONAL_RELEASE=false \
     MCP_AUTH_DIR="" \
     NPX_BIN=npx
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=4).read()"
 
 # FastAPI is the entrypoint; it boots the Telegram bot in a background thread.
 CMD ["python", "main.py"]

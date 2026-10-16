@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytz
+
 from app.core.config import settings
 from app.db.models.scheduling import ScheduledJob
 
@@ -23,6 +25,27 @@ JOB_TYPES = {
 }
 ACTIVE_JOB_STATES = {"PENDING", "RETRY_WAIT", "LEASED"}
 TERMINAL_JOB_STATES = {"SUCCEEDED", "CANCELLED", "DEAD_LETTER"}
+
+
+def normalize_scheduled_time(value: datetime, timezone_name: str | None = None) -> datetime:
+    """Return an aware UTC time and reject ambiguous or nonexistent wall times.
+
+    A naive datetime is accepted only with an explicit IANA timezone. ``is_dst=None``
+    makes pytz reject both sides of a DST fold and times inside a DST gap.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc)
+    if not timezone_name:
+        raise ValueError("Naive scheduled times require an explicit IANA timezone")
+    try:
+        zone = pytz.timezone(timezone_name)
+    except pytz.UnknownTimeZoneError as exc:
+        raise ValueError("Unknown scheduling timezone") from exc
+    try:
+        localized = zone.localize(value, is_dst=None)
+    except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as exc:
+        raise ValueError("Scheduled wall time is ambiguous or does not exist") from exc
+    return localized.astimezone(timezone.utc)
 
 
 def retry_delay_seconds(

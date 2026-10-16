@@ -1,0 +1,48 @@
+{
+  "environment": "production",
+  "candidate_git_sha": "replace-with-full-sha",
+  "open_p0_findings": 0,
+  "open_p1_findings": 0,
+  "risk_acceptances": [],
+  "automated_validation": {
+    "confirmation_and_staleness": false,
+    "duplicate_suppression": false,
+    "scheduler_recovery_and_concurrency": false,
+    "timezone_and_dst": false,
+    "provider_unknown_reconciliation": false,
+    "cancellation_and_rescheduling": false,
+    "menu_revalidation": false,
+    "fulfillment_eligibility": false,
+    "tenant_and_authorization": false,
+    "privacy_lifecycle": false,
+    "budgets_and_routines": false,
+    "postgres_and_redis_integration": false,
+    "frontend_accessibility_and_e2e": false
+  },
+  "migration_rehearsal": {
+    "upgrade_passed": false,
+    "downgrade_passed": false,
+    "verified_at": ""
+  },
+  "backup_restore": {
+    "restore_passed": false,
+    "row_count_verified": false,
+    "checksum_verified": false,
+    "verified_at": ""
+  },
+  "monitoring": {
+    "active": false,
+    "test_alert_received": false,
+    "verified_at": ""
+  },
+  "deployment_smoke": {
+    "passed": false,
+    "rollback_rehearsed": false,
+    "verified_at": ""
+  },
+  "provider_contracts": {
+    "SWIGGY": { "mode": "DISCOVERY", "mutations_disabled": true },
+    "ZOMATO": { "mode": "DISCOVERY", "mutations_disabled": true }
+  },
+  "public_tracking_security": { "passed": false }
+}

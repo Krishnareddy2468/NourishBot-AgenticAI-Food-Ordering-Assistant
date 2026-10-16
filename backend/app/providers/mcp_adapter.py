@@ -102,6 +102,8 @@ class MCPProviderAdapter(ProviderAdapter):
         return AdapterResult("HANDOFF_READY", {"url": url, "context": context})
 
     async def submit_scheduled_order(self, request: dict[str, Any]) -> AdapterResult:
+        if not settings.provider_transactions_enabled(self.provider):
+            raise RuntimeError("Public transactional release gate is closed")
         tool = self._find(is_transaction_tool, transaction_turn=True)
         if tool is None:
             raise RuntimeError("Verified scheduled transaction capability is unavailable")

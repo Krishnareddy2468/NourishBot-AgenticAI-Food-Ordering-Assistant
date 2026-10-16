@@ -128,6 +128,9 @@ Release-critical controls include:
 - Authenticated customer dashboard for weekly plans, routines, preferences, privacy, budgets, provider status, and fulfillment history
 - Tenant-scoped staff analytics based on desired, submitted, and completed timestamps rather than browser event time
 - Append-only spending ledger used by both customer budget totals and completed-revenue reporting
+- Independent public-release kill switch: verified provider capability alone cannot enable external mutations
+- Structured request logging with correlation IDs and fail-closed production rate limiting/idempotency
+- Manager-only runtime readiness and alert view for migrations, Redis, scheduler, outbox, and provider reconciliation
 - One-time confirmation snapshots, stable idempotency keys, and durable unknown-outcome records
 - A strict customer-chat tool allowlist that blocks staff mutations before database access
 - Tenant-scoped staff APIs and authenticated WebSocket subscriptions
@@ -166,12 +169,14 @@ Release-critical controls include:
 | `/api/v1/customer/route-history` | Inspect or delete retained route-decision history |
 | `/api/v1/customer/dashboard` | Private customer calendar, controls, budget, spending, provider status, and order history |
 | `/api/v1/analytics/operations` | Manager-only tenant analytics for scheduling, providers, fulfillment, and completed revenue |
+| `/api/v1/operations/readiness` | Manager-only migration, dependency, queue, alert, evidence-gate, and safe-mode status |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
 | `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
 | `/api/v1/providers/capabilities` | Staff-visible provider modes, verified capabilities, and schema versions |
 | `/api/v1/providers/attempts*` | Manager-only provider receipts, tracking, cancellation, and reconciliation |
 | `/login` | Customer signup, password sign-in, Google OAuth, and existing staff sign-in |
 | `/account` | Private customer meal-planning, routine, privacy, budget, and order dashboard |
+| `/privacy` | Public explanation of data purposes, consent, retention, export, and deletion controls |
 | `/workspace` | Authenticated staff role selection; customer accounts redirect to `/account` |
 | `/admin` | Upcoming schedules, live operations, menu, and staff overview |
 | `/kitchen` | Activated order and item preparation queue |
@@ -182,6 +187,32 @@ Release-critical controls include:
 
 The frontend uses a shared warm cream, NourishBot orange, and deep green visual system across
 the public site, authentication, operations, kitchen, fulfillment, dispatch, and tracking experiences.
+
+## Phase 8 release validation
+
+External provider mutations require both `MCP_TRANSACTIONAL_ENABLED=true` and
+`PUBLIC_TRANSACTIONAL_RELEASE=true`. Keep the public-release switch false until production
+evidence passes `scripts/check_release_gate.py`. Discovery and user-controlled handoff remain the
+safe defaults.
+
+Run the reproducible local infrastructure rehearsal with:
+
+```bash
+make phase8-up
+make phase8-migrate
+make phase8-integration
+make phase8-migration-rehearsal
+make phase8-backup-restore
+make phase8-down
+```
+
+The production procedure, alert thresholds, secret rotation, restore drill, rollback process,
+support workflow, and evidence contract are documented in
+[`docs/operations/PRODUCTION_RELEASE_RUNBOOK.md`](docs/operations/PRODUCTION_RELEASE_RUNBOOK.md).
+The verified local result and the production-only evidence still required are recorded in
+[`docs/release/PHASE8_VALIDATION_STATUS.md`](docs/release/PHASE8_VALIDATION_STATUS.md).
+The gate intentionally refuses public transactional release when production backups, monitoring,
+provider contracts, smoke tests, or approvals have not been proven.
 
 ## Technology
 

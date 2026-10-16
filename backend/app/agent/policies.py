@@ -105,9 +105,18 @@ class RestaurantPolicy:
         tz = pytz.timezone(self.timezone)
         current = now or datetime.now(tz)
         if current.tzinfo is None:
-            current = tz.localize(current)
-        if scheduled_for.tzinfo is None:
-            scheduled_for = tz.localize(scheduled_for)
+            try:
+                current = tz.localize(current, is_dst=None)
+            except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError):
+                return False, "Current local time is ambiguous or does not exist."
+        try:
+            from app.domain.scheduling import normalize_scheduled_time
+            scheduled_for = normalize_scheduled_time(
+                scheduled_for,
+                self.timezone if scheduled_for.tzinfo is None else None,
+            )
+        except ValueError as exc:
+            return False, str(exc)
 
         local_slot = scheduled_for.astimezone(tz)
         lead = timedelta(minutes=self.min_schedule_lead_minutes)

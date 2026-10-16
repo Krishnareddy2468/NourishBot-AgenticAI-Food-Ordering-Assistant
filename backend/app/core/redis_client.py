@@ -11,12 +11,20 @@ Provides a single async Redis instance for:
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 import redis.asyncio as aioredis
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 _pool: aioredis.Redis | None = None
+
+
+def _safe_redis_endpoint(value: str) -> str:
+    parsed = urlsplit(value)
+    host = parsed.hostname or "unknown"
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme or 'redis'}://{host}{port}{parsed.path or ''}"
 
 
 async def get_redis() -> aioredis.Redis | None:
@@ -34,7 +42,7 @@ async def get_redis() -> aioredis.Redis | None:
             retry_on_timeout=True,
         )
         await _pool.ping()
-        logger.info("Redis connected: %s", settings.REDIS_URL)
+        logger.info("Redis connected: %s", _safe_redis_endpoint(settings.REDIS_URL))
     except Exception as e:
         logger.warning("Redis unavailable (%s) — session cache disabled", e)
         _pool = None
@@ -100,11 +108,22 @@ async def claim_once(key: str, ttl_seconds: int = 86400) -> bool:
     """Atomically claim an event key. Returns False for duplicates."""
     r = await get_redis()
     if r is None:
-        # Keep the webhook available during a cache outage. Provider-side
-        # idempotency still applies, but duplicate suppression is degraded.
-        return True
+        # Production webhook processing fails closed when duplicate suppression
+        # cannot be proven. Development remains available for local demos.
+        return not settings.is_production
     try:
         return bool(await r.set(f"dedupe:{key}", "1", ex=ttl_seconds, nx=True))
     except Exception as e:
         logger.warning("Redis idempotency claim failed for %s: %s", key, e)
-        return True
+        return not settings.is_production
+
+
+async def release_claim(key: str) -> None:
+    """Release a claim after a pre-commit failure so a provider can retry."""
+    r = await get_redis()
+    if r is None:
+        return
+    try:
+        await r.delete(f"dedupe:{key}")
+    except Exception as e:
+        logger.warning("Redis idempotency claim release failed for %s: %s", key, e)

@@ -7,6 +7,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 FROM deps AS runner
 COPY backend .
-ENV PYTHONUNBUFFERED=1
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin nourishbot \
+    && mkdir -p /app/logs /app/storage \
+    && chown -R nourishbot:nourishbot /app
+USER nourishbot
+ENV PYTHONUNBUFFERED=1 \
+    LOG_FORMAT=json \
+    MCP_TRANSACTIONAL_ENABLED=false \
+    PUBLIC_TRANSACTIONAL_RELEASE=false
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=4).read()"
 CMD ["uvicorn", "app.api.main:api", "--host", "0.0.0.0", "--port", "8000"]

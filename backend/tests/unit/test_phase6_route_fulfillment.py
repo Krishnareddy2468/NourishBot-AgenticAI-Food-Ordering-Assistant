@@ -134,10 +134,28 @@ def test_drive_through_requires_explicit_provider_evidence():
         requested_type="DRIVE_THROUGH",
         place_id="place-7",
         restaurant_name="Highway Kitchen",
+        transactional_release_enabled=True,
     )
     assert verified.provider_verified is True
     assert verified.checkout_eligible is True
     assert verified.resolved_type == FulfillmentType.DRIVE_THROUGH.value
+
+
+def test_verified_provider_still_cannot_checkout_while_public_release_gate_is_closed():
+    decision = decide_provider_fulfillment(
+        provider_policy(transactional=True, delivery=True),
+        {
+            "restaurant": {"google_place_id": "place-7"},
+            "fulfillment_types": ["DELIVERY"],
+            "available_at_requested_time": True,
+        },
+        requested_type="DELIVERY",
+        place_id="place-7",
+        restaurant_name="Highway Kitchen",
+    )
+    assert decision.provider_verified is True
+    assert decision.checkout_eligible is False
+    assert decision.manual_selection_required is True
 
 
 def test_unverified_drive_through_falls_back_only_to_verified_pickup():
@@ -155,7 +173,7 @@ def test_unverified_drive_through_falls_back_only_to_verified_pickup():
     )
     assert fallback.provider_verified is True
     assert fallback.resolved_type == FulfillmentType.PICKUP.value
-    assert "ordinary scheduled pickup" in fallback.reason
+    assert "ordinary scheduled pickup" in fallback.reason.lower()
 
     manual = decide_provider_fulfillment(
         provider_policy(pickup=False, curbside_drive_through=False),

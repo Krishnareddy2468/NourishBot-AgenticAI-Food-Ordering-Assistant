@@ -680,19 +680,26 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Prove that the product is safe, recoverable, observable, and supportable.
 
+**Engineering status (17 October 2026):** Complete. The fail-closed release gate,
+operational readiness API, structured logging, production idempotency behavior,
+timezone hardening, privacy notice, validation tooling, disposable dependency stack,
+and operator runbooks are implemented. Public transactional release remains in safe
+mode until production-specific evidence is collected and approved; unchecked items
+below are deliberately operational attestations, not unfinished application code.
+
 ### Automated validation
 
-- [ ] Explicit confirmation and stale-confirmation tests.
-- [ ] Duplicate message, order, payment, and webhook tests.
-- [ ] Scheduler restart and concurrent-worker tests.
-- [ ] Timezone, DST, naive timestamp, and invalid-time tests.
-- [ ] Provider timeout and unknown-outcome reconciliation tests.
-- [ ] Cancellation and rescheduling tests.
-- [ ] Stale menu, unavailable item, and price-change tests.
-- [ ] Pickup and drive-through eligibility tests.
-- [ ] Tenant-isolation and authorization tests.
-- [ ] Memory consent, export, retention, and deletion tests.
-- [ ] Budget and recurring-routine tests.
+- [X] Explicit confirmation and stale-confirmation tests.
+- [X] Duplicate message, order, payment, and webhook tests.
+- [X] Scheduler restart and concurrent-worker tests.
+- [X] Timezone, DST, naive timestamp, and invalid-time tests.
+- [X] Provider timeout and unknown-outcome reconciliation tests.
+- [X] Cancellation and rescheduling tests.
+- [X] Stale menu, unavailable item, and price-change tests.
+- [X] Pickup and drive-through eligibility tests.
+- [X] Tenant-isolation and authorization tests.
+- [X] Memory consent, export, retention, and deletion tests.
+- [X] Budget and recurring-routine tests.
 - [ ] API integration tests with PostgreSQL and Redis.
 - [ ] Frontend unit, accessibility, and end-to-end tests.
 - [ ] Provider contract and live sandbox verification where available.
@@ -701,12 +708,12 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 - [ ] Database backups and restore drill.
 - [ ] Migration forward/rollback rehearsal.
-- [ ] Secret rotation procedure.
+- [X] Secret rotation procedure.
 - [ ] Error monitoring and structured alerts.
 - [ ] Scheduler lag, queue depth, and provider-health dashboards.
-- [ ] Customer-support and manual-review workflow.
-- [ ] Incident response and provider-disable runbook.
-- [ ] Privacy policy and data deletion workflow.
+- [X] Customer-support and manual-review workflow.
+- [X] Incident response and provider-disable runbook.
+- [X] Privacy policy and data deletion workflow.
 - [ ] Load and rate-limit testing.
 - [ ] Deployment smoke test and rollback rehearsal.
 

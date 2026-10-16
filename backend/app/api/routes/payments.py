@@ -8,6 +8,7 @@ from app.db.session import AsyncSessionLocal
 from app.db.models import Payment
 from app.payments.razorpay import create_payment_order, verify_webhook_signature
 from app.auth.deps import require_staff, tenant_id
+from app.core.redis_client import claim_once, release_claim
 from app.domain.order_state import transition_order
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
@@ -84,20 +85,36 @@ async def razorpay_webhook(request: Request):
 
     payload = await request.json()
     event = payload.get("event", "")
+    if event not in {"payment.captured", "payment.failed"}:
+        return {"ok": True, "ignored": True}
     payment_data = payload.get("payload", {}).get("payment", {}).get("entity", {})
 
     provider_payment_id = payment_data.get("id")
     provider_order_id = payment_data.get("order_id")
+    if not provider_payment_id or not provider_order_id:
+        raise HTTPException(422, "Payment webhook is missing provider identifiers")
     new_status = "CAPTURED" if event == "payment.captured" else "FAILED"
+    delivery_key = f"razorpay:{event}:{provider_payment_id or 'missing'}:{provider_order_id or 'missing'}"
+    if not await claim_once(delivery_key):
+        return {"ok": True, "duplicate": True}
 
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-        from app.db.models import Order
-        result = await session.execute(
-            select(Payment).where(Payment.provider_order_id == provider_order_id)
-        )
-        payment = result.scalar_one_or_none()
-        if payment:
+    committed = False
+    try:
+        async with AsyncSessionLocal() as session:
+            from sqlalchemy import select
+            from app.db.models import Order
+            result = await session.execute(
+                select(Payment)
+                .where(Payment.provider_order_id == provider_order_id)
+                .order_by(Payment.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            payment = result.scalar_one_or_none()
+            if not payment:
+                raise HTTPException(503, "Payment record is not ready; webhook should be retried")
+            if payment.status == "CAPTURED" and new_status != "CAPTURED":
+                return {"ok": True, "ignored": True, "reason": "stale_payment_state"}
             payment.status = new_status
             payment.provider_payment_id = provider_payment_id
             payment.provider_signature = payment_data.get("signature")
@@ -128,6 +145,7 @@ async def razorpay_webhook(request: Request):
                     order_advanced = True
 
             await session.commit()
+            committed = True
 
             # Publish payment event
             from app.realtime.events import payment_status_changed, order_status_changed
@@ -167,5 +185,9 @@ async def razorpay_webhook(request: Request):
                     except Exception as e:
                         import logging
                         logging.getLogger(__name__).warning("Customer notification failed: %s", e)
+    except Exception:
+        if not committed:
+            await release_claim(delivery_key)
+        raise
 
     return {"ok": True}

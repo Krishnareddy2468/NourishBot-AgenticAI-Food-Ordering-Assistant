@@ -202,9 +202,9 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                 wa_id = str(message.get("from") or "").strip()
                 message_id = str(message.get("id") or "").strip()
                 text = _message_text(message)
-                if wa_id and text and (
-                    not message_id or await claim_once(f"whatsapp:{message_id}")
-                ):
+                # Cloud API messages always carry an id. Without it we cannot
+                # prove duplicate suppression, so fail closed for that item.
+                if wa_id and text and message_id and await claim_once(f"whatsapp:{message_id}"):
                     try:
                         from app.workers.notification_worker import process_whatsapp_message
                         process_whatsapp_message.delay(wa_id, names.get(wa_id, ""), text)
