@@ -18,6 +18,9 @@ from app.db.models import (
     IdentityLinkChallenge,
     MemoryLearningEvent,
     PrivacyRequest,
+    RouteDiscovery,
+    SavedLocation,
+    SavedRoute,
     UserPreferences,
 )
 from app.db.session import get_session_factory
@@ -332,6 +335,23 @@ async def _delete_personalization(db: AsyncSession, channel: Channel) -> None:
     ))
 
 
+async def _delete_saved_location_data(db: AsyncSession, channel: Channel) -> None:
+    """Physically remove route/location data when location consent is withdrawn."""
+    scope = (
+        RouteDiscovery.customer_id == channel.customer_id,
+        RouteDiscovery.restaurant_id == channel.restaurant_id,
+    )
+    await db.execute(delete(RouteDiscovery).where(*scope))
+    await db.execute(delete(SavedRoute).where(
+        SavedRoute.customer_id == channel.customer_id,
+        SavedRoute.restaurant_id == channel.restaurant_id,
+    ))
+    await db.execute(delete(SavedLocation).where(
+        SavedLocation.customer_id == channel.customer_id,
+        SavedLocation.restaurant_id == channel.restaurant_id,
+    ))
+
+
 async def _create_link_code(db: AsyncSession, channel: Channel, target_type: str) -> str:
     if not channel.customer_id or not channel.verified_at:
         raise ValueError("Complete your customer profile on this verified channel first")
@@ -481,6 +501,8 @@ async def handle_customer_account_command(
         if command in purpose_commands:
             purpose, granted = purpose_commands[command]
             await _set_consent(db, channel=channel, purpose=purpose, granted=granted)
+            if purpose == "LOCATION" and not granted:
+                await _delete_saved_location_data(db, channel)
             if purpose == "PERSONALIZATION" and not granted:
                 db.add(PrivacyRequest(
                     restaurant_id=channel.restaurant_id,

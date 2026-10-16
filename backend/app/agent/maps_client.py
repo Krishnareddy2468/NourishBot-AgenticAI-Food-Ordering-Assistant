@@ -20,7 +20,8 @@ ROUTES_COMPUTE_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 PLACE_FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,places.location,"
     "places.rating,places.userRatingCount,places.priceLevel,places.businessStatus,"
-    "places.currentOpeningHours,places.googleMapsUri"
+    "places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,"
+    "places.types,places.googleMapsUri"
 )
 
 
@@ -85,6 +86,9 @@ def _compact_place(place: dict, routing_summary: dict | None = None) -> dict:
         "price_level": place.get("priceLevel"),
         "business_status": place.get("businessStatus"),
         "open_now": opening.get("openNow"),
+        "regular_opening_periods": (place.get("regularOpeningHours") or {}).get("periods") or [],
+        "utc_offset_minutes": place.get("utcOffsetMinutes"),
+        "place_types": list(place.get("types") or []),
         "latitude": location.get("latitude"),
         "longitude": location.get("longitude"),
         "maps_url": str(place.get("googleMapsUri") or ""),
@@ -143,7 +147,26 @@ async def find_drive_through_on_route(
     scheduled_for: str = "",
     max_results: int = 5,
 ) -> dict:
-    """Compute a driving route and find low-detour drive-through candidates."""
+    """Compatibility wrapper for route-side drive-through discovery."""
+    return await find_restaurants_on_route(
+        origin,
+        destination,
+        cuisine=cuisine,
+        scheduled_for=scheduled_for,
+        fulfillment_type="DRIVE_THROUGH",
+        max_results=max_results,
+    )
+
+
+async def find_restaurants_on_route(
+    origin: str,
+    destination: str,
+    cuisine: str = "",
+    scheduled_for: str = "",
+    fulfillment_type: str = "PICKUP",
+    max_results: int = 5,
+) -> dict:
+    """Compute a driving route and discover low-detour restaurant candidates."""
     origin = (origin or "").strip()
     destination = (destination or "").strip()
     if len(origin) < 3 or len(destination) < 3:
@@ -186,9 +209,11 @@ async def find_drive_through_on_route(
         raise MapsServiceError("Maps returned a route without a searchable route line.")
 
     count = max(1, min(int(max_results or 5), 10))
-    text_query = "drive-through restaurants"
+    normalized_type = fulfillment_type.strip().upper().replace("-", "_")
+    qualifier = "drive-through restaurants" if normalized_type in {"DRIVE_THROUGH", "DRIVE_THRU"} else "restaurants with pickup"
+    text_query = qualifier
     if cuisine.strip():
-        text_query = f"{cuisine.strip()} drive-through restaurants"
+        text_query = f"{cuisine.strip()} {qualifier}"
     places_payload = {
         "textQuery": text_query,
         "pageSize": count,
@@ -212,9 +237,9 @@ async def find_drive_through_on_route(
         "route_duration_minutes": _duration_minutes(route.get("duration")),
         "restaurants": _rank_places(candidates)[:count],
         "availability_note": (
-            "These are route-side discovery results, not confirmed drive-through inventory. "
-            "Verify drive-through/pickup support, the future slot, menu, and price on Swiggy "
-            "or Zomato before scheduling."
+            "These are route-side discovery results, not checkout or fulfillment proof. "
+            "Verify the selected restaurant, requested future slot, fulfillment mode, menu, "
+            "and price through the ordering provider before scheduling."
         ),
     }
 

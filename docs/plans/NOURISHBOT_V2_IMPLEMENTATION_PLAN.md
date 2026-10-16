@@ -589,22 +589,42 @@ Swiggy and Zomato default to Mode A until higher modes pass live capability veri
 
 **Goal:** Provide useful discovery for home delivery and low-detour pickup without overstating provider support.
 
+**Implementation status:** Complete in the working tree on 2026-10-16. Migration `0015` must be applied before the updated API starts.
+
 ### Work
 
-- [ ] Add consented saved locations and routes.
-- [ ] Add retention and delete controls for route/location history.
-- [ ] Score restaurants by route detour, current status, rating confidence, diet, and budget.
-- [ ] Evaluate the requested future time separately from current opening state.
-- [ ] Verify the selected restaurant and fulfillment type through the provider adapter.
-- [ ] Add route-change and closed-restaurant recovery.
-- [ ] Fall back to ordinary scheduled pickup when drive-through cannot be verified.
+- [X] Add consented saved locations and routes.
+- [X] Add retention and delete controls for route/location history.
+- [X] Score restaurants by route detour, current status, rating confidence, diet, and budget.
+- [X] Evaluate the requested future time separately from current opening state.
+- [X] Verify the selected restaurant and fulfillment type through the provider adapter.
+- [X] Add route-change and closed-restaurant recovery.
+- [X] Fall back to ordinary scheduled pickup when drive-through cannot be verified.
 
 ### Acceptance criteria
 
-- [ ] Maps is never treated as proof of checkout eligibility.
-- [ ] Drive-through is offered only after provider-side verification.
-- [ ] Location and route data are stored only with consent.
-- [ ] Failed route discovery provides a safe manual selection path.
+- [X] Maps is never treated as proof of checkout eligibility.
+- [X] Drive-through is offered only after provider-side verification.
+- [X] Location and route data are stored only with consent.
+- [X] Failed route discovery provides a safe manual selection path.
+
+### Phase 6 validation evidence
+
+- Backend tests: 108 passed, including 12 dedicated Phase 6 tests.
+- Python source compilation passes with the bytecode cache redirected outside the source tree.
+- Alembic migration chain: `0015` is the single head.
+- Alembic PostgreSQL offline upgrade and downgrade SQL generation for `0014 <-> 0015` passes.
+- Dedicated deterministic tests cover future opening periods, explainable route scoring,
+  provider restaurant matching, drive-through verification, pickup fallback, recovery reasons,
+  API surface, consent-linked models, and migration rollback structure.
+- Maps responses expose current and future opening inputs separately; every candidate is marked
+  ineligible until provider verification succeeds.
+- Saved locations, routes, and retained discovery history reference the granting consent row,
+  expire automatically, and are physically removed when location consent is withdrawn.
+- Provider verification requires a verified capability version, exact restaurant evidence,
+  explicit future availability, and the requested fulfillment type. Inconclusive results return
+  a manual-selection path.
+- Migration `0015` follows `0014` and supports ordered upgrade/downgrade.
 
 ## Phase 7 — Customer Dashboard and Analytics
 

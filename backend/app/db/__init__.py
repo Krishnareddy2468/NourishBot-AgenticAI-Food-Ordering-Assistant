@@ -44,6 +44,9 @@ from app.db.models import (
     MealSchedule,
     MealRoutineException,
     MealPlanningEvent,
+    SavedLocation,
+    SavedRoute,
+    RouteDiscovery,
 )
 
 __all__ = [
@@ -88,4 +91,7 @@ __all__ = [
     "MealSchedule",
     "MealRoutineException",
     "MealPlanningEvent",
+    "SavedLocation",
+    "SavedRoute",
+    "RouteDiscovery",
 ]

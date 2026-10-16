@@ -51,6 +51,8 @@ instead of silently placing an instant order.
 - Budget, quantity, and menu-availability constraints
 - Best-restaurant discovery near an area using Google Maps
 - Route-aware drive-through discovery using a Google driving route and low-detour Places results
+- Consent-gated saved locations and routes with automatic retention and customer deletion controls
+- Explainable route ranking for detour, future opening state, rating confidence, diet, and budget
 - Scheduled home delivery coordinated by NourishBot, plus scheduled drive-through pickup
 
 Maps is a discovery layer, not an ordering provider. A Maps result is never treated as proof of
@@ -129,6 +131,7 @@ Release-critical controls include:
 - HttpOnly staff sessions with origin checks for cookie-authenticated mutations
 - High-entropy, revocable public tracking tokens with audience-safe responses
 - Maps discovery separated from provider-side menu, availability, and checkout verification
+- Drive-through offered only after exact provider-side verification, with safe scheduled-pickup fallback
 - WhatsApp HMAC signature verification and Redis idempotency keys
 - Tenant-scoped Telegram, WhatsApp, and web identities linked only with hashed, expiring, one-time codes
 - Append-only consent decisions for personalization, location, reminders, and analytics
@@ -154,6 +157,10 @@ Release-critical controls include:
 | `/api/v1/customer/meal-plans*` | Generate, inspect, edit, and confirm complete draft meal plans |
 | `/api/v1/customer/meal-templates*` | Save and list single-meal or full-day templates |
 | `/api/v1/customer/meal-routines*` | Create and manage bounded recurring meal routines |
+| `/api/v1/customer/locations*` | Save or delete consented, retention-bounded locations |
+| `/api/v1/customer/routes*` | Save or delete consented origin/destination routes |
+| `/api/v1/customer/fulfillment/*` | Discover, verify, and recover route-aware fulfillment choices |
+| `/api/v1/customer/route-history` | Inspect or delete retained route-decision history |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |
 | `/api/v1/scheduler/manual-review` | Manager-only dead-letter schedule queue |
 | `/api/v1/providers/capabilities` | Staff-visible provider modes, verified capabilities, and schema versions |

@@ -50,6 +50,7 @@ from app.db.models.planning import (
 )
 from app.db.models.scheduling import ScheduledJob, ScheduledJobAttempt, SchedulerHeartbeat
 from app.db.models.provider import ProviderCapabilityVersion, ProviderReceipt
+from app.db.models.route_fulfillment import SavedLocation, SavedRoute, RouteDiscovery
 
 __all__ = [
     "Restaurant",
@@ -99,4 +100,7 @@ __all__ = [
     "SchedulerHeartbeat",
     "ProviderCapabilityVersion",
     "ProviderReceipt",
+    "SavedLocation",
+    "SavedRoute",
+    "RouteDiscovery",
 ]

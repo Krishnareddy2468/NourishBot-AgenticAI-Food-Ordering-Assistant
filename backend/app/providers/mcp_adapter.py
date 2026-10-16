@@ -82,7 +82,17 @@ class MCPProviderAdapter(ProviderAdapter):
         )
         if tool is None:
             raise RuntimeError("Provider discovery capability is unavailable")
-        response = await self._invoke(tool, query)
+        properties = (tool_schema(tool).get("properties") or {})
+        args = {key: value for key, value in query.items() if not properties or key in properties}
+        if properties:
+            if "query" in properties and "query" not in args:
+                args["query"] = query.get("restaurant_name") or query.get("place_id") or "restaurant"
+            for target in ("scheduled_time", "schedule_time", "delivery_time", "fulfillment_time", "preorder_time"):
+                if target in properties and target not in args and query.get("scheduled_for"):
+                    args[target] = query["scheduled_for"]
+            if "fulfilment_type" in properties and query.get("fulfillment_type"):
+                args["fulfilment_type"] = query["fulfillment_type"]
+        response = await self._invoke(tool, args)
         return AdapterResult("SUCCEEDED", response)
 
     async def create_handoff(self, context: dict[str, Any]) -> AdapterResult:

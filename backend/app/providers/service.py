@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.models import ProviderAttempt, ProviderReceipt
 from app.db.session import AsyncSessionLocal
-from app.providers.base import AdapterResult, ProviderMode
+from app.providers.base import AdapterResult, CapabilityState, ProviderMode
 from app.providers.mcp_adapter import MCPProviderAdapter
 from app.providers.redaction import content_hash, redact_text, redact_value
 from app.providers.registry import current_policy, public_policy
@@ -127,6 +127,90 @@ async def _load_adapter(provider: str):
     async with AsyncSessionLocal() as db:
         policy = await current_policy(db, provider)
     return MCPProviderAdapter(provider, tools, policy), policy
+
+
+async def verify_selected_fulfillment(
+    *,
+    provider: str,
+    restaurant_id: int,
+    place_id: str,
+    restaurant_name: str,
+    requested_type: str,
+    desired_for: datetime,
+):
+    """Verify one Maps selection through the provider's read-only adapter.
+
+    The returned policy decision remains ineligible unless the provider policy
+    and response both explicitly support the chosen restaurant and mode.
+    """
+    from app.domain.route_fulfillment import (
+        FulfillmentDecision,
+        decide_provider_fulfillment,
+        normalize_fulfillment_type,
+    )
+
+    requested = normalize_fulfillment_type(requested_type)
+    async with AsyncSessionLocal() as db:
+        policy = await current_policy(db, provider)
+    if policy.state != CapabilityState.VERIFIED or not policy.capabilities.discovery:
+        return FulfillmentDecision(
+            requested.value,
+            None,
+            False,
+            False,
+            True,
+            "The provider discovery integration is not verified. Choose and verify the restaurant manually.",
+        )
+
+    request_payload = {
+        "place_id": place_id,
+        "restaurant_name": restaurant_name,
+        "fulfillment_type": requested.value,
+        "scheduled_for": desired_for.isoformat(),
+        "verify_only": True,
+    }
+    try:
+        from app.agent.mcp_clients import get_mcp_tools_async
+
+        tools = await get_mcp_tools_async(provider.title())
+        adapter = MCPProviderAdapter(provider, tools, policy)
+        result = await adapter.discover(request_payload)
+        response = result.response
+        decision = decide_provider_fulfillment(
+            policy,
+            response,
+            requested_type=requested.value,
+            place_id=place_id,
+            restaurant_name=restaurant_name,
+        )
+        outcome = "VERIFIED" if decision.provider_verified else "INCONCLUSIVE"
+    except Exception as exc:
+        response = {"error": redact_text(str(exc))}
+        decision = FulfillmentDecision(
+            requested.value,
+            None,
+            False,
+            False,
+            True,
+            "Provider verification is temporarily unavailable. Choose and verify the restaurant manually.",
+        )
+        outcome = "FAILED"
+
+    async with AsyncSessionLocal() as db:
+        add_receipt(
+            db,
+            provider=policy.provider,
+            mode=policy.mode.value,
+            operation="VERIFY_FULFILLMENT",
+            request=request_payload,
+            response=response,
+            outcome=outcome,
+            restaurant_id=restaurant_id,
+            capability_version_id=policy.version_id,
+            tool_schema_hash=policy.tool_schema_hash,
+        )
+        await db.commit()
+    return decision
 
 
 async def reconcile_attempt(attempt_id: str) -> AdapterResult:

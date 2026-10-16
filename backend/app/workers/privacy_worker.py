@@ -15,6 +15,9 @@ from app.db.models import (
     DeliveryLocationEvent,
     IdentityLinkChallenge,
     ProviderAttempt,
+    RouteDiscovery,
+    SavedLocation,
+    SavedRoute,
     Session as SessionModel,
 )
 from app.workers.celery_app import celery_app
@@ -50,6 +53,15 @@ def enforce_privacy_retention() -> dict:
             location_result = db.execute(
                 delete(DeliveryLocationEvent).where(DeliveryLocationEvent.recorded_at < location_cutoff)
             )
+            route_history_result = db.execute(
+                delete(RouteDiscovery).where(RouteDiscovery.retention_expires_at <= now)
+            )
+            saved_route_result = db.execute(
+                delete(SavedRoute).where(SavedRoute.retention_expires_at <= now)
+            )
+            saved_location_result = db.execute(
+                delete(SavedLocation).where(SavedLocation.retention_expires_at <= now)
+            )
             provider_result = db.execute(
                 update(ProviderAttempt)
                 .where(ProviderAttempt.updated_at < provider_cutoff)
@@ -73,6 +85,9 @@ def enforce_privacy_retention() -> dict:
             return {
                 "sessions_pruned": pruned_sessions,
                 "location_events_deleted": max(location_result.rowcount or 0, 0),
+                "route_history_deleted": max(route_history_result.rowcount or 0, 0),
+                "saved_routes_deleted": max(saved_route_result.rowcount or 0, 0),
+                "saved_locations_deleted": max(saved_location_result.rowcount or 0, 0),
                 "provider_records_redacted": max(provider_result.rowcount or 0, 0),
             }
     finally:
