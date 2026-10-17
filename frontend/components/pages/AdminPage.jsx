@@ -1,6 +1,6 @@
 'use client'
 /**
- * Admin portal — sidebar nav with real views.
+ * Admin portal: sidebar nav with real views.
  */
 
 import { useState, useEffect, startTransition, useCallback } from 'react'

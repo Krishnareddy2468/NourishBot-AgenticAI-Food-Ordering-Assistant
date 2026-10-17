@@ -1,15 +1,41 @@
 /**
- * NourishBot POS API client — all backend endpoints for vNext.
+ * NourishBot POS API client: all backend endpoints for vNext.
  */
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+const CONFIGURED_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+
+function resolveApiBase() {
+  if (typeof window === 'undefined') return CONFIGURED_API_BASE
+  try {
+    const url = new URL(CONFIGURED_API_BASE)
+    const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1'])
+    if (loopbackHosts.has(url.hostname) && loopbackHosts.has(window.location.hostname)) {
+      // Keep browser cookies first-party when one dev command uses localhost
+      // and another advertises the equivalent 127.0.0.1 loopback address.
+      url.hostname = window.location.hostname
+    }
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return CONFIGURED_API_BASE
+  }
+}
+
+const API_BASE = resolveApiBase()
 
 function buildHeaders(extra = {}) {
   return { 'Content-Type': 'application/json', ...extra }
 }
 
-function apiFetch(input, init = {}) {
-  return fetch(input, { ...init, credentials: 'include' })
+async function apiFetch(input, init = {}) {
+  try {
+    return await fetch(input, { ...init, credentials: 'include' })
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
+    throw new Error(
+      `Cannot reach the NourishBot API at ${API_BASE}. ` +
+      'Check that the backend is running and NEXT_PUBLIC_API_BASE_URL uses the same port.'
+    )
+  }
 }
 
 function makeIdempotencyKey(prefix) {
@@ -87,7 +113,7 @@ async function parseResponse(res) {
     } catch {
       // Ignore non-JSON error responses and preserve the fallback message.
     }
-    if (res.status === 401) {
+    if (res.status === 401 && typeof window !== 'undefined') {
       window.dispatchEvent(new Event('nourishbot-auth-expired'))
     }
     throw new Error(message)
@@ -477,6 +503,36 @@ export async function updateCustomerConsent(purpose, granted) {
 export async function confirmCustomerMealPlan(planId) {
   const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-plans/${planId}/confirm`, {
     method: 'POST', headers: buildHeaders(),
+  })
+  return parseResponse(res)
+}
+
+export async function createCustomerMealPlan(payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-plans`, {
+    method: 'POST', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function getCustomerMealPlan(planId) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-plans/${planId}`, {
+    headers: buildHeaders(),
+  })
+  return parseResponse(res)
+}
+
+export async function fetchCustomerMealMenu() {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/menu-items`, {
+    headers: buildHeaders(),
+  })
+  return parseResponse(res)
+}
+
+export async function updateCustomerPlannedMeal(planId, mealId, payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-plans/${planId}/meals/${mealId}`, {
+    method: 'PATCH',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
   })
   return parseResponse(res)
 }

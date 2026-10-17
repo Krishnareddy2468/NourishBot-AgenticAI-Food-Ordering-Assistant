@@ -34,6 +34,7 @@ from app.domain.meal_planning import (
     PlanConstraints,
     assert_allergy_safe,
     assert_diet_compatible,
+    assert_nutrition_verified,
     canonical_snapshot,
     meal_dates,
     parse_recurrence_rule,
@@ -95,6 +96,7 @@ async def effective_constraints(
     dietary_flags: list[str] | None = None,
     allergies: list[str] | None = None,
     health_goals: list[str] | None = None,
+    nutrition_targets: dict[str, Any] | None = None,
     budget_cents: int | None = None,
     currency: str = "INR",
     starts_on: date | None = None,
@@ -139,6 +141,7 @@ async def effective_constraints(
         dietary_flags=diets,
         allergies=known_allergies,
         health_goals=goals,
+        nutrition_targets=nutrition_targets,
         budget_cents=budget_cents,
         currency=currency,
     ), use_memory
@@ -177,6 +180,14 @@ async def _menu_candidates(db, restaurant_id: int, customer_id: int, *, use_hist
             "tags": item.tags or [],
             "category": category or "",
             "history_count": int(history.get(item.id, 0)),
+            "energy_kcal": item.energy_kcal,
+            "protein_g": item.protein_g,
+            "carbohydrates_g": item.carbohydrates_g,
+            "fat_g": item.fat_g,
+            "fiber_g": item.fiber_g,
+            "nutrition_status": item.nutrition_status,
+            "nutrition_source": item.nutrition_source,
+            "nutrition_serving_g": item.nutrition_serving_g,
         })
         for item, category in rows
     ]
@@ -239,6 +250,7 @@ async def create_recommended_plan(
     dietary_flags: list[str] | None = None,
     allergies: list[str] | None = None,
     health_goals: list[str] | None = None,
+    nutrition_targets: dict[str, Any] | None = None,
     budget_cents: int | None = None,
     currency: str = "INR",
     source: str = "WEB",
@@ -260,6 +272,7 @@ async def create_recommended_plan(
         dietary_flags=dietary_flags,
         allergies=allergies,
         health_goals=health_goals,
+        nutrition_targets=nutrition_targets,
         budget_cents=budget_cents,
         currency=currency,
         starts_on=starts_on,
@@ -310,6 +323,12 @@ async def create_recommended_plan(
                 "recommendation_reasons": list(item.reason),
                 "history_used": use_history,
                 "menu_type": candidate.menu_type,
+                "nutrition": {
+                    "status": candidate.nutrition_status,
+                    "source": candidate.nutrition_source,
+                    "serving_g": candidate.nutrition_serving_g,
+                    "per_serving": candidate.nutrition_per_serving,
+                },
             },
             constraints_json=constraints.public_dict(),
             estimated_cost_cents=candidate.price_cents,
@@ -369,6 +388,7 @@ async def update_planned_meal(
         "dietary_flags": (plan.constraints_json or {}).get("dietary_flags"),
         "allergies": (plan.constraints_json or {}).get("allergies"),
         "health_goals": (plan.constraints_json or {}).get("health_goals"),
+        "nutrition_targets": (plan.constraints_json or {}).get("nutrition_targets"),
         "budget_cents": (plan.constraints_json or {}).get("budget_cents"),
         "currency": (plan.constraints_json or {}).get("currency", "INR"),
     })
@@ -380,9 +400,25 @@ async def update_planned_meal(
             price_cents=menu_item.special_price_cents if menu_item.special_price_cents is not None else menu_item.price_cents,
             menu_type=(menu_item.type or "").upper(),
             tags=tags,
+            nutrition_per_serving={
+                key: float(value)
+                for key, value in {
+                    "energy_kcal": menu_item.energy_kcal,
+                    "protein_g": menu_item.protein_g,
+                    "carbohydrates_g": menu_item.carbohydrates_g,
+                    "fat_g": menu_item.fat_g,
+                    "fiber_g": menu_item.fiber_g,
+                }.items()
+                if value is not None
+            } or None,
+            nutrition_status=menu_item.nutrition_status,
+            nutrition_source=menu_item.nutrition_source,
+            nutrition_serving_g=float(menu_item.nutrition_serving_g) if menu_item.nutrition_serving_g is not None else None,
         )
         assert_diet_compatible(candidate.menu_type, tags, constraints.dietary_flags)
         assert_allergy_safe(tags, constraints.allergies)
+        if constraints.nutrition_targets is not None:
+            assert_nutrition_verified(candidate)
         schedule.menu_item_id = candidate.id
         schedule.title = candidate.name
         schedule.estimated_cost_cents = candidate.price_cents
@@ -392,6 +428,12 @@ async def update_planned_meal(
             **(schedule.selection_json or {}),
             "menu_type": candidate.menu_type,
             "recommendation_reasons": ["selected by the customer"],
+            "nutrition": {
+                "status": candidate.nutrition_status,
+                "source": candidate.nutrition_source,
+                "serving_g": candidate.nutrition_serving_g,
+                "per_serving": candidate.nutrition_per_serving,
+            },
         }
     elif title is not None:
         schedule.title = title.strip()[:160]
@@ -400,6 +442,8 @@ async def update_planned_meal(
     if desired_for is not None:
         if desired_for.tzinfo is None:
             raise MealPlanningError("Planned meal time must include a timezone")
+        if desired_for.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            raise MealPlanningError("Planned meal time must be in the future")
         schedule.rescheduled_from = schedule.desired_for
         schedule.desired_for = desired_for.astimezone(timezone.utc)
     schedule.meal_period = period

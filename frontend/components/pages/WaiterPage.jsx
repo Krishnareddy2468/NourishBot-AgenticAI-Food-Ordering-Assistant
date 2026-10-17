@@ -282,7 +282,7 @@ export default function WaiterPage() {
     setActionState(prev => ({ ...prev, billing: true }))
     try {
       const invoice = await generateTableInvoice(activeSession.id)
-      toast.success(`Pickup completed — ₹${(invoice.total_cents / 100).toFixed(2)} order value`)
+      toast.success(`Pickup completed. ₹${(invoice.total_cents / 100).toFixed(2)} order value`)
       setActiveSession(null)
       setSelectedTable(null)
       setSessionOrders([])
@@ -402,7 +402,7 @@ export default function WaiterPage() {
               >
                 <div className="table-tile-name">Pickup {table.table_number || table.name}</div>
                 <div className="table-tile-status" style={{ color }}>{session ? 'ACTIVE' : statusKey}</div>
-                <div className="table-tile-capacity">Capacity {table.capacity || '—'}</div>
+                <div className="table-tile-capacity">Capacity {table.capacity || 'Not available'}</div>
                 {session && <div className="table-tile-guests"><Users size={12} />{session.guests} meals</div>}
                 {isOpening && <div className="table-tile-loading"><Loader2 className="spin" size={14} />Opening</div>}
               </button>

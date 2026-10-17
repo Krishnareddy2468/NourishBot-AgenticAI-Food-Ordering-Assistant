@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -21,6 +22,13 @@ DEFAULT_MEAL_TIMES = {
 WEEKDAYS = {0, 1, 2, 3, 4}
 WEEKENDS = {5, 6}
 DAY_NAMES = {"MON": 0, "TUE": 1, "WED": 2, "THU": 3, "FRI": 4, "SAT": 5, "SUN": 6}
+NUTRITION_TARGET_KEYS = (
+    "energy_kcal",
+    "protein_g",
+    "carbohydrates_g",
+    "fat_g",
+    "fiber_g",
+)
 
 
 class MealPlanningError(ValueError):
@@ -51,6 +59,7 @@ class PlanConstraints:
     health_goals: tuple[str, ...] = ()
     budget_cents: int | None = None
     currency: str = "INR"
+    nutrition_targets: dict[str, float] | None = None
 
     @classmethod
     def from_values(
@@ -61,15 +70,18 @@ class PlanConstraints:
         health_goals: Iterable[str] | None = None,
         budget_cents: int | None = None,
         currency: str = "INR",
+        nutrition_targets: dict[str, Any] | None = None,
     ) -> "PlanConstraints":
         if budget_cents is not None and int(budget_cents) < 0:
             raise MealPlanningError("Meal-plan budget cannot be negative")
+        targets = normalize_nutrition_targets(nutrition_targets)
         return cls(
             dietary_flags=_terms(dietary_flags),
             allergies=_terms(allergies),
             health_goals=_terms(health_goals),
             budget_cents=int(budget_cents) if budget_cents is not None else None,
             currency=(currency or "INR").strip().upper()[:3],
+            nutrition_targets=targets,
         )
 
     def public_dict(self) -> dict[str, Any]:
@@ -79,7 +91,29 @@ class PlanConstraints:
             "health_goals": list(self.health_goals),
             "budget_cents": self.budget_cents,
             "currency": self.currency,
+            "nutrition_targets": self.nutrition_targets,
         }
+
+
+def normalize_nutrition_targets(value: dict[str, Any] | None) -> dict[str, float] | None:
+    if value is None:
+        return None
+    if set(value) != set(NUTRITION_TARGET_KEYS):
+        raise MealPlanningError(
+            "Nutrition targets must include energy_kcal, protein_g, carbohydrates_g, fat_g, and fiber_g"
+        )
+    targets: dict[str, float] = {}
+    for key in NUTRITION_TARGET_KEYS:
+        if isinstance(value[key], bool):
+            raise MealPlanningError(f"Nutrition target {key} must be a positive number")
+        try:
+            amount = float(value[key])
+        except (TypeError, ValueError) as exc:
+            raise MealPlanningError(f"Nutrition target {key} must be a positive number") from exc
+        if not math.isfinite(amount) or amount <= 0:
+            raise MealPlanningError(f"Nutrition target {key} must be a positive number")
+        targets[key] = amount
+    return targets
 
 
 @dataclass(frozen=True)
@@ -91,6 +125,10 @@ class MenuCandidate:
     tags: tuple[str, ...] = ()
     category: str = ""
     history_count: int = 0
+    nutrition_per_serving: dict[str, float] | None = None
+    nutrition_status: str = "UNKNOWN"
+    nutrition_source: str | None = None
+    nutrition_serving_g: float | None = None
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> "MenuCandidate":
@@ -102,6 +140,18 @@ class MenuCandidate:
             tags=_terms(value.get("tags") or []),
             category=str(value.get("category") or ""),
             history_count=int(value.get("history_count") or 0),
+            nutrition_per_serving={
+                key: float(value[key])
+                for key in NUTRITION_TARGET_KEYS
+                if value.get(key) is not None
+            } or None,
+            nutrition_status=str(value.get("nutrition_status") or "UNKNOWN").upper(),
+            nutrition_source=str(value.get("nutrition_source") or "").strip() or None,
+            nutrition_serving_g=(
+                float(value["nutrition_serving_g"])
+                if value.get("nutrition_serving_g") is not None
+                else None
+            ),
         )
 
 
@@ -112,6 +162,20 @@ class PlannedMeal:
     desired_for: datetime
     candidate: MenuCandidate
     reason: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _nutrition_score(
+    candidate: MenuCandidate,
+    totals: dict[str, float],
+    targets: dict[str, float],
+    meals_selected: int,
+) -> float:
+    facts = candidate.nutrition_per_serving or {}
+    fraction = (meals_selected + 1) / len(MEAL_PERIODS)
+    return sum(
+        abs(totals[key] + facts[key] - targets[key] * fraction) / targets[key]
+        for key in NUTRITION_TARGET_KEYS
+    )
 
 
 def meal_dates(scope: str, starts_on: date) -> list[date]:
@@ -131,7 +195,7 @@ def parse_timezone(value: str) -> ZoneInfo:
 
 
 def declared_allergens(tags: Iterable[str]) -> set[str]:
-    allergens = set()
+    allergens: set[str] = set()
     for tag in _terms(tags):
         for prefix in ("allergen-", "contains-"):
             if tag.startswith(prefix):
@@ -181,6 +245,25 @@ def validate_candidate(candidate: MenuCandidate, constraints: PlanConstraints) -
     assert_allergy_safe(candidate.tags, constraints.allergies)
 
 
+def has_complete_verified_nutrition(candidate: MenuCandidate) -> bool:
+    values = candidate.nutrition_per_serving or {}
+    return (
+        candidate.nutrition_status == "VERIFIED"
+        and bool(candidate.nutrition_source)
+        and candidate.nutrition_serving_g is not None
+        and candidate.nutrition_serving_g > 0
+        and set(values) == set(NUTRITION_TARGET_KEYS)
+        and all(math.isfinite(values[key]) and values[key] >= 0 for key in NUTRITION_TARGET_KEYS)
+    )
+
+
+def assert_nutrition_verified(candidate: MenuCandidate) -> None:
+    if not has_complete_verified_nutrition(candidate):
+        raise MealPlanningError(
+            "Menu item needs complete verified nutrition values and serving size for a nutrition-targeted plan"
+        )
+
+
 def _period_score(candidate: MenuCandidate, period: str, goals: tuple[str, ...]) -> tuple[int, list[str]]:
     text = " ".join((candidate.name, candidate.category, *candidate.tags)).lower()
     score = min(candidate.history_count, 5)
@@ -217,7 +300,13 @@ def recommend_complete_plan(
         except MealPlanningError:
             continue
         safe.append(candidate)
+    if constraints.nutrition_targets is not None:
+        safe = [candidate for candidate in safe if has_complete_verified_nutrition(candidate)]
     if not safe:
+        if constraints.nutrition_targets is not None:
+            raise MealPlanningError(
+                "No menu items have complete verified nutrition data for these daily targets"
+            )
         raise MealPlanningError("No menu item satisfies the diet and verified-allergy constraints")
 
     dates = meal_dates(scope, starts_on)
@@ -228,6 +317,8 @@ def recommend_complete_plan(
     recommendations: list[PlannedMeal] = []
 
     for day_index, plan_day in enumerate(dates):
+        day_totals = {key: 0.0 for key in NUTRITION_TARGET_KEYS}
+        selected_ids: set[int] = set()
         for period_index, period in enumerate(MEAL_PERIODS):
             eligible = [
                 item for item in safe
@@ -238,18 +329,43 @@ def recommend_complete_plan(
                     f"No safe {period.lower()} option fits the per-meal budget of "
                     f"{per_slot_budget} {constraints.currency} cents"
                 )
-            ranked = sorted(
-                eligible,
-                key=lambda item: (
-                    -_period_score(item, period, constraints.health_goals)[0],
-                    item.price_cents,
-                    item.id,
-                ),
-            )
-            candidate = ranked[(day_index + period_index) % min(len(ranked), 4)]
+            targets = constraints.nutrition_targets
+            if targets is not None:
+                nutrition_targets = dict(targets)
+                distinct = [item for item in eligible if item.id not in selected_ids]
+                nutrition_options = distinct or eligible
+                candidate = min(
+                    nutrition_options,
+                    key=lambda item: (
+                        _nutrition_score(
+                            item,
+                            day_totals,
+                            nutrition_targets,
+                            period_index,
+                        ),
+                        -_period_score(item, period, constraints.health_goals)[0],
+                        item.price_cents,
+                        item.id,
+                    ),
+                )
+                for key in NUTRITION_TARGET_KEYS:
+                    day_totals[key] += (candidate.nutrition_per_serving or {})[key]
+                selected_ids.add(candidate.id)
+            else:
+                ranked = sorted(
+                    eligible,
+                    key=lambda item: (
+                        -_period_score(item, period, constraints.health_goals)[0],
+                        item.price_cents,
+                        item.id,
+                    ),
+                )
+                candidate = ranked[(day_index + period_index) % min(len(ranked), 4)]
             _, reasons = _period_score(candidate, period, constraints.health_goals)
             if per_slot_budget is not None:
                 reasons.append(f"within {per_slot_budget} {constraints.currency} cents per meal")
+            if targets is not None:
+                reasons.append("selected using verified menu nutrition values")
             local_dt = datetime.combine(plan_day, times[period], tzinfo=timezone_info)
             recommendations.append(PlannedMeal(
                 day=plan_day,
@@ -317,6 +433,7 @@ def canonical_snapshot(plan: Any, meals: Iterable[Any]) -> tuple[dict[str, Any],
                 "estimated_cost_cents": meal.estimated_cost_cents,
                 "diet_tags": meal.diet_tags or [],
                 "allergen_tags": meal.allergen_tags or [],
+                "nutrition": (getattr(meal, "selection_json", None) or {}).get("nutrition", {}),
             }
             for meal in sorted(meals, key=lambda item: (item.desired_for, item.meal_period, item.id))
         ],

@@ -178,7 +178,7 @@ export default function DeliveriesView() {
             </div>
             <div className="stat-card">
               <div className="stat-label">Order</div>
-              <div>{trackingData.order?.order_ref || '—'}</div>
+              <div>{trackingData.order?.order_ref || 'Not available'}</div>
             </div>
           </div>
           {trackingData.driver && (
@@ -213,7 +213,7 @@ export default function DeliveriesView() {
           background: 'var(--bg-overlay)', borderRadius: 12, padding: 20,
           marginBottom: 16, border: '1px solid var(--border)',
         }}>
-          <h3 style={{ marginBottom: 12 }}>Proof of Delivery — #{proofModal}</h3>
+          <h3 style={{ marginBottom: 12 }}>Proof of Delivery: #{proofModal}</h3>
           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Proof URL (photo/signature)</label>

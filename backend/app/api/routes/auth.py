@@ -126,30 +126,47 @@ async def _ensure_registration_restaurant(session) -> bool:
     return True
 
 
-async def _provision_customer_profile(session, user: User) -> None:
-    """Bind a website CUSTOMER account to the domain customer/channel identity."""
-    if user.role != CUSTOMER_ROLE:
-        return
-    if user.id is None:
-        await session.flush()
-    customer = None
-    if user.customer_id:
-        customer = await session.get(Customer, user.customer_id)
-    if customer is None and user.email:
-        customer = await session.scalar(select(Customer).where(
-            Customer.restaurant_id == user.restaurant_id,
-            func.lower(Customer.email) == user.email.lower(),
-        ).order_by(Customer.id).limit(1))
-    if customer is None:
-        customer = Customer(
-            restaurant_id=user.restaurant_id,
-            name=user.name,
-            phone=f"web-account-{user.id}",
-            email=user.email,
+async def _find_or_create_customer_profile(
+    session,
+    *,
+    restaurant_id: int,
+    name: str,
+    email: str,
+) -> tuple[Customer, bool]:
+    """Return the customer identity that must exist before a CUSTOMER user insert.
+
+    Phase 7 added a database check requiring every CUSTOMER user row to have a
+    customer_id. Creating the user first therefore violates the constraint even
+    when the profile is added later in the same transaction.
+    """
+    customer = await session.scalar(
+        select(Customer)
+        .where(
+            Customer.restaurant_id == restaurant_id,
+            func.lower(Customer.email) == email.lower(),
         )
-        session.add(customer)
-        await session.flush()
-    user.customer_id = customer.id
+        .order_by(Customer.id)
+        .limit(1)
+    )
+    if customer is not None:
+        return customer, False
+
+    customer = Customer(
+        restaurant_id=restaurant_id,
+        name=name,
+        # The final stable value is assigned as soon as the user id exists.
+        phone=f"web-account-pending-{secrets.token_hex(12)}",
+        email=email,
+    )
+    session.add(customer)
+    await session.flush()
+    return customer, True
+
+
+async def _provision_customer_channel(session, user: User, customer: Customer) -> None:
+    """Bind a persisted CUSTOMER user to its verified web channel."""
+    if user.role != CUSTOMER_ROLE or user.id is None or customer.id is None:
+        return
     external_id = f"account:{user.id}"
     channel = await session.scalar(select(Channel).where(
         Channel.restaurant_id == user.restaurant_id,
@@ -273,8 +290,15 @@ async def signup(body: SignupRequest, response: Response):
         if existing:
             raise HTTPException(status_code=409, detail="An account with this email already exists")
 
+        customer, customer_created = await _find_or_create_customer_profile(
+            session,
+            restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            name=name,
+            email=email,
+        )
         user = User(
             restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+            customer_id=customer.id,
             name=name,
             email=email,
             password_hash=hash_password(password),
@@ -285,11 +309,22 @@ async def signup(body: SignupRequest, response: Response):
         session.add(user)
         try:
             await session.flush()
-            await _provision_customer_profile(session, user)
+            if customer_created:
+                customer.phone = f"web-account-{user.id}"
+            await _provision_customer_channel(session, user, customer)
             await session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await session.rollback()
-            raise HTTPException(status_code=409, detail="An account with this email already exists")
+            async with AsyncSessionLocal() as check_session:
+                duplicate = await check_session.scalar(
+                    select(User.id).where(func.lower(User.email) == email)
+                )
+            if duplicate:
+                raise HTTPException(status_code=409, detail="An account with this email already exists")
+            raise HTTPException(
+                status_code=500,
+                detail="Account could not be created. Please try again",
+            ) from exc
         await session.refresh(user)
 
     _set_session_cookie(response, user)
@@ -405,8 +440,15 @@ async def google_oauth_callback(request: Request):
             if user is None:
                 if not await _ensure_registration_restaurant(session):
                     return _oauth_error("Account registration is not ready")
+                customer, customer_created = await _find_or_create_customer_profile(
+                    session,
+                    restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+                    name=name,
+                    email=email,
+                )
                 user = User(
                     restaurant_id=settings.DEFAULT_RESTAURANT_ID,
+                    customer_id=customer.id,
                     name=name,
                     email=email,
                     password_hash=hash_password(secrets.token_urlsafe(48)),
@@ -416,10 +458,29 @@ async def google_oauth_callback(request: Request):
                 )
                 session.add(user)
                 await session.flush()
+                if customer_created:
+                    customer.phone = f"web-account-{user.id}"
             else:
                 user.email_verified = True
                 if not user.name:
                     user.name = name
+
+            customer = None
+            customer_created = False
+            if user.role == CUSTOMER_ROLE:
+                if user.customer_id:
+                    customer = await session.get(Customer, user.customer_id)
+                if customer is None:
+                    customer, customer_created = await _find_or_create_customer_profile(
+                        session,
+                        restaurant_id=user.restaurant_id,
+                        name=user.name,
+                        email=email,
+                    )
+                    user.customer_id = customer.id
+                    await session.flush()
+                    if customer_created:
+                        customer.phone = f"web-account-{user.id}"
             session.add(
                 OAuthIdentity(
                     user_id=user.id,
@@ -428,7 +489,8 @@ async def google_oauth_callback(request: Request):
                     email=email,
                 )
             )
-            await _provision_customer_profile(session, user)
+            if customer is not None:
+                await _provision_customer_channel(session, user, customer)
             try:
                 await session.commit()
             except IntegrityError:
@@ -436,14 +498,24 @@ async def google_oauth_callback(request: Request):
                 return _oauth_error("This Google account is already linked")
             await session.refresh(user)
         elif user.role == CUSTOMER_ROLE and not user.customer_id:
-            await _provision_customer_profile(session, user)
+            customer, customer_created = await _find_or_create_customer_profile(
+                session,
+                restaurant_id=user.restaurant_id,
+                name=user.name,
+                email=email,
+            )
+            user.customer_id = customer.id
+            await session.flush()
+            if customer_created:
+                customer.phone = f"web-account-{user.id}"
+            await _provision_customer_channel(session, user, customer)
             await session.commit()
             await session.refresh(user)
 
     if not user.active:
         return _oauth_error("This account is disabled")
 
-    response = _frontend_redirect("/workspace")
+    response = _frontend_redirect("/account" if user.role == CUSTOMER_ROLE else "/workspace")
     response.delete_cookie(
         settings.OAUTH_STATE_COOKIE_NAME,
         path="/api/v1/auth/oauth/google",

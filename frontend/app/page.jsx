@@ -21,8 +21,9 @@ export default function HomePage() {
 
           <div className="nb-nav-links">
             <a href="#how-it-works">How it works</a>
-            <a href="#discover">Discover</a>
-            <a href="#meal-planning">Meal planning</a>
+            <a href="#meal-planning">Home meals</a>
+            <a href="#route-pickup">Route pickup</a>
+            <a href="#chat-demo">Chat demo</a>
             <a href="#about">About</a>
           </div>
 
@@ -37,15 +38,15 @@ export default function HomePage() {
 
       <section className="nb-hero" aria-labelledby="hero-title">
         <div className="nb-hero-copy">
-          <div className="nb-kicker">Meals that fit your day</div>
-          <h1 id="hero-title">Good meals.<br /><em>Right on time.</em></h1>
+          <div className="nb-kicker">Two ways to make food fit your day</div>
+          <h1 id="hero-title">Eat well at home.<br /><em>Pick up on the way.</em></h1>
           <p>
-            Meet NourishBot, your AI companion for planning meals, discovering great restaurants,
-            and scheduling food around your day.
+            Plan a nutrition-aware day of home-delivered meals or find a practical pickup along
+            your route, right inside WhatsApp and Telegram.
           </p>
           <div className="nb-hero-actions">
             <Link className="nb-button nb-button-primary" href="/login">
-              Plan your meal <ArrowRight size={17} />
+              Explore NourishBot <ArrowRight size={17} />
             </Link>
             <a className="nb-button nb-button-secondary" href="#how-it-works">
               See how it works
@@ -53,7 +54,7 @@ export default function HomePage() {
           </div>
           <div className="nb-hero-note">
             <ShieldCheck size={17} />
-            <span><strong>You stay in control.</strong> NourishBot plans and verifies before any supported handoff.</span>
+            <span><strong>You stay in control.</strong> A plan is never an order. You review and confirm every checkout.</span>
           </div>
         </div>
 
@@ -66,11 +67,11 @@ export default function HomePage() {
               priority
               sizes="(max-width: 900px) 92vw, 48vw"
             />
-            <span className="nb-photo-caption">Fresh choices, planned calmly.</span>
+            <span className="nb-photo-caption">A complete day, planned around you.</span>
           </div>
           <div className="nb-floating-plan" aria-label="Illustrative meal plan preview">
             <div className="nb-floating-plan-icon"><CalendarDays size={19} /></div>
-            <div><small>UP NEXT</small><strong>Tomorrow’s lunch</strong><span>12:45 PM · Pickup</span></div>
+            <div><small>UP NEXT</small><strong>Tomorrow’s lunch</strong><span>12:45 PM · Home delivery</span></div>
             <CheckCircle2 size={19} />
           </div>
           <div className="nb-time-stamp"><Clock3 size={14} /> Planned for your schedule</div>

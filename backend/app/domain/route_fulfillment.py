@@ -44,6 +44,21 @@ def normalize_fulfillment_type(value: str) -> FulfillmentType:
         ) from exc
 
 
+def estimate_route_arrival(
+    departure_at: datetime,
+    travel_minutes: int | float | None,
+) -> datetime | None:
+    """Estimate arrival from route travel time only; this is not a food-ready estimate."""
+    if departure_at.tzinfo is None:
+        raise RouteFulfillmentError("Route departure time must include a timezone")
+    if travel_minutes is None:
+        return None
+    duration = float(travel_minutes)
+    if not math.isfinite(duration) or duration < 0:
+        raise RouteFulfillmentError("Route travel time must be a finite non-negative number")
+    return departure_at.astimezone(timezone.utc) + timedelta(minutes=duration)
+
+
 def evaluate_future_opening(
     periods: Iterable[dict[str, Any]] | None,
     desired_for: datetime | None,

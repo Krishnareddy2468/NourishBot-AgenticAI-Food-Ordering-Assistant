@@ -14,9 +14,13 @@ import {
   applyCustomerRoutineAction,
   cancelCustomerOrder,
   confirmCustomerMealPlan,
+  createCustomerMealPlan,
+  fetchCustomerMealMenu,
   fetchCustomerDashboard,
+  getCustomerMealPlan,
   updateCustomerBudget,
   updateCustomerConsent,
+  updateCustomerPlannedMeal,
   updateCustomerPreferences,
 } from '../../services/platformApi'
 
@@ -57,6 +61,13 @@ export default function AccountPage() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [preferenceForm, setPreferenceForm] = useState({ dietary_flags: '', allergies: '', health_goals: '', price_band: 'mid' })
+  const [nutritionTargets, setNutritionTargets] = useState({
+    energy_kcal: '', protein_g: '', carbohydrates_g: '', fat_g: '', fiber_g: '',
+  })
+  const [nutritionPlan, setNutritionPlan] = useState(null)
+  const [planReview, setPlanReview] = useState(null)
+  const [planMenuItems, setPlanMenuItems] = useState([])
+  const [mealEdits, setMealEdits] = useState({})
   const [budgetForm, setBudgetForm] = useState({ period: 'WEEKLY', amount: '', starts_on: '' })
   const [rescheduleTimes, setRescheduleTimes] = useState({})
 
@@ -144,6 +155,93 @@ export default function AccountPage() {
     }), 'Budget limit updated.')
   }
 
+  async function createNutritionPlan(event) {
+    event.preventDefault()
+    const targets = Object.fromEntries(
+      Object.entries(nutritionTargets).map(([key, value]) => [key, Number(value)])
+    )
+    await run('nutrition-plan', async () => {
+      const todayInIndia = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+      const result = await createCustomerMealPlan({
+        scope: 'DAILY',
+        starts_on: shiftWeek(todayInIndia, 1),
+        timezone: 'Asia/Kolkata',
+        dietary_flags: splitTerms(preferenceForm.dietary_flags),
+        allergies: splitTerms(preferenceForm.allergies),
+        health_goals: splitTerms(preferenceForm.health_goals),
+        nutrition_targets: targets,
+      })
+      setNutritionPlan(result)
+    }, 'Daily nutrition plan created for review. No order was placed.')
+  }
+
+  async function openMealPlanReview(planId) {
+    setBusy(`review-plan-${planId}`)
+    setError('')
+    try {
+      const [plan, menuItems] = await Promise.all([
+        getCustomerMealPlan(planId),
+        fetchCustomerMealMenu(),
+      ])
+      setPlanReview(plan)
+      setPlanMenuItems(menuItems)
+      setMealEdits(Object.fromEntries((plan.meals || []).map(meal => [
+        meal.id,
+        { menu_item_id: '', desired_for: dateTimeInput(meal.desired_for) },
+      ])))
+    } catch (err) {
+      setError(err.message || 'The meal plan could not be loaded for review.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function savePlannedMealEdit(meal) {
+    if (!planReview) return
+    const values = mealEdits[meal.id]
+    if (!values?.desired_for) {
+      setError('Choose a valid meal time before saving.')
+      return
+    }
+    setBusy(`meal-edit-${meal.id}`)
+    setError('')
+    setNotice('')
+    try {
+      const payload = { desired_for: new Date(values.desired_for).toISOString() }
+      if (values.menu_item_id) payload.menu_item_id = Number(values.menu_item_id)
+      await updateCustomerPlannedMeal(planReview.id, meal.id, payload)
+      const updatedPlan = await getCustomerMealPlan(planReview.id)
+      setPlanReview(updatedPlan)
+      setNutritionPlan(updatedPlan)
+      setMealEdits(Object.fromEntries((updatedPlan.meals || []).map(updatedMeal => [
+        updatedMeal.id,
+        { menu_item_id: '', desired_for: dateTimeInput(updatedMeal.desired_for) },
+      ])))
+      setNotice('Meal updated. The plan returned to draft and must be reviewed again.')
+      await load(data.week.starts_on)
+    } catch (err) {
+      setError(err.message || 'The planned meal could not be updated.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function copyPlannedMealOrderCommand(meal) {
+    const command = `order planned meal #${meal.id}`
+    setError('')
+    setNotice('')
+    if (!navigator.clipboard?.writeText) {
+      setError(`Clipboard access is unavailable. Copy "${command}" and send it in your linked WhatsApp or Telegram chat.`)
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(command)
+      setNotice(`Copied "${command}". Send it in your linked WhatsApp or Telegram chat to review the order. Nothing has been ordered.`)
+    } catch {
+      setError(`Could not copy the command. Copy "${command}" and send it in your linked WhatsApp or Telegram chat.`)
+    }
+  }
+
   const firstName = user?.name?.split(' ')[0] || 'there'
 
   return (
@@ -183,7 +281,7 @@ export default function AccountPage() {
 
           <section className="ca-planner" id="planner" aria-labelledby="week-title">
             <div className="ca-section-head">
-              <div><span>WEEKLY PLANNER</span><h2 id="week-title">{data.week.starts_on && `${localDate(data.week.starts_on)} – ${localDate(data.week.ends_on)}`}</h2></div>
+              <div><span>WEEKLY PLANNER</span><h2 id="week-title">{data.week.starts_on && `${localDate(data.week.starts_on)} to ${localDate(data.week.ends_on)}`}</h2></div>
               <div className="ca-week-controls">
                 <button aria-label="Previous week" onClick={() => load(shiftWeek(data.week.starts_on, -7))}><ArrowLeft size={16} /></button>
                 <button aria-label="Next week" onClick={() => load(shiftWeek(data.week.starts_on, 7))}><ArrowRight size={16} /></button>
@@ -198,15 +296,28 @@ export default function AccountPage() {
             <div className="ca-day-plan">
               <div className="ca-day-heading"><div><small>SELECTED DAY</small><h3>{selectedDate && localDate(selectedDate)}</h3></div><span>{selectedDay.meals.length} meals planned</span></div>
               <div className="ca-meal-list">
-                {selectedDay.meals.length ? selectedDay.meals.map(meal => <article key={meal.id}>
-                  <div className="ca-meal-time"><strong>{meal.local_time}</strong><small>{pretty(meal.meal_period)}</small></div>
-                  <div><h4>{meal.title}</h4><p>{pretty(meal.state)} · {money(meal.estimated_cost_cents, meal.currency)}</p></div>
-                  {meal.can_skip && <div className="ca-meal-actions">
-                    <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'SKIP', occurrence_date: meal.local_date, reason: 'Skipped from customer dashboard' }), 'Meal skipped.')}><SkipForward size={14} /> Skip</button>
-                    <input aria-label={`New time for ${meal.title}`} type="datetime-local" min={dateTimeInput(new Date())} value={rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)} onChange={event => setRescheduleTimes({ ...rescheduleTimes, [meal.id]: event.target.value })} />
-                    <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'RESCHEDULE', occurrence_date: meal.local_date, replacement_for: new Date(rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)).toISOString(), reason: 'Rescheduled from customer dashboard' }), 'Meal rescheduled.')}><CalendarClock size={14} /> Move</button>
-                  </div>}
-                </article>) : <div className="ca-empty-state">No meals planned for this day. <Link href="/#discover">Start planning</Link></div>}
+                {selectedDay.meals.length ? selectedDay.meals.map(meal => {
+                  const canCopyOrderCommand = (
+                    meal.plan_id
+                    && meal.state === 'CONFIRMED'
+                    && !meal.order_id
+                    && new Date(meal.desired_for).getTime() > Date.now()
+                  )
+                  return <article key={meal.id}>
+                    <div className="ca-meal-time"><strong>{meal.local_time}</strong><small>{pretty(meal.meal_period)}</small></div>
+                    <div><h4>{meal.title}</h4><p>{pretty(meal.state)} · {money(meal.estimated_cost_cents, meal.currency)}</p></div>
+                    {(meal.can_skip || canCopyOrderCommand) && <div className="ca-meal-actions">
+                      {meal.can_skip && <>
+                        <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'SKIP', occurrence_date: meal.local_date, reason: 'Skipped from customer dashboard' }), 'Meal skipped.')}><SkipForward size={14} /> Skip</button>
+                        <input aria-label={`New time for ${meal.title}`} type="datetime-local" min={dateTimeInput(new Date())} value={rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)} onChange={event => setRescheduleTimes({ ...rescheduleTimes, [meal.id]: event.target.value })} />
+                        <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'RESCHEDULE', occurrence_date: meal.local_date, replacement_for: new Date(rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)).toISOString(), reason: 'Rescheduled from customer dashboard' }), 'Meal rescheduled.')}><CalendarClock size={14} /> Move</button>
+                      </>}
+                      {canCopyOrderCommand && <button type="button" onClick={() => copyPlannedMealOrderCommand(meal)}>
+                        <ShoppingBag size={14} /> Copy order command
+                      </button>}
+                    </div>}
+                  </article>
+                }) : <div className="ca-empty-state">No meals planned for this day. <Link href="/#discover">Start planning</Link></div>}
               </div>
             </div>
           </section>
@@ -227,11 +338,97 @@ export default function AccountPage() {
             <article className="ca-panel">
               <header><span><CalendarDays size={18} /></span><div><small>DRAFT PLANS</small><h2>Review before confirming</h2></div></header>
               <div className="ca-stack">
-                {data.draft_plans.map(plan => <div className="ca-row" key={plan.id}><div><strong>{plan.name}</strong><small>{localDate(plan.starts_on)} · {money(plan.estimated_total_cents, plan.currency)}</small></div>
-                  <button disabled={busy === `plan-${plan.id}`} onClick={() => run(`plan-${plan.id}`, () => confirmCustomerMealPlan(plan.id), 'Meal plan confirmed. No order was placed.')}>Confirm</button></div>)}
+                {data.draft_plans.map(plan => <div className="ca-row" key={plan.id}>
+                  <div><strong>{plan.name}</strong><small>{localDate(plan.starts_on)} · {money(plan.estimated_total_cents, plan.currency)}</small></div>
+                  <button disabled={busy === `review-plan-${plan.id}`} onClick={() => openMealPlanReview(plan.id)}>
+                    {busy === `review-plan-${plan.id}` ? 'Loading…' : 'Review / edit'}
+                  </button>
+                  <button disabled={busy === `plan-${plan.id}`} onClick={() => run(`plan-${plan.id}`, () => confirmCustomerMealPlan(plan.id), 'Meal plan confirmed. No order was placed.')}>Confirm plan</button>
+                </div>)}
                 {!data.draft_plans.length && <p className="ca-empty-copy">No draft plans awaiting review.</p>}
+                {planReview && <section className="ca-stack" aria-label="Meal plan review">
+                  <div className="ca-row">
+                    <strong>Review {planReview.name}</strong>
+                    <button type="button" onClick={() => setPlanReview(null)}>Close</button>
+                  </div>
+                  <p className="ca-meta">Changing any meal invalidates the previous plan confirmation. Save each meal, then review the revised plan. Plan confirmation does not place an order.</p>
+                  {(planReview.meals || []).map(meal => {
+                    const values = mealEdits[meal.id] || {}
+                    return <div className="ca-row ca-plan-meal-edit" key={meal.id}>
+                      <div>
+                        <strong>{pretty(meal.meal_period)}: {meal.title}</strong>
+                        <small>{money(meal.estimated_cost_cents, meal.currency)} · {pretty(meal.nutrition?.status)} nutrition</small>
+                      </div>
+                      <label>Change menu item
+                        <select
+                          value={values.menu_item_id || ''}
+                          onChange={event => setMealEdits(current => ({
+                            ...current,
+                            [meal.id]: { ...values, menu_item_id: event.target.value },
+                          }))}
+                        >
+                          <option value="">Keep current: {meal.title}</option>
+                          {planMenuItems.map(item => <option key={item.id} value={item.id}>
+                            {item.name} · {money(item.price_cents, planReview.currency)}
+                          </option>)}
+                        </select>
+                      </label>
+                      <label>Meal time
+                        <input
+                          type="datetime-local"
+                          required
+                          value={values.desired_for || ''}
+                          onChange={event => setMealEdits(current => ({
+                            ...current,
+                            [meal.id]: { ...values, desired_for: event.target.value },
+                          }))}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busy === `meal-edit-${meal.id}`}
+                        onClick={() => savePlannedMealEdit(meal)}
+                      >
+                        {busy === `meal-edit-${meal.id}` ? 'Saving…' : 'Save meal'}
+                      </button>
+                    </div>
+                  })}
+                </section>}
               </div>
             </article>
+
+            <form className="ca-panel ca-form" onSubmit={createNutritionPlan}>
+              <header><span><ShieldCheck size={18} /></span><div><small>DAILY NUTRITION PLAN</small><h2>Plan meals for one day</h2></div></header>
+              <p className="ca-meta">Enter daily targets from a qualified professional. NourishBot does not calculate medical targets. A plan is a draft and does not place orders.</p>
+              <label>Energy (kcal)<input type="number" min="1" step="1" value={nutritionTargets.energy_kcal} onChange={event => setNutritionTargets({ ...nutritionTargets, energy_kcal: event.target.value })} required /></label>
+              <label>Protein (g)<input type="number" min="0.1" step="0.1" value={nutritionTargets.protein_g} onChange={event => setNutritionTargets({ ...nutritionTargets, protein_g: event.target.value })} required /></label>
+              <label>Carbohydrates (g)<input type="number" min="0.1" step="0.1" value={nutritionTargets.carbohydrates_g} onChange={event => setNutritionTargets({ ...nutritionTargets, carbohydrates_g: event.target.value })} required /></label>
+              <label>Fat (g)<input type="number" min="0.1" step="0.1" value={nutritionTargets.fat_g} onChange={event => setNutritionTargets({ ...nutritionTargets, fat_g: event.target.value })} required /></label>
+              <label>Fibre (g)<input type="number" min="0.1" step="0.1" value={nutritionTargets.fiber_g} onChange={event => setNutritionTargets({ ...nutritionTargets, fiber_g: event.target.value })} required /></label>
+              <button className="ca-save" disabled={busy === 'nutrition-plan'}>{busy === 'nutrition-plan' ? 'Planning…' : 'Create daily draft'}</button>
+              {nutritionPlan && <section className="ca-stack" aria-label="Generated nutrition plan">
+                <strong>{nutritionPlan.name}</strong>
+                {nutritionPlan.daily_nutrition?.map(day => <div key={day.date}>
+                  <small>{day.status === 'VERIFIED' ? 'Verified menu nutrition totals' : 'Nutrition data incomplete'} · {day.date}</small>
+                  <p className="ca-meta">
+                    {Math.round(day.totals.energy_kcal)} kcal · {day.totals.protein_g.toFixed(1)} g protein · {day.totals.carbohydrates_g.toFixed(1)} g carbs · {day.totals.fat_g.toFixed(1)} g fat · {day.totals.fiber_g.toFixed(1)} g fibre
+                  </p>
+                  {day.difference_from_targets && <small>
+                    Difference from targets (menu total − target): {Math.round(day.difference_from_targets.energy_kcal)} kcal · {day.difference_from_targets.protein_g.toFixed(1)} g protein · {day.difference_from_targets.carbohydrates_g.toFixed(1)} g carbs · {day.difference_from_targets.fat_g.toFixed(1)} g fat · {day.difference_from_targets.fiber_g.toFixed(1)} g fibre
+                  </small>}
+                  {day.status !== 'VERIFIED' && <small>Partial totals include verified meal values only. Target differences are withheld while any meal data is incomplete.</small>}
+                </div>)}
+                {nutritionPlan.meals?.map(meal => <div className="ca-row" key={meal.id}>
+                  <div><strong>{pretty(meal.meal_period)}: {meal.title}</strong><small>{localDateTime(meal.desired_for)} · {money(meal.estimated_cost_cents, meal.currency)}</small>
+                    <small>{pretty(meal.nutrition?.status)} nutrition · {meal.nutrition?.serving_g ? `${meal.nutrition.serving_g} g serving` : 'serving size unavailable'}{meal.nutrition?.source ? ` · Source: ${meal.nutrition.source}` : ''}</small>
+                  </div>
+                </div>)}
+                <button type="button" className="ca-save" onClick={() => openMealPlanReview(nutritionPlan.id)}>
+                  Review / adjust meals
+                </button>
+                <small>Review and confirm each order separately. Confirming this plan alone places no food order.</small>
+              </section>}
+            </form>
 
             <form className="ca-panel ca-form" id="preferences" onSubmit={savePreferences}>
               <header><span><Settings2 size={18} /></span><div><small>MEAL PREFERENCES</small><h2>Diet, allergies & goals</h2></div></header>

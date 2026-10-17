@@ -1010,7 +1010,7 @@ async def _tool_find_drive_through_restaurants_on_route(
             origin=str(args.get("origin") or ""),
             destination=str(args.get("destination") or ""),
             cuisine=str(args.get("cuisine") or ""),
-            scheduled_for=str(args.get("scheduled_for") or ctx.scheduled_for or ""),
+            depart_at=str(args.get("depart_at") or datetime.now(timezone.utc).isoformat()),
             max_results=int(args.get("max_results") or 5),
         )
     except MapsServiceError as exc:

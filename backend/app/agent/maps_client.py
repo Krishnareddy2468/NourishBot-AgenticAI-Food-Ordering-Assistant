@@ -7,12 +7,13 @@ pipeline remains responsible for menu verification and scheduled checkout.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+from app.domain.route_fulfillment import estimate_route_arrival
 
 
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
@@ -146,6 +147,7 @@ async def find_drive_through_on_route(
     cuisine: str = "",
     scheduled_for: str = "",
     max_results: int = 5,
+    depart_at: str | None = None,
 ) -> dict:
     """Compatibility wrapper for route-side drive-through discovery."""
     return await find_restaurants_on_route(
@@ -155,6 +157,7 @@ async def find_drive_through_on_route(
         scheduled_for=scheduled_for,
         fulfillment_type="DRIVE_THROUGH",
         max_results=max_results,
+        depart_at=depart_at,
     )
 
 
@@ -165,6 +168,7 @@ async def find_restaurants_on_route(
     scheduled_for: str = "",
     fulfillment_type: str = "PICKUP",
     max_results: int = 5,
+    depart_at: str | None = None,
 ) -> dict:
     """Compute a driving route and discover low-detour restaurant candidates."""
     origin = (origin or "").strip()
@@ -180,13 +184,16 @@ async def find_restaurants_on_route(
         "polylineQuality": "OVERVIEW",
         "polylineEncoding": "ENCODED_POLYLINE",
     }
-    if scheduled_for:
+    departure_text = (depart_at or scheduled_for or "").strip()
+    departure_at = datetime.now(timezone.utc)
+    if departure_text:
         try:
-            departure = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
-            if departure.tzinfo is not None:
-                route_payload["departureTime"] = departure.isoformat()
-        except ValueError:
-            pass
+            departure_at = datetime.fromisoformat(departure_text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise MapsServiceError("Route departure time must be an ISO-8601 datetime with a timezone.") from exc
+        if departure_at.tzinfo is None:
+            raise MapsServiceError("Route departure time must include a timezone.")
+    route_payload["departureTime"] = departure_at.isoformat()
 
     route_data = await _post_json(
         ROUTES_COMPUTE_URL,
@@ -229,12 +236,29 @@ async def find_restaurants_on_route(
         _compact_place(place, summaries[index] if index < len(summaries) else None)
         for index, place in enumerate(places)
     ]
+    for candidate in candidates:
+        arrival = estimate_route_arrival(
+            departure_at,
+            candidate.get("route_duration_minutes"),
+        )
+        candidate["pickup_timing"] = {
+            "departure_at": departure_at.isoformat(),
+            "estimated_arrival_at": arrival.isoformat() if arrival else None,
+            "estimate_source": "GOOGLE_MAPS_ROUTE_SUMMARY" if arrival else None,
+            "preparation_time_minutes": None,
+            "estimated_ready_at": None,
+            "note": (
+                "Route travel-time estimate only. Restaurant preparation time is not verified, "
+                "so food readiness at arrival cannot be guaranteed."
+            ),
+        }
     return {
         "source": "Google Maps",
         "origin": origin,
         "destination": destination,
         "route_distance_meters": route.get("distanceMeters"),
         "route_duration_minutes": _duration_minutes(route.get("duration")),
+        "depart_at": departure_at.isoformat(),
         "restaurants": _rank_places(candidates)[:count],
         "availability_note": (
             "These are route-side discovery results, not checkout or fulfillment proof. "

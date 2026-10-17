@@ -2,6 +2,31 @@
 
 Phase 5 adds a deterministic planning layer above ordering. A meal plan is not an order, and confirming a plan never calls a provider or creates an order. Transactional ordering still requires the separate immutable order-confirmation workflow.
 
+## Nutrition-aware planning (prototype implementation)
+
+Menu items now support per-serving energy, protein, carbohydrates, fat, fibre, serving size,
+source, status, and update time. Managers enter these values manually; the API validates the
+record shape but does not independently verify the source or nutrition claim.
+
+Customers can provide all five daily targets. The deterministic daily planner only uses complete
+menu facts marked `VERIFIED` when targets are supplied, and reports per-day totals and target
+differences from those values. It fails closed if the available menu does not contain enough
+verified facts. Missing values are never inferred. Targets should come from a qualified
+professional; this feature is informational, not medical advice, and cannot promise a health
+outcome.
+
+There is no independent nutrition review or restaurant data-ingestion pipeline yet, so
+`VERIFIED` is currently a manager assertion accompanied by a source string. Confirming a plan
+does not create delivery orders. In WhatsApp and Telegram, a customer can request an individual
+order for a confirmed future meal with `order planned meal #<meal id>`. This hands the selected
+item and planned future time to the existing order flow; the customer must review the exact order
+and explicitly confirm it. External provider checkout remains subject to provider capability
+gates. The customer dashboard supports plan review and edits and can copy this chat command for a
+confirmed future meal; checkout must still be completed in the linked WhatsApp or Telegram chat.
+Customers can also use `change planned meal #<meal id> to menu item #<menu item id> [at
+<ISO-8601 time with timezone>]`; an edit invalidates the old plan confirmation. This is not a
+multi-day recurring delivery service.
+
 ## Plan model
 
 A daily plan contains one day and a weekly plan contains seven consecutive days. Each day has exactly four standard slots:
@@ -94,6 +119,7 @@ plan my week vegetarian under ₹2000
 show my meal plan
 confirm meal plan 12
 confirm planned meal 45
+order planned meal #45
 pause routine 3
 resume routine 3
 skip routine 3 2026-10-21

@@ -2,18 +2,21 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
   CalendarDays,
   Check,
   CheckCircle2,
   Clock3,
-  IndianRupee,
+  HeartPulse,
+  Home,
   MapPin,
+  MessageCircle,
   Navigation,
   Route,
   Search,
+  Send,
   ShieldCheck,
 } from 'lucide-react'
 import NourishLogo from '../shared/NourishLogo'
@@ -36,7 +39,59 @@ const days = [
 
 const mealPeriods = ['Breakfast', 'Lunch', 'Snacks', 'Dinner']
 const cuisines = ['All', 'South Indian', 'Bowls', 'Vegetarian']
-const locations = ['Indiranagar', 'Koramangala', 'Near me']
+const chatDemos = {
+  meals: {
+    label: 'Home meal plan',
+    eyebrow: 'FEATURE 01 · NUTRITION-AWARE HOME MEALS',
+    title: 'Build a full day of meals around your life.',
+    description: 'Set a diet, budget and nutrition target. NourishBot prepares four editable meal slots that you can review before ordering anything.',
+  },
+  route: {
+    label: 'On-route pickup',
+    eyebrow: 'FEATURE 02 · ON-ROUTE PICKUP',
+    title: 'Find a practical food stop on your way.',
+    description: 'Share your route, compare useful stops and choose a future pickup time. NourishBot checks provider support before any order can continue.',
+  },
+}
+
+const channelConversations = {
+  whatsapp: {
+    meals: {
+      first: 'Vegetarian meals tomorrow, under ₹800. Aim for 90g protein.',
+      reply: 'Here is a four-meal draft. Tap a meal to change it.',
+      final: 'This is a draft to review. No meal has been ordered. Each order needs its own details and explicit confirmation.',
+    },
+    route: {
+      first: 'I’m driving from Indiranagar to Whitefield. Find a vegetarian pickup on my route.',
+      reply: 'I found two practical stops. Detours and arrival times are estimates, not food-ready guarantees.',
+      final: 'This stop is ready for review. Provider support, the future time, item and price must be checked before any order confirmation.',
+    },
+  },
+  telegram: {
+    meals: {
+      first: 'Plan tomorrow: vegetarian, ₹800 budget, 90g protein target.',
+      reply: 'Here is your four-meal draft. Tap a meal to edit it.',
+      final: 'This is a draft to review. No order was created. Continue through the individual meal order flow when you are ready.',
+    },
+    route: {
+      first: 'Find veg pickup stops from Indiranagar to Whitefield for 1:15 PM.',
+      reply: 'Two route candidates found. Travel estimates do not confirm restaurant preparation or readiness.',
+      final: 'This route stop is for review. Provider pickup support and the future time still need verification.',
+    },
+  },
+}
+
+const mealSlots = [
+  { slot: 'Breakfast', time: '8:00 AM', options: [{ name: 'Vegetable poha', kcal: 410, protein: 18, price: 150 }, { name: 'Paneer dosa', kcal: 520, protein: 24, price: 190 }] },
+  { slot: 'Lunch', time: '12:45 PM', options: [{ name: 'Millet paneer bowl', kcal: 560, protein: 31, price: 240 }, { name: 'Rajma rice bowl', kcal: 590, protein: 23, price: 210 }] },
+  { slot: 'Snack', time: '4:30 PM', options: [{ name: 'Fruit yoghurt cup', kcal: 220, protein: 12, price: 120 }, { name: 'Roasted chana chaat', kcal: 260, protein: 14, price: 110 }] },
+  { slot: 'Dinner', time: '7:45 PM', options: [{ name: 'Tofu khichdi', kcal: 610, protein: 32, price: 250 }, { name: 'Palak paneer plate', kcal: 680, protein: 29, price: 280 }] },
+]
+
+const routeCandidates = [
+  { name: 'Green Bowl Kitchen', food: 'Vegetarian grain bowls', area: 'Domlur', detour: '+6 min', arrival: '1:08 PM', pickup: '1:15 PM', status: 'Provider check required' },
+  { name: 'Millet House', food: 'South Indian meals', area: 'Marathahalli', detour: '+9 min', arrival: '1:12 PM', pickup: '1:20 PM', status: 'Future pickup unverified' },
+]
 
 export default function EditorialSections() {
   const [cuisine, setCuisine] = useState('All')
@@ -45,7 +100,47 @@ export default function EditorialSections() {
   const [discoveryView, setDiscoveryView] = useState('list')
   const [activeDay, setActiveDay] = useState('21')
   const [mealPeriod, setMealPeriod] = useState('Lunch')
-  const [chatLocation, setChatLocation] = useState('')
+  const [chatFeature, setChatFeature] = useState('meals')
+  const [chatChannel, setChatChannel] = useState('whatsapp')
+  const [mealSelections, setMealSelections] = useState([0, 0, 0, 0])
+  const [routeCandidate, setRouteCandidate] = useState(0)
+  const [previewReviewed, setPreviewReviewed] = useState(false)
+  const messagesRef = useRef(null)
+
+  const activeDemo = chatDemos[chatFeature]
+  const conversation = channelConversations[chatChannel][chatFeature]
+  const activeRoute = routeCandidates[routeCandidate]
+  const mealTotals = mealSlots.reduce((totals, meal, index) => {
+    const selected = meal.options[mealSelections[index]]
+    return {
+      price: totals.price + selected.price,
+      kcal: totals.kcal + selected.kcal,
+      protein: totals.protein + selected.protein,
+    }
+  }, { price: 0, kcal: 0, protein: 0 })
+
+  useEffect(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = previewReviewed ? messagesRef.current.scrollHeight : 0
+    }
+  }, [chatFeature, chatChannel, previewReviewed])
+
+  const selectFeature = (feature) => {
+    setChatFeature(feature)
+    setPreviewReviewed(false)
+  }
+
+  const selectChannel = (channel) => {
+    setChatChannel(channel)
+    setPreviewReviewed(false)
+  }
+
+  const cycleMeal = (index) => {
+    setMealSelections((current) => current.map((selection, mealIndex) => (
+      mealIndex === index ? (selection + 1) % mealSlots[index].options.length : selection
+    )))
+    setPreviewReviewed(false)
+  }
 
   return (
     <>
@@ -174,7 +269,7 @@ export default function EditorialSections() {
 
           <div className="ed-planner-ui">
             <div className="ed-planner-top">
-              <div><small>YOUR WEEK</small><h3>October 19–25</h3></div>
+              <div><small>YOUR WEEK</small><h3>October 19 to 25</h3></div>
               <span>Product preview</span>
             </div>
 
@@ -203,12 +298,12 @@ export default function EditorialSections() {
         </div>
       </section>
 
-      <section className="ed-route" aria-labelledby="ed-route-title">
+      <section className="ed-route" id="route-pickup" aria-labelledby="ed-route-title">
         <div className="ed-route-copy">
           <span className="ed-label">SMART ROUTE DISCOVERY</span>
           <h2 id="ed-route-title">Good food, along the way.</h2>
           <p>Find a practical pickup stop between where you are and where you need to be.</p>
-          <div className="ed-route-disclosure"><ShieldCheck size={15} /> Preview only—detour and eligibility require connected route data.</div>
+          <div className="ed-route-disclosure"><ShieldCheck size={15} /> Preview only. Detour and eligibility require connected route data.</div>
         </div>
 
         <div className="ed-route-product">
@@ -229,25 +324,128 @@ export default function EditorialSections() {
         </div>
       </section>
 
-      <section className="ed-conversation" aria-labelledby="ed-conversation-title">
-        <div className="ed-conversation-copy">
-          <span className="ed-label">CONVERSATIONAL PLANNING</span>
-          <h2 id="ed-conversation-title">Just tell NourishBot.</h2>
-          <p>Begin with the way you naturally think about food. NourishBot asks for what is missing, then turns the answer into a plan you can review.</p>
-          <Link href="/login" className="ed-text-link">Start a conversation <ArrowRight size={16} /></Link>
-        </div>
-
-        <div className="ed-chat-ui">
-          <div className="ed-chat-head"><div className="ed-chat-monogram">N</div><div><strong>NourishBot</strong><small>Planning assistant · Preview</small></div></div>
-          <div className="ed-chat-body">
-            <div className="ed-message ed-message-user">Find me a vegetarian lunch tomorrow under ₹200.</div>
-            <div className="ed-message ed-message-bot">I can help you find suitable options. What location should I search?</div>
-            <div className="ed-location-choices" aria-label="Choose a preview location">
-              {locations.map((location) => <button key={location} type="button" aria-pressed={chatLocation === location} className={chatLocation === location ? 'active' : ''} onClick={() => setChatLocation(location)}>{location}</button>)}
-            </div>
-            {chatLocation && <div className="ed-chat-next"><MapPin size={15} /><span><strong>{chatLocation} selected</strong><small>Continue to verify live restaurant options.</small></span><Link href="/login" aria-label="Continue this plan"><ArrowRight size={15} /></Link></div>}
+      <section className="demo-chat-section" id="chat-demo" aria-labelledby="demo-chat-title">
+        <header className="demo-chat-heading">
+          <div>
+            <span className="ed-label">WHATSAPP + TELEGRAM DEMO</span>
+            <h2 id="demo-chat-title">Two everyday needs.<br />One natural conversation.</h2>
           </div>
-          <div className="ed-chat-input"><span>Describe your next meal…</span><Link href="/login" aria-label="Open NourishBot"><ArrowRight size={16} /></Link></div>
+          <p>Switch the feature and channel to preview how NourishBot guides the conversation. All content below is an illustrative product demo, not a live order.</p>
+        </header>
+
+        <div className="demo-chat-stage">
+          <aside className="demo-feature-picker" aria-label="Choose a feature demo">
+            {Object.entries(chatDemos).map(([key, demo], index) => (
+              <button
+                key={key}
+                type="button"
+                className={chatFeature === key ? 'active' : ''}
+                aria-pressed={chatFeature === key}
+                onClick={() => selectFeature(key)}
+              >
+                <span className="demo-feature-icon" aria-hidden="true">{index === 0 ? <HeartPulse size={19} /> : <Route size={19} />}</span>
+                <span className="demo-feature-text"><strong>{demo.label}</strong><small>{index === 0 ? 'Four meals shaped by your day and budget.' : 'Compare food stops along your drive.'}</small></span>
+                <span className="demo-feature-state">{chatFeature === key ? 'Selected' : 'Explore'}</span>
+              </button>
+            ))}
+
+            <div className="demo-feature-copy" aria-live="polite">
+              <span className="ed-label">{activeDemo.eyebrow}</span>
+              <h3>{activeDemo.title}</h3>
+              <p>{activeDemo.description}</p>
+              <div><ShieldCheck size={15} /> Preview data is illustrative. Live details require checks.</div>
+            </div>
+          </aside>
+
+          <div className="demo-phone-wrap">
+            <div className="demo-channel-switch" aria-label="Choose a messaging channel">
+              <button type="button" className={chatChannel === 'whatsapp' ? 'active whatsapp' : ''} aria-pressed={chatChannel === 'whatsapp'} onClick={() => selectChannel('whatsapp')}><MessageCircle size={15} /> WhatsApp</button>
+              <button type="button" className={chatChannel === 'telegram' ? 'active telegram' : ''} aria-pressed={chatChannel === 'telegram'} onClick={() => selectChannel('telegram')}><Send size={15} /> Telegram</button>
+            </div>
+
+            <div className={`demo-phone demo-phone-${chatChannel}`}>
+              <div className="demo-phone-bar"><i /><span /><i /></div>
+              <div className="demo-app-head">
+                <div className="demo-avatar">N</div>
+                <div><strong>NourishBot</strong><small>{chatChannel === 'whatsapp' ? 'WhatsApp · preview' : 'Telegram bot · preview'}</small></div>
+                <span>{chatChannel === 'whatsapp' ? <MessageCircle size={17} /> : <Send size={17} />}</span>
+              </div>
+
+              <div className="demo-messages" ref={messagesRef} aria-live="polite" aria-label="Illustrative conversation preview" tabIndex={0}>
+                <div className="demo-day-label">Illustrative conversation</div>
+                <div className="demo-bubble demo-bubble-user">{conversation.first}<small>12:02 {chatChannel === 'whatsapp' ? '✓✓' : '✓'}</small></div>
+                <div className="demo-bubble demo-bubble-bot">{conversation.reply}</div>
+
+                {chatFeature === 'meals' ? (
+                  <div className="demo-product-card demo-meal-plan" aria-label="Editable illustrative meal plan">
+                    <header>
+                      <div className="demo-summary-icon"><Home size={16} /></div>
+                      <div><small>TOMORROW’S PLAN</small><strong>Four meals at home</strong></div>
+                      <span>Draft</span>
+                    </header>
+                    <div className="demo-plan-totals">
+                      <span><small>EXAMPLE COST</small><strong>₹{mealTotals.price} of ₹800</strong></span>
+                      <span><small>EXAMPLE NUTRITION</small><strong>{mealTotals.kcal.toLocaleString('en-IN')} kcal · {mealTotals.protein}g protein</strong></span>
+                    </div>
+                    <div className="demo-meal-slots">
+                      {mealSlots.map((meal, index) => {
+                        const selected = meal.options[mealSelections[index]]
+                        return (
+                          <button type="button" key={meal.slot} onClick={() => cycleMeal(index)} aria-label={`Change ${meal.slot} from ${selected.name}`}>
+                            <time>{meal.time}</time>
+                            <span><small>{meal.slot}</small><strong>{selected.name}</strong><em>{selected.kcal} kcal · {selected.protein}g protein</em></span>
+                            <i>Change</i>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="demo-data-note">Example menu values only. Real nutrition needs complete, source-labelled data.</p>
+                  </div>
+                ) : (
+                  <div className="demo-product-card demo-route-preview" aria-label="Illustrative route pickup options">
+                    <div className="demo-mini-map" role="img" aria-label="Illustrative route from Indiranagar to Whitefield with a food stop">
+                      <span className="map-origin">A</span><i className="map-road" /><b><Navigation size={13} /></b><i className="map-road map-road-last" /><span className="map-destination">B</span>
+                      <small>Indiranagar</small><small>Whitefield</small>
+                    </div>
+                    <header>
+                      <div className="demo-summary-icon"><Navigation size={16} /></div>
+                      <div><small>ON YOUR ROUTE</small><strong>Two pickup candidates</strong></div>
+                      <span>Demo</span>
+                    </header>
+                    <div className="demo-route-candidates">
+                      {routeCandidates.map((candidate, index) => (
+                        <button type="button" key={candidate.name} className={routeCandidate === index ? 'active' : ''} aria-pressed={routeCandidate === index} onClick={() => { setRouteCandidate(index); setPreviewReviewed(false) }}>
+                          <span><strong>{candidate.name}</strong><small>{candidate.food} · {candidate.area}</small><small>Estimated detour {candidate.detour}</small></span>
+                          <i>{routeCandidate === index ? 'Selected' : 'Choose'}</i>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="demo-pickup-details">
+                      <span><small>ROUTE ARRIVAL</small><strong>{activeRoute.arrival}</strong></span>
+                      <span><small>FUTURE PICKUP</small><strong>{activeRoute.pickup}</strong></span>
+                      <span><small>PROVIDER STATUS</small><strong>{activeRoute.status}</strong></span>
+                    </div>
+                    <p className="demo-data-note">Example travel times only. Arrival does not guarantee food readiness.</p>
+                  </div>
+                )}
+
+                {previewReviewed && (
+                  <>
+                    <div className="demo-bubble demo-bubble-bot demo-bubble-later">{conversation.final}</div>
+                    <div className="demo-safety-note"><ShieldCheck size={14} /><span><strong>Confirmation stays separate.</strong> {chatFeature === 'meals' ? 'A meal plan does not place an order.' : 'A route choice does not place an order or promise readiness.'}</span></div>
+                  </>
+                )}
+              </div>
+
+              <div className="demo-review-bar">
+                <button className="demo-chat-action" type="button" onClick={() => setPreviewReviewed((current) => !current)} aria-expanded={previewReviewed}>
+                  {previewReviewed ? 'Back to preview' : chatFeature === 'meals' ? 'Review meal plan' : 'Review pickup details'} <ArrowRight size={15} />
+                </button>
+              </div>
+              <div className="demo-compose"><span>{chatChannel === 'whatsapp' ? 'Message' : 'Write a message…'}</span><button type="button" disabled aria-label={`Sending is disabled in this ${chatChannel} demo`}><Send size={15} /></button></div>
+            </div>
+            <p className="demo-caption">Interactive illustration · No live WhatsApp, Telegram, Maps or provider connection</p>
+          </div>
         </div>
       </section>
 
@@ -264,7 +462,7 @@ export default function EditorialSections() {
 
       <footer className="ed-footer">
         <NourishLogo className="nourish-logo-footer" tagline="Meals that fit your day." />
-        <nav aria-label="Footer navigation"><a href="#how-it-works">How it works</a><a href="#discover">Discover</a><a href="#meal-planning">Meal planning</a><Link href="/privacy">Privacy</Link><Link href="/login">Sign in</Link></nav>
+        <nav aria-label="Footer navigation"><a href="#how-it-works">How it works</a><a href="#meal-planning">Home meals</a><a href="#route-pickup">Route pickup</a><a href="#chat-demo">Chat demo</a><Link href="/privacy">Privacy</Link><Link href="/login">Sign in</Link></nav>
         <p>Discovery information is verified through connected services where available. A plan or provider handoff is not a placed order until you explicitly confirm it.</p>
         <span className="ed-footer-copy">© 2026 NourishBot</span>
       </footer>

@@ -10,6 +10,7 @@ from app.domain.route_fulfillment import (
     OpeningState,
     RouteFulfillmentError,
     decide_provider_fulfillment,
+    estimate_route_arrival,
     evaluate_future_opening,
     normalize_fulfillment_type,
     recovery_reason,
@@ -73,6 +74,18 @@ def test_future_time_requires_timezone_and_never_uses_current_open_state():
             datetime(2026, 10, 19, 13, 0),
             330,
         )
+
+
+def test_route_arrival_estimate_uses_timezone_aware_departure_and_never_implies_ready_time():
+    departure = datetime(2026, 10, 19, 8, 0, tzinfo=IST)
+    assert estimate_route_arrival(departure, 35) == datetime(
+        2026, 10, 19, 3, 5, tzinfo=timezone.utc
+    )
+    assert estimate_route_arrival(departure, None) is None
+    with pytest.raises(RouteFulfillmentError, match="timezone"):
+        estimate_route_arrival(datetime(2026, 10, 19, 8, 0), 35)
+    with pytest.raises(RouteFulfillmentError, match="finite"):
+        estimate_route_arrival(departure, float("nan"))
 
 
 def test_route_score_explains_detour_rating_diet_budget_and_future_status():

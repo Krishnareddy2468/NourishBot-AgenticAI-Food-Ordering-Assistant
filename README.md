@@ -11,6 +11,28 @@ time, and timezone.**
 The project keeps the food-ordering niche while using an original scheduled-meal workflow.
 It is designed as a portfolio and product prototype and uses synthetic data by default.
 
+## Product direction
+
+NourishBot is being shaped around two customer needs, available through WhatsApp, Telegram,
+and the web:
+
+1. **Nutrition-aware meals at home:** plan a complete day of meals around a customer's diet and
+   nutrition goals, then let them choose and confirm individual restaurant orders for delivery
+   at suitable times.
+2. **Pickup along the way:** find food near a customer's travel route, order ahead when the
+   provider supports it, and let the customer collect it themselves.
+
+The daily nutrition planner is implemented as a prototype: a customer supplies five daily
+targets, and the planner uses only complete menu facts marked verified to calculate totals.
+Managers enter nutrition facts and their source manually; the status is not independently
+reviewed, and no restaurant nutrition dataset is bundled. The feature is informational, not
+medical advice. Confirming a plan only confirms its meal choices; it does not place orders. In
+WhatsApp or Telegram, `order planned meal #45` starts the normal individual order flow for a
+confirmed future meal, which still requires exact-order review and explicit confirmation. The
+web dashboard supports plan review and editing and can copy this command for a linked chat; it
+does not start checkout in the browser. A meal plan is not a batch or recurring home-delivery
+schedule.
+
 ## Product flow
 
 ```text
@@ -43,6 +65,30 @@ Provider verification → future date/time → explicit confirmation
 If an external provider exposes only immediate checkout, NourishBot blocks that transaction
 instead of silently placing an instant order.
 
+## Drive-through / on-route pickup flow
+
+Built for people who are travelling: instead of searching Google Maps for a stop and queuing
+when they arrive, the customer orders ahead from a restaurant on their route and collects the
+food themselves. Nothing is delivered, so the meal is timed to be ready when the customer
+arrives and no travel time is lost waiting.
+
+1. The user shares the route origin and destination, optionally by sending a current location.
+2. Google Routes computes the driving route; Places searches for restaurant and drive-through
+   candidates near that route.
+3. Results are ranked using operational status, rating, rating volume, detour time, and routing
+   summary where available.
+4. The user chooses a candidate and a future pickup time that matches their expected arrival.
+   NourishBot searches that restaurant on Swiggy or Zomato (or its in-house menu) and verifies
+   pickup support.
+5. Only a provider tool that supports the chosen fulfillment and a future time may complete
+   checkout, and only after explicit confirmation of the unchanged order snapshot.
+
+If drive-through cannot be verified, the flow falls back to scheduled pickup, and otherwise to
+manual selection in the provider app. Maps results are never proof of availability or checkout
+eligibility. A route-summary arrival estimate can be provided, but restaurant preparation time
+is not modeled; the customer confirms the pickup time and readiness is not guaranteed. See
+[Route-Aware Fulfillment](docs/architecture/ROUTE_AWARE_FULFILLMENT.md).
+
 ## Supported meal discovery
 
 - Breakfast, lunch, snacks, and dinner
@@ -54,6 +100,9 @@ instead of silently placing an instant order.
 - Consent-gated saved locations and routes with automatic retention and customer deletion controls
 - Explainable route ranking for detour, future opening state, rating confidence, diet, and budget
 - Scheduled home delivery coordinated by NourishBot, plus scheduled drive-through pickup
+
+Meal plans and recurring routines are for planning and reminders; they do not schedule or place
+a week of home-delivery orders. Each restaurant order is created and confirmed separately.
 
 Maps is a discovery layer, not an ordering provider. A Maps result is never treated as proof of
 future opening hours, menu availability, price, or drive-through support. NourishBot verifies the
@@ -96,7 +145,7 @@ an existing verified channel and the target channel.
 
 Linked Telegram and WhatsApp customers can also use deterministic planner commands such as
 `plan my day`, `plan my week vegetarian under ₹2000`, `show my meal plan`,
-`confirm meal plan 12`, `confirm planned meal 45`, `pause routine 3`,
+`confirm meal plan 12`, `confirm planned meal 45`, `order planned meal #45`, `pause routine 3`,
 `resume routine 3`, or `skip routine 3 2026-10-21`.
 
 ## Safety architecture

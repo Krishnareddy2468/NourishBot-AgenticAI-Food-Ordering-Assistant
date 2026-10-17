@@ -4,6 +4,27 @@ Phase 6 adds consented saved locations, route-aware restaurant ranking, future-t
 evaluation, and provider-side fulfillment verification. Google Maps remains a read-only
 discovery source and never grants checkout eligibility.
 
+## Drive-through / on-route pickup flow
+
+The product goal is travel without wasted time: the customer orders ahead from a restaurant on
+the way, collects the food in person (no delivery), and the meal is ready when they arrive.
+
+1. The user shares the route origin and destination, optionally by sending a current location.
+2. Google Routes computes the driving route; Places searches for drive-through candidates near
+   that route.
+3. Results are ranked using operational status, rating, rating volume, and routing summary
+   where available.
+4. The user chooses a candidate and a future pickup time matching their expected arrival;
+   NourishBot searches that restaurant on Swiggy or Zomato and verifies pickup support.
+5. Only a provider tool that supports the chosen fulfillment and a future time may complete
+   checkout, after explicit confirmation.
+
+The Maps route tool can now return a route-summary-based estimated arrival for each candidate
+when a timezone-aware departure time is supplied. The estimate is travel time only, not a
+restaurant preparation or ready-time estimate. The customer must still choose and confirm a
+future pickup time; NourishBot must never promise that food will be ready on arrival based on
+the route estimate.
+
 ## Trust boundary
 
 ```text

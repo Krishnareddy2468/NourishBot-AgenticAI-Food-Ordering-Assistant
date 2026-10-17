@@ -2,7 +2,7 @@ import Link from 'next/link'
 import NourishLogo from '../../components/shared/NourishLogo'
 
 export const metadata = {
-  title: 'Privacy — NourishBot',
+  title: 'Privacy | NourishBot',
   description: 'How NourishBot uses, retains, exports, and deletes customer information.',
 }
 

@@ -2,7 +2,7 @@ import './globals.css'
 import Providers from './providers'
 
 export const metadata = {
-  title: 'NourishBot — Good meals, right on time',
+  title: 'NourishBot | Good meals, right on time',
   description: 'Plan meals, discover relevant restaurants, and schedule food around your day with NourishBot.',
 }
 

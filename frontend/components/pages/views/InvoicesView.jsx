@@ -77,7 +77,7 @@ export default function InvoicesView() {
                   </td>
                   <td>
                     <span style={{ fontSize: 11, background: 'var(--bg-overlay)', padding: '2px 8px', borderRadius: 6 }}>
-                      {inv.entity_type || '—'}
+                      {inv.entity_type || 'Not available'}
                     </span>
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>#{inv.entity_id}</td>
@@ -87,7 +87,7 @@ export default function InvoicesView() {
                     ₹{((inv.total_cents || 0) / 100).toFixed(2)}
                   </td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {inv.created_at ? new Date(inv.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                    {inv.created_at ? new Date(inv.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Not available'}
                   </td>
                 </tr>
               ))}

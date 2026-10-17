@@ -96,13 +96,13 @@ export default function ReservationsView() {
               {/* Customer */}
               <div style={{ flex: 1, minWidth: 140 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{r.customer_name || 'Guest'}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.customer_phone || '—'}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.customer_phone || 'Not available'}</div>
               </div>
 
               {/* Date/Time */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontSize: 13 }}>
                 <Calendar size={14} />
-                <span>{r.date || '—'}</span>
+                <span>{r.date || 'Not available'}</span>
                 <span>{r.time ? r.time.slice(0, 5) : ''}</span>
               </div>
 

@@ -42,7 +42,8 @@ def main() -> int:
             status, headers, body, elapsed = request(url)
             passed = status in statuses and bool(body)
             if name.startswith("backend_"):
-                passed = passed and headers.get("X-Content-Type-Options", "").lower() == "nosniff"
+                lowered = {key.lower(): value for key, value in headers.items()}
+                passed = passed and lowered.get("x-content-type-options", "").lower() == "nosniff"
             checks.append({"name": name, "passed": passed, "status": status, "duration_ms": round(elapsed * 1000, 2)})
         except Exception as exc:
             checks.append({"name": name, "passed": False, "error": exc.__class__.__name__})

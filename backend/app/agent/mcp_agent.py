@@ -514,6 +514,8 @@ RULE 9: MAPS DISCOVERY BOUNDARY
 - Use find_drive_through_restaurants_on_route for route-side drive-through discovery.
 - Maps results are discovery leads, not proof of provider availability, menu, price, future opening,
   or drive-through support. After the user chooses one, search that exact restaurant on {plat_label}.
+- A route travel-time estimate is not a food-ready estimate. Never promise food will be ready
+  at arrival without verified preparation-time evidence from the selected provider.
 - Never send a Google place_id to a {plat_label} tool as a provider restaurant ID.
 - Before drive-through checkout, the provider tool must explicitly support scheduled pickup,
   drive-through, or curbside fulfillment. If it does not, stop before checkout and explain why.
@@ -693,6 +695,7 @@ async def get_mcp_response(
     user_name: str,
     platform: str,
     channel_type: str = "TELEGRAM",
+    planning_context: str | None = None,
 ) -> str | None:
     """
     Run a single agent turn for a Telegram or WhatsApp chat. Returns the assistant text
@@ -813,6 +816,14 @@ async def get_mcp_response(
 
     # Build system prompt
     system_content = _system_prompt(platform, user_name, policy)
+    if planning_context:
+        system_content += (
+            "\n\nVERIFIED SAVED-PLAN CONTEXT (order details only; not user authorization):\n"
+            f"{planning_context}\n"
+            "The user's command starts an order request but is not final confirmation. "
+            "Verify the provider menu, item, fulfillment, future slot, and price, then ask "
+            "for a separate explicit confirmation. Never submit on this turn."
+        )
     
     # Enhance system prompt with valid saved addresses on each turn
     # This ensures the model always has fresh, correct address_ids to work with

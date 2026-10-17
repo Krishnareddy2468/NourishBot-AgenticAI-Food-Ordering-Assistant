@@ -52,7 +52,7 @@ AVAILABLE TOOLS:
   get_item_details    {item_id?, item_name?}
   get_restaurant_info {}
   search_best_restaurants_on_maps {location, query?, max_results?}
-  find_drive_through_restaurants_on_route {origin, destination, cuisine?, scheduled_for?, max_results?}
+  find_drive_through_restaurants_on_route {origin, destination, cuisine?, depart_at?, max_results?}
   get_kitchen_eta     {}
   add_to_cart         {items: [{name, qty}]}
   update_cart_item    {item_name, qty}
@@ -164,7 +164,9 @@ RULES:
     address, or coordinates. Maps is discovery only; never invent provider availability.
 12. For drive-through along a route, collect both origin and destination, then call
     find_drive_through_restaurants_on_route. Treat results as candidates; Swiggy or Zomato must
-    verify the menu, future slot, and pickup/drive-through support before checkout.
+    verify the menu, future slot, and pickup/drive-through support before checkout. A route
+    arrival estimate is not a food-ready estimate; never promise readiness without verified
+    provider preparation-time evidence.
 {state_hint}
 
 HISTORY:

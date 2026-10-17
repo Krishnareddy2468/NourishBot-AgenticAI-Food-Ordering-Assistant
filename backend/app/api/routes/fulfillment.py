@@ -27,6 +27,7 @@ from app.domain.route_fulfillment import (
     RouteFulfillmentError,
     normalize_fulfillment_type,
     recovery_reason,
+    estimate_route_arrival,
     score_restaurant_candidates,
 )
 from app.providers.service import verify_selected_fulfillment
@@ -55,6 +56,7 @@ class DiscoveryRequest(BaseModel):
     saved_route_id: int | None = None
     cuisine: str = Field(default="", max_length=100)
     desired_for: datetime
+    depart_at: datetime | None = None
     fulfillment_type: str
     diet_tags: list[str] = Field(default_factory=list, max_length=20)
     budget_cents: int | None = Field(default=None, ge=0)
@@ -391,6 +393,7 @@ async def _update_verification_history(
 async def _discover(body: DiscoveryRequest, request: Request, response: Response, reason: str | None = None):
     _no_store(response)
     desired_for = _aware(body.desired_for)
+    depart_at = _aware(body.depart_at) if body.depart_at else datetime.now(timezone.utc)
     fulfillment = _fulfillment(body.fulfillment_type)
     restaurant_id, customer_id = await _scope(request)
     origin, destination, route_fingerprint, saved_route_id = await _resolve_route(body, restaurant_id, customer_id)
@@ -408,7 +411,7 @@ async def _discover(body: DiscoveryRequest, request: Request, response: Response
                 origin,
                 destination,
                 cuisine=search_terms,
-                scheduled_for=desired_for.isoformat(),
+                scheduled_for=depart_at.isoformat(),
                 fulfillment_type=fulfillment.value,
                 max_results=body.max_results,
             )
@@ -418,6 +421,23 @@ async def _discover(body: DiscoveryRequest, request: Request, response: Response
             required_diet_tags=body.diet_tags,
             budget_cents=body.budget_cents,
         )
+        if fulfillment.value != "DELIVERY":
+            for candidate in candidates:
+                arrival = estimate_route_arrival(
+                    depart_at,
+                    candidate.get("route_duration_minutes"),
+                )
+                candidate["pickup_timing"] = {
+                    "departure_at": depart_at.isoformat(),
+                    "estimated_arrival_at": arrival.isoformat() if arrival else None,
+                    "estimate_source": "GOOGLE_MAPS_ROUTE_SUMMARY" if arrival else None,
+                    "preparation_time_minutes": None,
+                    "estimated_ready_at": None,
+                    "note": (
+                        "Route travel-time estimate only. Restaurant preparation time is not "
+                        "verified, so food readiness at arrival cannot be guaranteed."
+                    ),
+                }
         status = "CANDIDATES_FOUND" if candidates else "NO_CANDIDATES"
     except (MapsServiceError, RouteFulfillmentError) as exc:
         candidates, status = [], "MAPS_UNAVAILABLE"
@@ -429,7 +449,13 @@ async def _discover(body: DiscoveryRequest, request: Request, response: Response
             restaurant_id=restaurant_id,
             customer_id=customer_id,
             saved_route_id=saved_route_id,
-            query_fingerprint=_fingerprint(route_fingerprint, body.cuisine, desired_for, fulfillment.value),
+            query_fingerprint=_fingerprint(
+                route_fingerprint,
+                body.cuisine,
+                desired_for,
+                depart_at,
+                fulfillment.value,
+            ),
             body=body,
             status=status,
             reason=reason,
@@ -446,6 +472,7 @@ async def _discover(body: DiscoveryRequest, request: Request, response: Response
         "recovery_reason": reason,
         "history_id": history_id,
         "requested_for": desired_for.isoformat(),
+        "depart_at": depart_at.isoformat() if fulfillment.value != "DELIVERY" else None,
         "requested_fulfillment_type": fulfillment.value,
         "restaurants": candidates,
         "maps_checkout_eligible": False,
@@ -454,6 +481,12 @@ async def _discover(body: DiscoveryRequest, request: Request, response: Response
             "message": "Choose a restaurant manually in the provider experience and verify the future slot and fulfillment mode." if not candidates else None,
         },
         "availability_note": maps_result.get("availability_note"),
+        "pickup_timing_note": (
+            "Candidate arrival times are route estimates only. No restaurant preparation "
+            "time has been verified; confirm pickup timing with the provider."
+            if fulfillment.value != "DELIVERY"
+            else None
+        ),
     }
 
 

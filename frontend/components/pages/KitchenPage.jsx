@@ -1,6 +1,6 @@
 'use client'
 /**
- * Kitchen KDS v2 — item-level status tracking with station views.
+ * Kitchen KDS v2: item-level status tracking with station views.
  * Real-time WebSocket updates for order/item status changes.
  */
 

@@ -45,7 +45,7 @@ export default function TablesView() {
       setError(null)
     } catch (err) {
       setError(err.message || 'Failed to connect to backend')
-      if (!silent) toast.error('Failed to load tables — is the backend running?')
+      if (!silent) toast.error('Failed to load tables. Is the backend running?')
     } finally {
       setLoading(false)
     }
@@ -332,7 +332,7 @@ export default function TablesView() {
                       <td style={{ fontWeight: 600 }}>{table?.table_number || table?.name || `Table ${s.table_id}`}</td>
                       <td><div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Users size={13} />{s.guests}</div></td>
                       <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {s.opened_at ? new Date(s.opened_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        {s.opened_at ? new Date(s.opened_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Not available'}
                       </td>
                       <td><span className="badge badge-ready">OPEN</span></td>
                     </tr>

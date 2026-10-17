@@ -2,9 +2,12 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
+from app.api.routes import deliveries
 from app.api.routes.operations import router as operations_router
 from app.api.main import rate_limit
 from app.core import redis_client
@@ -195,6 +198,93 @@ def test_tracking_tokens_are_high_entropy_and_not_order_references():
     first, second = generator(None), generator(None)
     assert first != second
     assert len(first) >= 40 and len(second) >= 40
+
+
+@pytest.mark.asyncio
+async def test_public_tracking_rejects_short_tokens_before_database_access(monkeypatch):
+    def fail_if_opened():
+        raise AssertionError("short tracking tokens must not query the database")
+
+    monkeypatch.setattr(deliveries, "AsyncSessionLocal", fail_if_opened)
+    with pytest.raises(HTTPException) as exc:
+        await deliveries.track_delivery_public("x" * 31)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_public_tracking_returns_same_not_found_for_unknown_long_tokens(monkeypatch):
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def execute(self, _statement):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+    monkeypatch.setattr(deliveries, "AsyncSessionLocal", Session)
+    with pytest.raises(HTTPException) as exc:
+        await deliveries.track_delivery_public("x" * 43)
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Order not found"
+
+
+@pytest.mark.asyncio
+async def test_public_tracking_response_excludes_customer_and_delivery_details(monkeypatch):
+    order = SimpleNamespace(
+        id=7,
+        order_ref="NB-ABCD1234",
+        status="CONFIRMED",
+        provider="NOURISHBOT",
+        source_channel="WEB",
+        order_type="DELIVERY",
+        scheduled_for=None,
+        schedule_state="LIVE",
+        customer_phone="+15555550123",
+        delivery_address="private address",
+    )
+    delivery = SimpleNamespace(
+        status="EN_ROUTE",
+        driver_id=42,
+        picked_up_at=None,
+        delivered_at=None,
+        customer_phone="+15555550123",
+        address_json={"address": "private address"},
+    )
+
+    class Session:
+        def __init__(self):
+            self.results = iter((order, delivery))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def execute(self, _statement):
+            value = next(self.results)
+            return SimpleNamespace(scalar_one_or_none=lambda: value)
+
+    monkeypatch.setattr(deliveries, "AsyncSessionLocal", Session)
+    response = await deliveries.track_delivery_public("x" * 43)
+    assert response == {
+        "order_ref": "NB-ABCD1234",
+        "order_status": "CONFIRMED",
+        "provider": "NOURISHBOT",
+        "source_channel": "WEB",
+        "order_type": "DELIVERY",
+        "scheduled_for": None,
+        "delivery": {
+            "status": "EN_ROUTE",
+            "assigned": True,
+            "picked_up_at": None,
+            "delivered_at": None,
+        },
+    }
+    assert "customer_phone" not in response
+    assert "address_json" not in response["delivery"]
 
 
 def test_phase8_operations_and_release_tooling_are_present():

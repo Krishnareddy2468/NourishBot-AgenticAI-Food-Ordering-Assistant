@@ -332,7 +332,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for table in reversed([
+    # sessions and carts reference each other, so no drop order satisfies every
+    # foreign key; CASCADE is safe because every table here is being removed.
+    for table in ([
         'delivery_location_events', 'deliveries',
         'table_session_orders', 'table_sessions',
         'order_items', 'payments',
@@ -349,4 +351,4 @@ def downgrade() -> None:
         'dining_tables', 'outbox_events',
         'restaurants',
     ]):
-        op.drop_table(table)
+        op.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE')

@@ -12,7 +12,7 @@ NourishBot is an AI meal planning, scheduling, and ordering companion. Users pla
 NourishBot supports:
 
 - In-house NourishBot ordering and fulfillment.
-- Home delivery.
+- Home delivery, with a partially implemented nutrition-aware full-day meal-planning experience.
 - Scheduled pickup and drive-through collection.
 - Google Maps restaurant discovery and route-aware pickup discovery.
 - Swiggy and Zomato integrations only within verified provider capabilities.
@@ -21,6 +21,28 @@ NourishBot supports:
 - Daily and weekly meal plans, saved templates, reminders, and recurring routines.
 
 Google Maps is a discovery service only. It does not prove menu availability, price, provider availability, future opening hours, or drive-through eligibility. Swiggy/Zomato capabilities must be verified independently before NourishBot relies on them.
+
+### Product direction to develop
+
+The customer product has two complementary experiences:
+
+1. **Nutrition-aware home meals:** help a customer plan a complete day's meals around their
+   dietary preferences and nutrition goals, then schedule suitable individual orders for home
+   delivery at selected times. The customer reviews and confirms each order; confirming a meal
+   plan alone must never create orders.
+2. **On-route pickup:** find suitable restaurants along a customer's route, verify provider
+   pickup support, and enable order-ahead collection when the provider supports the selected
+   fulfillment and time.
+
+The prototype planner can total source-labelled menu nutrition facts and requires all five
+verified values when nutrition targets are used. `VERIFIED` currently means a manager-entered
+assertion with a recorded source, not independent scientific review. Nutrition planning must not
+invent nutrition values: any unverified values must be identified as estimates. Do not present
+targets as medical advice or guarantee health outcomes.
+
+Meal planning and recurring reminders are distinct from recurring food delivery. The product
+does not include a multi-day home-delivery schedule for situations such as a household cook
+being away.
 
 ## 2. Non-Negotiable Product Boundaries
 
@@ -700,35 +722,108 @@ below are deliberately operational attestations, not unfinished application code
 - [X] Tenant-isolation and authorization tests.
 - [X] Memory consent, export, retention, and deletion tests.
 - [X] Budget and recurring-routine tests.
-- [ ] API integration tests with PostgreSQL and Redis.
-- [ ] Frontend unit, accessibility, and end-to-end tests.
+- [X] API integration tests with PostgreSQL and Redis (local validation).
+- [X] Frontend unit and accessibility tests (local validation).
+- [ ] Frontend end-to-end tests against a candidate deployment.
 - [ ] Provider contract and live sandbox verification where available.
 
 ### Operational readiness
 
-- [ ] Database backups and restore drill.
-- [ ] Migration forward/rollback rehearsal.
+- [X] Database backup and restore drill (local validation).
+- [X] Migration forward/rollback rehearsal (local validation).
 - [X] Secret rotation procedure.
 - [ ] Error monitoring and structured alerts.
 - [ ] Scheduler lag, queue depth, and provider-health dashboards.
 - [X] Customer-support and manual-review workflow.
 - [X] Incident response and provider-disable runbook.
 - [X] Privacy policy and data deletion workflow.
-- [ ] Load and rate-limit testing.
-- [ ] Deployment smoke test and rollback rehearsal.
+- [X] Bounded load and rate-limit testing (local validation).
+- [X] Deployment smoke test (local validation).
+- [ ] Candidate deployment rollback rehearsal.
 
 ### Public release gate
 
 Public transactional release is allowed only when:
 
 - [ ] Every P0 and P1 finding is closed or explicitly risk-accepted.
-- [ ] All migrations and rollback procedures pass rehearsal.
-- [ ] Confirmation, idempotency, and reconciliation tests pass.
-- [ ] Tenant isolation and public tracking security tests pass.
-- [ ] Backups and restore are proven.
+- [X] All migrations and rollback procedures pass local rehearsal.
+- [X] Confirmation, idempotency, and reconciliation tests pass locally.
+- [X] Tenant isolation and public tracking security tests pass locally.
+- [X] Backup and restore are proven locally.
 - [ ] Monitoring and alerts are active.
 - [ ] Provider claims match verified capabilities.
-- [ ] A provider defaults safely to Mode A when its status is uncertain.
+- [X] A provider defaults safely to Mode A when its status is uncertain.
+
+## Phase 9 — Nutrition-Aware Home Meals and On-Route Pickup
+
+**Status:** Partially implemented and locally validated. The prototype supports provenance-aware
+menu nutrition fields, a verified-facts-only daily planner, nutrition summaries, web and chat
+plan review/editing, a web copy-to-chat shortcut, chat handoff of confirmed planned meals into
+existing individual order flows, and route-summary arrival estimates. It does not yet have
+independently reviewed nutrition data, direct in-browser order confirmation, provider
+preparation-time estimates, or complete route chat journeys.
+
+**Goal:** Help customers plan a complete day of meals around their dietary and nutrition goals,
+order chosen meals for home delivery at suitable times, and make travel pickup practical by
+timing collection around the route.
+
+### Nutrition-aware home meals
+
+- [x] Define the five daily targets, validation rules, and informational-only user-facing
+  limitations.
+- [ ] Review nutrition guidance and supported claims with qualified nutrition expertise.
+- [x] Define menu-level nutrition fields for energy, protein, carbohydrates, fat, and fibre,
+  including source, verification status, serving size, and last-updated time.
+- [x] Add manager entry and shape validation for source-labelled menu nutrition; do not silently
+  generate or treat model estimates as verified facts.
+- [ ] Add an independently reviewed nutrition-ingestion process and restaurant dataset. Current
+  `VERIFIED` status is a manager assertion, not independent scientific verification.
+- [x] Extend the daily planner to recommend a complete day's meals against the customer's
+  selected nutrition goals, while preserving diet, allergy, availability, and budget constraints.
+- [x] Show daily totals, target gaps, serving assumptions, and missing or estimated values
+  clearly; never claim the plan guarantees a health outcome.
+- [x] Let the customer review and adjust menu choices and future meal times in the customer web
+  dashboard and WhatsApp/Telegram planning commands.
+- [x] Let a customer request a confirmed planned meal in WhatsApp or Telegram and hand it to the
+  existing individual order flow with its planned future time; require the normal exact-order
+  review and explicit confirmation, and reject stale or changed menu data.
+- [ ] Add direct individual-order handoff and confirmation from the customer web dashboard using
+  the same confirmation, provider-capability, idempotency, and reconciliation gates. The web
+  dashboard currently copies the chat command; it does not initiate checkout.
+- [x] Support plan viewing/editing in WhatsApp, Telegram, and the customer web experience.
+- [x] Keep the chat order-confirmation conversation on the existing explicit-confirmation and
+  provider-capability safety gates.
+- [x] Add unit coverage for target validation, verified-facts-only planning, nutrition summaries,
+  manager entry validation, chat plan editing, and the planned-meal order handoff guards.
+- [ ] Complete end-to-end tests for estimated/unknown values, allergy constraints, changed menu
+  data, stale confirmations, duplicate requests, and provider failures.
+
+### Route pickup experience
+
+- [x] Return a timezone-aware candidate arrival estimate from Google route-summary duration when
+  available. This is advisory travel time, not a food-ready time.
+- [ ] Add a dependable arrival uncertainty window and present it in the route conversation when
+  route and detour confidence data support one.
+- [ ] Obtain a restaurant/provider preparation-time estimate where supported and use it to
+  suggest when to place the order; do not promise readiness when timing data is unavailable.
+- [x] Keep the customer's explicit future pickup time as the checkout requirement; a route ETA
+  never substitutes for the confirmed scheduled time or a provider readiness estimate.
+- [ ] Support the full route-pickup conversation in WhatsApp and Telegram: origin/destination
+  or shared current location, candidate selection, meal selection, timing, and explicit order
+  confirmation.
+- [x] Add unit coverage for route ETA conversion and route-summary handling.
+- [ ] Complete end-to-end tests for route changes, preparation-time uncertainty, pickup
+  verification, fallback behavior, and WhatsApp/Telegram journeys.
+
+### Phase 9 acceptance criteria
+
+- [x] The planner never invents nutrition facts or labels unverified values as verified.
+- [x] A meal plan alone never creates a delivery or pickup order.
+- [ ] All Phase 9 order entry points, including the web handoff, have end-to-end evidence for the
+  existing immutable confirmation, idempotency, provider capability, and reconciliation controls.
+- [ ] No public transactional provider behavior is enabled before the Phase 8 release gate
+  passes for the candidate deployment and provider.
+- [x] The weekly cook-away / multi-day home-delivery scheduling use case remains out of scope.
 
 ## 7. Test Strategy
 
@@ -785,6 +880,8 @@ Development proceeds in this order:
 9. Phase 6: route-aware fulfillment.
 10. Phase 7: dashboards and analytics.
 11. Phase 8: full production validation.
+12. Phase 9: nutrition-aware daily home meals and arrival-aware route pickup, behind the
+    existing safety and provider-verification gates.
 
 No later phase may bypass an unresolved safety or data-integrity dependency in an earlier phase.
 
@@ -829,5 +926,6 @@ A phase is complete only when:
 | 2026-10-15 | Treat Google Maps as discovery only                                                    | Maps cannot prove provider menu, price, scheduling, or checkout support                                                             |
 | 2026-10-15 | Default external providers to Mode A until verified                                    | Prevents unsupported transactional claims and unsafe checkout                                                                       |
 | 2026-10-15 | Complete the safety foundation before feature expansion                                | Public ordering requires tenant isolation, confirmation, idempotency, and recovery first                                            |
+| 2026-10-17 | Plan nutrition-aware full-day home meals and route-timed pickup as the next product phase | Differentiates the customer experience; requires verified nutrition data and reliable provider timing before transactional claims |
 | 2026-10-15 | Deploy the Next.js frontend on Vercel, not Azure                                       | Vercel is the selected public web platform; the project root is `frontend`                                                        |
 | 2026-10-15 | Keep API, worker, beat, and polling processes on an always-on runtime until refactored | The current long-running processes do not fit request-scoped Vercel Functions without webhook, cron, locking, and lifecycle changes |

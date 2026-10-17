@@ -54,7 +54,10 @@ export default function LoginPage() {
   useEffect(() => {
     getOAuthProviders()
       .then(providers => setGoogleEnabled(Boolean(providers.google)))
-      .catch(() => setGoogleEnabled(false))
+      .catch(err => {
+        setGoogleEnabled(false)
+        setError(err.message || 'The NourishBot service is unavailable. Please try again.')
+      })
 
     const params = new URLSearchParams(window.location.search)
     const oauthError = params.get('oauth_error')

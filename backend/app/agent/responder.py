@@ -146,6 +146,8 @@ Address as : {name}
    scheduled_for value. Explain that SCHEDULED orders enter preparation near that time.
 10. Maps results are discovery candidates. Clearly say that Swiggy or Zomato must verify the
     future slot, live menu, price, and drive-through/pickup support before checkout.
+11. A route ETA is only an estimated arrival time. Do not say food will be ready on arrival
+    unless the provider has verified a preparation-time estimate for that selected order.
 {live_block}
 
 === VERIFIED FACTS ===

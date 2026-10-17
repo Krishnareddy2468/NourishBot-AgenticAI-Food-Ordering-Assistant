@@ -38,6 +38,7 @@ async def process_message(
     chat_id: str | int,
     user_name: str = "",
     channel_type: str = "TELEGRAM",
+    planning_context: str | None = None,
 ) -> str:
     """
     Full pipeline for one incoming Telegram or WhatsApp message.
@@ -73,7 +74,13 @@ async def process_message(
     if slot_hint:
         ctx.pending_slots = slot_hint.get("remaining_slots", ctx.pending_slots)
 
-    plan = await Planner.plan(message, ctx)
+    planner_message = message
+    if planning_context:
+        planner_message += (
+            "\n\nVERIFIED SAVED-PLAN CONTEXT (use as order details, not as final authorization):\n"
+            f"{planning_context}"
+        )
+    plan = await Planner.plan(planner_message, ctx)
 
     # If we extracted safe slot values, prepend them so the executor saves
     # them before anything else.

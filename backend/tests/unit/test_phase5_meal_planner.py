@@ -156,6 +156,7 @@ def test_planner_routes_cover_plans_templates_routines_and_actions():
     paths = {route.path for route in meal_plans_router.routes}
     assert {
         "/api/v1/customer/meal-plans",
+        "/api/v1/customer/menu-items",
         "/api/v1/customer/meal-plans/{plan_id}",
         "/api/v1/customer/meal-plans/{plan_id}/meals/{meal_id}",
         "/api/v1/customer/meal-plans/{plan_id}/confirm",

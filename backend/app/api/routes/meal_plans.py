@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.api.routes.customer_privacy import linked_customer_channel
 from app.db.models import MealPlan, MealRoutine, MealSchedule, MealTemplate, MenuItem
 from app.db.session import AsyncSessionLocal
-from app.domain.meal_planning import MealPlanningError
+from app.domain.meal_planning import MEAL_PERIODS, MealPlanningError
 from app.services.meal_planner import (
     change_routine,
     confirm_planned_meal,
@@ -36,6 +37,14 @@ router = APIRouter(
 )
 
 
+class NutritionTargets(BaseModel):
+    energy_kcal: float = Field(strict=True, gt=0, allow_inf_nan=False)
+    protein_g: float = Field(strict=True, gt=0, allow_inf_nan=False)
+    carbohydrates_g: float = Field(strict=True, gt=0, allow_inf_nan=False)
+    fat_g: float = Field(strict=True, gt=0, allow_inf_nan=False)
+    fiber_g: float = Field(strict=True, gt=0, allow_inf_nan=False)
+
+
 class PlanCreate(BaseModel):
     scope: str = Field(pattern="^(?i:daily|weekly)$")
     starts_on: date
@@ -44,6 +53,7 @@ class PlanCreate(BaseModel):
     dietary_flags: list[str] = Field(default_factory=list, max_length=32)
     allergies: list[str] = Field(default_factory=list, max_length=32)
     health_goals: list[str] = Field(default_factory=list, max_length=32)
+    nutrition_targets: NutritionTargets | None = None
     budget_cents: int | None = Field(default=None, ge=0)
     currency: str = Field(default="INR", min_length=3, max_length=3)
 
@@ -98,6 +108,12 @@ def _meal_payload(meal: MealSchedule) -> dict[str, Any]:
         "allergen_tags": meal.allergen_tags or [],
         "constraints": meal.constraints_json or {},
         "recommendation": meal.selection_json or {},
+        "nutrition": (meal.selection_json or {}).get("nutrition", {
+            "status": "UNKNOWN",
+            "source": None,
+            "serving_g": None,
+            "per_serving": None,
+        }),
         "revision": meal.revision,
         "confirmed_at": meal.confirmed_at.isoformat() if meal.confirmed_at else None,
         "occurrence_key": meal.occurrence_key,
@@ -119,10 +135,57 @@ def _plan_payload(plan: MealPlan, meals: list[MealSchedule] | None = None) -> di
         "revision": plan.revision,
         "confirmation_snapshot_hash": plan.confirmation_snapshot_hash,
         "confirmed_at": plan.confirmed_at.isoformat() if plan.confirmed_at else None,
+        "nutrition_targets": (plan.constraints_json or {}).get("nutrition_targets"),
     }
     if meals is not None:
         value["meals"] = [_meal_payload(meal) for meal in meals]
+        value["daily_nutrition"] = _daily_nutrition_payload(plan, meals)
     return value
+
+
+def _daily_nutrition_payload(plan: MealPlan, meals: list[MealSchedule]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[MealSchedule]] = {}
+    zone = ZoneInfo(plan.timezone)
+    for meal in meals:
+        day = meal.desired_for.astimezone(zone).date().isoformat()
+        grouped.setdefault(day, []).append(meal)
+
+    targets = (plan.constraints_json or {}).get("nutrition_targets")
+    summaries: list[dict[str, Any]] = []
+    for day, day_meals in sorted(grouped.items()):
+        totals = {
+            "energy_kcal": 0.0,
+            "protein_g": 0.0,
+            "carbohydrates_g": 0.0,
+            "fat_g": 0.0,
+            "fiber_g": 0.0,
+        }
+        complete = (
+            len(day_meals) == len(MEAL_PERIODS)
+            and {meal.meal_period for meal in day_meals} == set(MEAL_PERIODS)
+        )
+        for meal in day_meals:
+            nutrition = (meal.selection_json or {}).get("nutrition") or {}
+            per_serving = nutrition.get("per_serving") or {}
+            if nutrition.get("status") != "VERIFIED" or any(key not in per_serving for key in totals):
+                complete = False
+                continue
+            for key in totals:
+                totals[key] += float(per_serving[key])
+        summary: dict[str, Any] = {
+            "date": day,
+            "status": "VERIFIED" if complete else "INCOMPLETE",
+            "meal_count": len(day_meals),
+            "totals": totals,
+            "targets": targets,
+        }
+        if complete and targets:
+            summary["difference_from_targets"] = {
+                key: round(totals[key] - float(targets[key]), 2)
+                for key in totals
+            }
+        summaries.append(summary)
+    return summaries
 
 
 def _template_payload(template: MealTemplate) -> dict[str, Any]:
@@ -203,6 +266,11 @@ async def create_meal_plan(body: PlanCreate, request: Request):
                 dietary_flags=body.dietary_flags,
                 allergies=body.allergies,
                 health_goals=body.health_goals,
+                nutrition_targets=(
+                    body.nutrition_targets.model_dump()
+                    if body.nutrition_targets is not None
+                    else None
+                ),
                 budget_cents=body.budget_cents,
                 currency=body.currency,
                 source="WEB",
@@ -215,6 +283,35 @@ async def create_meal_plan(body: PlanCreate, request: Request):
             raise HTTPException(422, str(exc)) from exc
         await db.refresh(plan)
     return _plan_payload(plan, meals)
+
+
+@router.get("/menu-items")
+async def list_customer_menu_items(request: Request):
+    restaurant_id, _, _ = await _scope(request)
+    async with AsyncSessionLocal() as db:
+        items = (await db.execute(
+            select(MenuItem)
+            .where(
+                MenuItem.restaurant_id == restaurant_id,
+                MenuItem.available.is_(True),
+                or_(MenuItem.stock_qty.is_(None), MenuItem.stock_qty > 0),
+            )
+            .order_by(MenuItem.name, MenuItem.id)
+        )).scalars().all()
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "type": item.type,
+            "price_cents": (
+                item.special_price_cents
+                if item.special_price_cents is not None
+                else item.price_cents
+            ),
+            "nutrition_status": item.nutrition_status,
+        }
+        for item in items
+    ]
 
 
 @router.get("/meal-plans/{plan_id}")
@@ -250,6 +347,7 @@ async def edit_planned_meal(plan_id: int, meal_id: int, body: PlannedMealUpdate,
                 MenuItem.id == body.menu_item_id,
                 MenuItem.restaurant_id == restaurant_id,
                 MenuItem.available.is_(True),
+                or_(MenuItem.stock_qty.is_(None), MenuItem.stock_qty > 0),
             ))).scalar_one_or_none()
             if not menu_item:
                 raise HTTPException(404, "Available menu item not found")
