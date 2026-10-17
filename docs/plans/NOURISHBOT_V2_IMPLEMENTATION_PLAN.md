@@ -758,10 +758,10 @@ Public transactional release is allowed only when:
 
 **Status:** Partially implemented and locally validated. The prototype supports provenance-aware
 menu nutrition fields, a verified-facts-only daily planner, nutrition summaries, web and chat
-plan review/editing, a web copy-to-chat shortcut, chat handoff of confirmed planned meals into
-existing individual order flows, and route-summary arrival estimates. It does not yet have
-independently reviewed nutrition data, direct in-browser order confirmation, provider
-preparation-time estimates, or complete route chat journeys.
+plan review/editing, handoff of confirmed planned meals into existing individual order flows from
+both chat and the customer web dashboard, and route-summary arrival estimates. It does not yet
+have independently reviewed nutrition data, provider preparation-time estimates, or complete
+route chat journeys.
 
 **Goal:** Help customers plan a complete day of meals around their dietary and nutrition goals,
 order chosen meals for home delivery at suitable times, and make travel pickup practical by
@@ -787,16 +787,20 @@ timing collection around the route.
 - [x] Let a customer request a confirmed planned meal in WhatsApp or Telegram and hand it to the
   existing individual order flow with its planned future time; require the normal exact-order
   review and explicit confirmation, and reject stale or changed menu data.
-- [ ] Add direct individual-order handoff and confirmation from the customer web dashboard using
-  the same confirmation, provider-capability, idempotency, and reconciliation gates. The web
-  dashboard currently copies the chat command; it does not initiate checkout.
+- [x] Add direct individual-order handoff and confirmation from the customer web dashboard using
+  the same confirmation, provider-capability, idempotency, and reconciliation gates. Review and
+  explicit confirmation are separate requests that reuse the chat confirmation challenge,
+  snapshot comparison, and idempotency key; dashboard checkout covers the in-house kitchen and
+  fails closed to the chat conversation for any external provider.
 - [x] Support plan viewing/editing in WhatsApp, Telegram, and the customer web experience.
 - [x] Keep the chat order-confirmation conversation on the existing explicit-confirmation and
   provider-capability safety gates.
 - [x] Add unit coverage for target validation, verified-facts-only planning, nutrition summaries,
   manager entry validation, chat plan editing, and the planned-meal order handoff guards.
-- [ ] Complete end-to-end tests for estimated/unknown values, allergy constraints, changed menu
-  data, stale confirmations, duplicate requests, and provider failures.
+- [x] End-to-end tests against PostgreSQL for the web order entry point: changed menu data,
+  stale and reused confirmations, duplicate requests, unavailable items, and the schedule link.
+- [ ] Extend those end-to-end tests to estimated/unknown nutrition values, allergy constraints,
+  and provider failures, and to the chat order entry point.
 
 ### Route pickup experience
 
@@ -819,11 +823,28 @@ timing collection around the route.
 
 - [x] The planner never invents nutrition facts or labels unverified values as verified.
 - [x] A meal plan alone never creates a delivery or pickup order.
-- [ ] All Phase 9 order entry points, including the web handoff, have end-to-end evidence for the
-  existing immutable confirmation, idempotency, provider capability, and reconciliation controls.
+- [x] The web order entry point has end-to-end evidence for the immutable confirmation,
+  idempotency, and provider-capability controls (`tests/integration/test_phase9_web_order_end_to_end.py`,
+  5 passed against local PostgreSQL on 17 October 2026).
+- [ ] The chat order entry point has the same end-to-end evidence, and both have reconciliation
+  evidence for an external provider once one is verified.
 - [ ] No public transactional provider behavior is enabled before the Phase 8 release gate
   passes for the candidate deployment and provider.
 - [x] The weekly cook-away / multi-day home-delivery scheduling use case remains out of scope.
+
+### Phase 9 validation evidence (17 October 2026)
+
+- Backend unit tests: 182 passed, including 19 dedicated to the dashboard order handoff.
+- Dashboard order end-to-end tests against local PostgreSQL 16: 5 passed. They cover the stored
+  confirmation, the placed order and its linked planned meal, durable job creation, a resubmitted
+  confirmation returning the first order, a price change after review being rejected as
+  `SNAPSHOT_CHANGED`, an unavailable item blocking review, and an ordered meal being refused a
+  second time. They require a disposable database because the order and schedule audit trails are
+  append-only by database trigger.
+- Frontend unit and accessibility suite: 18 passed. Production Next.js build passed.
+- This work found and fixed a latent defect: `app/agent/executor.py` referenced `settings` in
+  `place_order` without importing it at module scope, so every in-house order placement raised
+  `NameError` at runtime. No earlier test exercised that path.
 
 ## 7. Test Strategy
 

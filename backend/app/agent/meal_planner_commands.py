@@ -14,9 +14,12 @@ from app.db.models import Channel, MealPlan, MealRoutine, MealSchedule, MenuItem
 from app.db.session import get_session_factory
 from app.domain.meal_planning import (
     MealPlanningError,
-    MenuCandidate,
     NUTRITION_TARGET_KEYS,
     normalize_nutrition_targets,
+)
+from app.services.planned_meal_order import (
+    PlannedMealOrderError,
+    load_orderable_planned_meal,
 )
 from app.services.meal_planner import (
     change_routine,
@@ -61,94 +64,17 @@ async def _start_planned_meal_order(
     customer_id = int(channel.customer_id)
     restaurant_id = channel.restaurant_id
     async with get_session_factory()() as db:
-        meal = (await db.execute(select(MealSchedule).where(
-            MealSchedule.id == meal_id,
-            MealSchedule.restaurant_id == restaurant_id,
-            MealSchedule.customer_id == customer_id,
-        ))).scalar_one_or_none()
-        if not meal:
-            return "That planned meal was not found on your linked profile."
-        plan = (await db.execute(select(MealPlan).where(
-            MealPlan.id == meal.meal_plan_id,
-            MealPlan.restaurant_id == restaurant_id,
-            MealPlan.customer_id == customer_id,
-        ))).scalar_one_or_none()
-        if not plan:
-            return "That meal plan was not found on your linked profile."
-        if meal.state != "CONFIRMED" or plan.status != "CONFIRMED":
-            return (
-                f"Confirm and review plan #{plan.id} first. Plan confirmation only confirms "
-                "the schedule; it does not place an order."
+        try:
+            planned = await load_orderable_planned_meal(
+                db,
+                meal_id=meal_id,
+                restaurant_id=restaurant_id,
+                customer_id=customer_id,
             )
-        if meal.desired_for <= datetime.now(ZoneInfo("UTC")):
-            return "That planned meal time has passed. Reschedule and reconfirm it before ordering."
-        if not meal.menu_item_id:
-            return "That planned meal has no linked menu item. Edit the plan before ordering."
-
-        menu_item = (await db.execute(select(MenuItem).where(
-            MenuItem.id == meal.menu_item_id,
-            MenuItem.restaurant_id == restaurant_id,
-            MenuItem.available.is_(True),
-            or_(MenuItem.stock_qty.is_(None), MenuItem.stock_qty > 0),
-        ))).scalar_one_or_none()
-        if not menu_item:
-            return "That menu item is no longer available. Edit and reconfirm the plan before ordering."
-
-        selection = meal.selection_json or {}
-        saved_type = str(selection.get("menu_type") or "").upper()
-        current_candidate = MenuCandidate.from_mapping({
-            "id": menu_item.id,
-            "name": menu_item.name,
-            "price_cents": menu_item.price_cents,
-            "menu_type": menu_item.type or "",
-            "tags": menu_item.tags or [],
-        })
-        current_type = current_candidate.menu_type
-        saved_tags = set(meal.diet_tags or [])
-        current_tags = {current_type.lower(), *current_candidate.tags}
-        saved_allergens = set(meal.allergen_tags or [])
-        current_allergens = {
-            tag for tag in current_candidate.tags
-            if tag.startswith(("allergen-", "contains-"))
-        }
-        if saved_type != current_type or saved_tags != current_tags or saved_allergens != current_allergens:
-            return "The menu or dietary metadata changed. Review and reconfirm this meal before ordering."
-
-        constraints = plan.constraints_json or {}
-        if constraints.get("nutrition_targets"):
-            saved_nutrition = selection.get("nutrition") or {}
-            current_values = {
-                "energy_kcal": menu_item.energy_kcal,
-                "protein_g": menu_item.protein_g,
-                "carbohydrates_g": menu_item.carbohydrates_g,
-                "fat_g": menu_item.fat_g,
-                "fiber_g": menu_item.fiber_g,
-            }
-            saved_values = saved_nutrition.get("per_serving") or {}
-            if (
-                menu_item.nutrition_status != "VERIFIED"
-                or menu_item.nutrition_source != saved_nutrition.get("source")
-                or any(
-                    current_values[key] is None
-                    or float(current_values[key]) != float(saved_values.get(key, -1))
-                    for key in NUTRITION_TARGET_KEYS
-                )
-                or float(menu_item.nutrition_serving_g or 0)
-                != float(saved_nutrition.get("serving_g") or -1)
-            ):
-                return "Verified nutrition facts changed. Rebuild and reconfirm the plan before ordering."
-
-        scheduled_local = meal.desired_for.astimezone(ZoneInfo(plan.timezone))
-        scheduled_text = f"{scheduled_local.isoformat()} ({plan.timezone})"
-        plan_context = (
-            f"Meal #{meal.id} from confirmed plan #{plan.id}; selected menu item "
-            f"{menu_item.name!r} (internal menu item ID {menu_item.id}, not an external provider ID); "
-            "quantity 1; fulfillment DELIVERY; "
-            f"customer-requested future time {scheduled_text}; "
-            f"plan estimate {meal.currency} {meal.estimated_cost_cents / 100:.2f}. "
-            "Recheck live availability and current price. If current price differs from the "
-            "plan estimate, show the current price in the exact order confirmation."
-        )
+        except PlannedMealOrderError as exc:
+            return str(exc)
+        scheduled_text = planned.scheduled_text
+        plan_context = planned.planning_context
 
     session = await get_session(chat_id, channel_type)
     provider = str(session.get("ordering_platform") or "NourishBot").strip()

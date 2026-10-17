@@ -21,11 +21,40 @@ does not create delivery orders. In WhatsApp and Telegram, a customer can reques
 order for a confirmed future meal with `order planned meal #<meal id>`. This hands the selected
 item and planned future time to the existing order flow; the customer must review the exact order
 and explicitly confirm it. External provider checkout remains subject to provider capability
-gates. The customer dashboard supports plan review and edits and can copy this chat command for a
-confirmed future meal; checkout must still be completed in the linked WhatsApp or Telegram chat.
+gates. The customer dashboard supports plan review and edits, and places in-house orders for a
+confirmed future meal directly (see "Dashboard order handoff" below); it can also copy the chat
+command for customers who prefer to finish in WhatsApp or Telegram.
 Customers can also use `change planned meal #<meal id> to menu item #<menu item id> [at
 <ISO-8601 time with timezone>]`; an edit invalidates the old plan confirmation. This is not a
 multi-day recurring delivery service.
+
+## Dashboard order handoff
+
+A signed-in customer can order one confirmed future meal from the web dashboard. The dashboard
+never assembles the order itself: both steps call the same service the chat command uses, so the
+guards and audit trail are identical.
+
+1. `POST /api/v1/customer/planned-meals/{id}/order/preview` revalidates the plan, meal state,
+   meal time, live availability, dietary metadata, and verified nutrition facts, then stores the
+   exact summary as a confirmation challenge and returns it. It places nothing.
+2. `POST /api/v1/customer/planned-meals/{id}/order/confirm` is the explicit confirmation. It
+   re-reads prices from the database, rejects the confirmation if the stored snapshot no longer
+   matches, and creates the order under the challenge's idempotency key.
+
+Dashboard checkout covers the in-house kitchen only. When the session's ordering platform is an
+external provider, the request is refused with that provider's current mode: provider ordering
+stays in chat behind the provider capability gate and the public release gate.
+
+Further properties:
+
+- The confirmed planned meal becomes the order's schedule row rather than a second one, so the
+  dashboard shows the ordered meal as `SCHEDULED` and the durable scheduler jobs attach to it.
+- Resubmitting a confirmation that already placed an order returns that first order. A planned
+  meal that already has an order is refused outright.
+- An account created through web signup has no contact number; checkout collects one once and
+  refuses a number that already belongs to another profile. It never replaces a number already on
+  the profile — that remains a verified chat-linking operation.
+- A delivery below the restaurant minimum is refused during review, not after confirmation.
 
 ## Plan model
 
@@ -136,6 +165,8 @@ These routes require the existing opaque linked-browser customer identity. Tenan
 | `PATCH /api/v1/customer/meal-plans/{id}/meals/{meal_id}` | Change a meal, slot, or scheduled time. |
 | `POST /api/v1/customer/meal-plans/{id}/confirm` | Confirm one immutable complete-plan snapshot. |
 | `POST /api/v1/customer/planned-meals/{id}/confirm` | Confirm one routine-generated draft meal. |
+| `POST /api/v1/customer/planned-meals/{id}/order/preview` | Build the exact in-house order for review. Places nothing. |
+| `POST /api/v1/customer/planned-meals/{id}/order/confirm` | Place the reviewed order against its unused confirmation. |
 | `GET/POST /api/v1/customer/meal-templates` | List or save meal/full-day templates. |
 | `GET/POST /api/v1/customer/meal-routines` | List or create recurring routines. |
 | `POST /api/v1/customer/meal-routines/{id}/actions` | Pause, resume, skip, reschedule, or edit a routine. |

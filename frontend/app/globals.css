@@ -4632,6 +4632,19 @@ body::after {
 .ca-plan-meal-edit > div { flex: 1 1 150px; }
 .ca-plan-meal-edit > label { flex: 1 1 190px; display: flex; flex-direction: column; gap: 6px; color: #606861; font-size: 11px; font-weight: 800; }
 .ca-plan-meal-edit input, .ca-plan-meal-edit select { width: 100%; min-height: 42px; padding: 0 10px; color: var(--ca-ink); border: 1px solid #ddd9d0; border-radius: 8px; background: #fff; font: 500 12px 'Plus Jakarta Sans', sans-serif; }
+.ca-meal-checkout { grid-column: 1 / -1; margin: 0 0 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid #ddd9d0; border-radius: 11px; background: #fbf9f5; }
+.ca-checkout-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.ca-checkout-fields label { flex: 1 1 190px; display: flex; flex-direction: column; gap: 6px; color: #606861; font-size: 11px; font-weight: 800; }
+.ca-checkout-fields input, .ca-checkout-fields select { width: 100%; min-height: 42px; padding: 0 10px; color: var(--ca-ink); border: 1px solid #ddd9d0; border-radius: 8px; background: #fff; font: 500 12px 'Plus Jakarta Sans', sans-serif; }
+.ca-meal-checkout > button { width: fit-content; }
+.ca-checkout-review { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; border: 1px solid #cbd9cf; border-radius: 9px; background: #fff; }
+.ca-checkout-review strong { color: var(--ca-forest); font-size: 12px; }
+.ca-checkout-review p { color: #5d655e; font-size: 12px; }
+.ca-checkout-review .ca-meal-actions { margin-top: 6px; }
+
+@media (max-width: 600px) {
+  .ca-checkout-fields label { flex-basis: 100%; }
+}
 
 @media (max-width: 600px) {
   .ca-shell { width: calc(100% - 32px); }

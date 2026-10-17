@@ -29,9 +29,11 @@ reviewed, and no restaurant nutrition dataset is bundled. The feature is informa
 medical advice. Confirming a plan only confirms its meal choices; it does not place orders. In
 WhatsApp or Telegram, `order planned meal #45` starts the normal individual order flow for a
 confirmed future meal, which still requires exact-order review and explicit confirmation. The
-web dashboard supports plan review and editing and can copy this command for a linked chat; it
-does not start checkout in the browser. A meal plan is not a batch or recurring home-delivery
-schedule.
+web dashboard supports plan review and editing, and can place the same in-house order directly:
+reviewing the exact order and confirming it are two separate requests that reuse the chat
+confirmation challenge, snapshot check, and idempotency key. Dashboard checkout covers the
+in-house kitchen; external provider ordering stays in chat behind the provider capability gate.
+A meal plan is not a batch or recurring home-delivery schedule.
 
 ## Product flow
 
@@ -217,6 +219,7 @@ Release-critical controls include:
 | `/api/v1/customer/fulfillment/*` | Discover, verify, and recover route-aware fulfillment choices |
 | `/api/v1/customer/route-history` | Inspect or delete retained route-decision history |
 | `/api/v1/customer/dashboard` | Private customer calendar, controls, budget, spending, provider status, and order history |
+| `/api/v1/customer/planned-meals/*/order/*` | Review and explicitly confirm an in-house order for one confirmed planned meal |
 | `/api/v1/analytics/operations` | Manager-only tenant analytics for scheduling, providers, fulfillment, and completed revenue |
 | `/api/v1/operations/readiness` | Manager-only migration, dependency, queue, alert, evidence-gate, and safe-mode status |
 | `/api/v1/scheduler/health` | Manager-only scheduler heartbeat, lag, queue, and outbox health |

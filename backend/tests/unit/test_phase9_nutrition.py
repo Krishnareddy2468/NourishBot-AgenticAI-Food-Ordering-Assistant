@@ -236,6 +236,7 @@ def _planned_order_fixtures(*, tags=None):
         meal_plan_id=4,
         restaurant_id=1,
         customer_id=7,
+        order_id=None,
         state="CONFIRMED",
         desired_for=datetime.now(timezone.utc) + timedelta(days=1),
         menu_item_id=23,

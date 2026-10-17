@@ -1,4 +1,4 @@
-.PHONY: install dev build lint test phase8-up phase8-down phase8-migrate phase8-migration-rehearsal phase8-integration phase8-backup-restore phase8-unit
+.PHONY: install dev build lint test phase8-up phase8-down phase8-migrate phase8-migration-rehearsal phase8-integration phase8-backup-restore phase8-unit phase9-web-order-integration
 
 install:
 	pnpm install
@@ -39,3 +39,8 @@ phase8-backup-restore:
 
 phase8-unit:
 	cd backend && PYTHONDONTWRITEBYTECODE=1 .venv/bin/pytest -q tests/unit
+
+# The planned-meal order audit trail is append-only, so this must never run
+# against a database whose rows matter. phase8-up + phase8-migrate first.
+phase9-web-order-integration:
+	cd backend && PHASE9_WEB_ORDER_INTEGRATION=1 DATABASE_URL=postgresql+asyncpg://nourishbot:phase8-local-only@localhost:55432/nourishbot_phase8 DATABASE_URL_SYNC=postgresql+psycopg2://nourishbot:phase8-local-only@localhost:55432/nourishbot_phase8 REDIS_URL=redis://localhost:56379/0 TELEGRAM_BOT_ENABLED=false .venv/bin/pytest -q tests/integration/test_phase9_web_order_end_to_end.py

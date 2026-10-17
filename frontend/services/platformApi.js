@@ -537,6 +537,20 @@ export async function updateCustomerPlannedMeal(planId, mealId, payload) {
   return parseResponse(res)
 }
 
+export async function previewPlannedMealOrder(mealId, payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/planned-meals/${mealId}/order/preview`, {
+    method: 'POST', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
+export async function confirmPlannedMealOrder(mealId, payload) {
+  const res = await apiFetch(`${API_BASE}/api/v1/customer/planned-meals/${mealId}/order/confirm`, {
+    method: 'POST', headers: buildHeaders(), body: JSON.stringify(payload),
+  })
+  return parseResponse(res)
+}
+
 export async function applyCustomerRoutineAction(routineId, payload) {
   const res = await apiFetch(`${API_BASE}/api/v1/customer/meal-routines/${routineId}/actions`, {
     method: 'POST', headers: buildHeaders(), body: JSON.stringify(payload),

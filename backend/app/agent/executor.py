@@ -25,6 +25,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.db.models import (
     Channel, Session as SessionModel,
@@ -67,6 +68,10 @@ _CUSTOMER_TOOL_ALLOWLIST = {
     "update_customer", "set_schedule", "prepare_order_confirmation",
     "place_order", "track_order", "cancel_order",
 }
+
+# Arguments only a verified server-side handoff may set. A planner proposal, which
+# can be steered by chat content, must never reach a tool carrying one of these.
+_INTERNAL_TOOL_ARGS = {"meal_schedule_id"}
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -118,7 +123,11 @@ class Executor:
 
         for action in proposed_actions:
             tool = action.get("tool", "")
-            args = action.get("args") or {}
+            args = {
+                key: value
+                for key, value in (action.get("args") or {}).items()
+                if key not in _INTERNAL_TOOL_ARGS
+            }
             if tool not in _CUSTOMER_TOOL_ALLOWLIST:
                 result.rejected.append(ActionResult(
                     tool=tool,
@@ -459,6 +468,8 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
     provider = str(args.get("provider") or ctx.ordering_platform or "NOURISHBOT").strip().upper()
     scheduled_raw = str(args.get("scheduled_for") or ctx.scheduled_for or "").strip()
     confirmation_id = str(args.get("confirmation_id") or "").strip()
+    # Set only by a planned-meal handoff; the planner never proposes this argument.
+    planned_meal_id = int(args.get("meal_schedule_id") or 0)
 
     if not confirmation_id or not ctx.session_id:
         return ActionResult(
@@ -642,32 +653,71 @@ async def _tool_place_order(args: dict, ctx: ContextSnapshot, result: ExecutionR
         )
 
         if ctx.customer_id:
-            meal_schedule = MealSchedule(
-                restaurant_id=ctx.restaurant_id,
-                customer_id=ctx.customer_id,
-                order_id=order.id,
-                title=f"Meal order {order_ref}",
-                meal_period="UNSPECIFIED",
-                state="SCHEDULED",
-                desired_for=scheduled_for,
-                ready_by=scheduled_for,
-                submission_window_start=scheduled_for - timedelta(minutes=settings.SCHEDULE_ACTIVATION_LEAD_MINUTES),
-                submission_window_end=scheduled_for,
-                timezone=str(scheduled_for.tzinfo),
-                source=ctx.channel_type,
-            )
-            db.add(meal_schedule)
-            await db.flush()
-            record_schedule_event(
-                db,
-                meal_schedule,
-                event_type="SCHEDULE_CREATED",
-                to_state="SCHEDULED",
-                actor_type="CUSTOMER",
-                actor_id=ctx.customer_id,
-                source=ctx.channel_type,
-                reason_code="ORDER_CONFIRMED",
-            )
+            # A planned meal already carries the schedule the customer confirmed, and
+            # meal_schedules.order_id is unique, so it is linked rather than duplicated.
+            if planned_meal_id:
+                meal_schedule = (await db.execute(
+                    select(MealSchedule).where(
+                        MealSchedule.id == planned_meal_id,
+                        MealSchedule.restaurant_id == ctx.restaurant_id,
+                        MealSchedule.customer_id == ctx.customer_id,
+                        MealSchedule.order_id.is_(None),
+                    ).with_for_update()
+                )).scalar_one_or_none()
+                if not meal_schedule:
+                    await db.rollback()
+                    return ActionResult(
+                        "place_order",
+                        False,
+                        error="That planned meal is no longer available to order. Review the plan again.",
+                    )
+                previous_state = meal_schedule.state
+                meal_schedule.order_id = order.id
+                meal_schedule.state = "SCHEDULED"
+                meal_schedule.ready_by = scheduled_for
+                meal_schedule.submission_window_start = (
+                    scheduled_for - timedelta(minutes=settings.SCHEDULE_ACTIVATION_LEAD_MINUTES)
+                )
+                meal_schedule.submission_window_end = scheduled_for
+                record_schedule_event(
+                    db,
+                    meal_schedule,
+                    event_type="SCHEDULE_LINKED_TO_ORDER",
+                    from_state=previous_state,
+                    to_state="SCHEDULED",
+                    actor_type="CUSTOMER",
+                    actor_id=ctx.customer_id,
+                    source=ctx.channel_type,
+                    reason_code="ORDER_CONFIRMED",
+                    metadata={"order_ref": order_ref},
+                )
+            else:
+                meal_schedule = MealSchedule(
+                    restaurant_id=ctx.restaurant_id,
+                    customer_id=ctx.customer_id,
+                    order_id=order.id,
+                    title=f"Meal order {order_ref}",
+                    meal_period="UNSPECIFIED",
+                    state="SCHEDULED",
+                    desired_for=scheduled_for,
+                    ready_by=scheduled_for,
+                    submission_window_start=scheduled_for - timedelta(minutes=settings.SCHEDULE_ACTIVATION_LEAD_MINUTES),
+                    submission_window_end=scheduled_for,
+                    timezone=str(scheduled_for.tzinfo),
+                    source=ctx.channel_type,
+                )
+                db.add(meal_schedule)
+                await db.flush()
+                record_schedule_event(
+                    db,
+                    meal_schedule,
+                    event_type="SCHEDULE_CREATED",
+                    to_state="SCHEDULED",
+                    actor_type="CUSTOMER",
+                    actor_id=ctx.customer_id,
+                    source=ctx.channel_type,
+                    reason_code="ORDER_CONFIRMED",
+                )
             add_durable_jobs(db, order, meal_schedule)
 
         if order_type == "DELIVERY":

@@ -14,6 +14,11 @@ from app.api.routes.customer_privacy import linked_customer_channel
 from app.db.models import MealPlan, MealRoutine, MealSchedule, MealTemplate, MenuItem
 from app.db.session import AsyncSessionLocal
 from app.domain.meal_planning import MEAL_PERIODS, MealPlanningError
+from app.services.planned_meal_order import (
+    PlannedMealOrderError,
+    place_planned_meal_web_order,
+    preview_planned_meal_web_order,
+)
 from app.services.meal_planner import (
     change_routine,
     confirm_planned_meal,
@@ -63,6 +68,18 @@ class PlannedMealUpdate(BaseModel):
     menu_item_id: int | None = Field(default=None, ge=1)
     desired_for: datetime | None = None
     meal_period: str | None = Field(default=None, pattern="^(?i:breakfast|lunch|snacks|dinner)$")
+
+
+class PlannedMealOrderPreview(BaseModel):
+    order_type: str = Field(default="DELIVERY", pattern="^(?i:delivery|pickup)$")
+    delivery_address: str | None = Field(default=None, max_length=500)
+    contact_phone: str | None = Field(default=None, max_length=20)
+
+
+class PlannedMealOrderConfirm(BaseModel):
+    confirmation_id: str = Field(min_length=8, max_length=64)
+    order_type: str = Field(default="DELIVERY", pattern="^(?i:delivery|pickup)$")
+    delivery_address: str | None = Field(default=None, max_length=500)
 
 
 class TemplateCreate(BaseModel):
@@ -411,6 +428,38 @@ async def confirm_one_planned_meal(meal_id: int, request: Request):
         "snapshot_hash": snapshot_hash,
         "message": "Planned meal confirmed. No food order has been placed.",
     }
+
+
+@router.post("/planned-meals/{meal_id}/order/preview")
+async def preview_planned_meal_order(meal_id: int, body: PlannedMealOrderPreview, request: Request):
+    """Return the exact order a later explicit confirmation may place. Places nothing."""
+    channel = await linked_customer_channel(request)
+    try:
+        return await preview_planned_meal_web_order(
+            channel=channel,
+            meal_id=meal_id,
+            order_type=body.order_type.upper(),
+            delivery_address=body.delivery_address or "",
+            contact_phone=body.contact_phone or "",
+        )
+    except PlannedMealOrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/planned-meals/{meal_id}/order/confirm")
+async def confirm_planned_meal_order(meal_id: int, body: PlannedMealOrderConfirm, request: Request):
+    """Place the reviewed planned-meal order against its unused confirmation."""
+    channel = await linked_customer_channel(request)
+    try:
+        return await place_planned_meal_web_order(
+            channel=channel,
+            meal_id=meal_id,
+            confirmation_id=body.confirmation_id,
+            order_type=body.order_type.upper(),
+            delivery_address=body.delivery_address or "",
+        )
+    except PlannedMealOrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/meal-templates")

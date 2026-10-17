@@ -14,10 +14,12 @@ import {
   applyCustomerRoutineAction,
   cancelCustomerOrder,
   confirmCustomerMealPlan,
+  confirmPlannedMealOrder,
   createCustomerMealPlan,
   fetchCustomerMealMenu,
   fetchCustomerDashboard,
   getCustomerMealPlan,
+  previewPlannedMealOrder,
   updateCustomerBudget,
   updateCustomerConsent,
   updateCustomerPlannedMeal,
@@ -70,6 +72,7 @@ export default function AccountPage() {
   const [mealEdits, setMealEdits] = useState({})
   const [budgetForm, setBudgetForm] = useState({ period: 'WEEKLY', amount: '', starts_on: '' })
   const [rescheduleTimes, setRescheduleTimes] = useState({})
+  const [checkout, setCheckout] = useState(null)
 
   useEffect(() => {
     if (!authLoading && !isLoggedIn) router.replace('/login')
@@ -226,6 +229,66 @@ export default function AccountPage() {
     }
   }
 
+  function openPlannedMealCheckout(meal) {
+    setError('')
+    setNotice('')
+    setCheckout({
+      mealId: meal.id,
+      title: meal.title,
+      orderType: 'DELIVERY',
+      deliveryAddress: '',
+      contactPhone: '',
+      preview: null,
+    })
+  }
+
+  // Step one: the server rechecks the plan, menu, and price, then stores the exact
+  // order this customer may confirm. Nothing is ordered here.
+  async function reviewPlannedMealOrder(event) {
+    event.preventDefault()
+    if (!checkout) return
+    setBusy('checkout-review')
+    setError('')
+    setNotice('')
+    try {
+      const preview = await previewPlannedMealOrder(checkout.mealId, {
+        order_type: checkout.orderType,
+        delivery_address: checkout.deliveryAddress,
+        contact_phone: checkout.contactPhone,
+      })
+      setCheckout(current => (current ? { ...current, preview } : current))
+    } catch (err) {
+      setCheckout(current => (current ? { ...current, preview: null } : current))
+      setError(err.message || 'This planned meal could not be prepared for ordering.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // Step two: the explicit confirmation. The server rejects it if anything in the
+  // reviewed summary changed, and the same confirmation can only place one order.
+  async function placePlannedMealOrder() {
+    if (!checkout?.preview) return
+    setBusy('checkout-confirm')
+    setError('')
+    setNotice('')
+    try {
+      const result = await confirmPlannedMealOrder(checkout.mealId, {
+        confirmation_id: checkout.preview.confirmation_id,
+        order_type: checkout.orderType,
+        delivery_address: checkout.deliveryAddress,
+      })
+      setCheckout(null)
+      setNotice(`Order ${result.order_ref} confirmed for ${localDateTime(result.scheduled_for)}.`)
+      await load(data.week.starts_on)
+    } catch (err) {
+      setCheckout(current => (current ? { ...current, preview: null } : current))
+      setError(err.message || 'The order was not placed. Review the meal again.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function copyPlannedMealOrderCommand(meal) {
     const command = `order planned meal #${meal.id}`
     setError('')
@@ -297,25 +360,70 @@ export default function AccountPage() {
               <div className="ca-day-heading"><div><small>SELECTED DAY</small><h3>{selectedDate && localDate(selectedDate)}</h3></div><span>{selectedDay.meals.length} meals planned</span></div>
               <div className="ca-meal-list">
                 {selectedDay.meals.length ? selectedDay.meals.map(meal => {
-                  const canCopyOrderCommand = (
+                  const canOrderPlannedMeal = (
                     meal.plan_id
                     && meal.state === 'CONFIRMED'
                     && !meal.order_id
                     && new Date(meal.desired_for).getTime() > Date.now()
                   )
+                  const mealCheckout = checkout?.mealId === meal.id ? checkout : null
                   return <article key={meal.id}>
                     <div className="ca-meal-time"><strong>{meal.local_time}</strong><small>{pretty(meal.meal_period)}</small></div>
                     <div><h4>{meal.title}</h4><p>{pretty(meal.state)} · {money(meal.estimated_cost_cents, meal.currency)}</p></div>
-                    {(meal.can_skip || canCopyOrderCommand) && <div className="ca-meal-actions">
+                    {(meal.can_skip || canOrderPlannedMeal) && <div className="ca-meal-actions">
                       {meal.can_skip && <>
                         <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'SKIP', occurrence_date: meal.local_date, reason: 'Skipped from customer dashboard' }), 'Meal skipped.')}><SkipForward size={14} /> Skip</button>
                         <input aria-label={`New time for ${meal.title}`} type="datetime-local" min={dateTimeInput(new Date())} value={rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)} onChange={event => setRescheduleTimes({ ...rescheduleTimes, [meal.id]: event.target.value })} />
                         <button disabled={busy === `meal-${meal.id}`} onClick={() => run(`meal-${meal.id}`, () => applyCustomerRoutineAction(meal.routine_id, { action: 'RESCHEDULE', occurrence_date: meal.local_date, replacement_for: new Date(rescheduleTimes[meal.id] || dateTimeInput(meal.desired_for)).toISOString(), reason: 'Rescheduled from customer dashboard' }), 'Meal rescheduled.')}><CalendarClock size={14} /> Move</button>
                       </>}
-                      {canCopyOrderCommand && <button type="button" onClick={() => copyPlannedMealOrderCommand(meal)}>
-                        <ShoppingBag size={14} /> Copy order command
-                      </button>}
+                      {canOrderPlannedMeal && <>
+                        <button type="button" aria-expanded={!!mealCheckout} onClick={() => (mealCheckout ? setCheckout(null) : openPlannedMealCheckout(meal))}>
+                          <ShoppingBag size={14} /> {mealCheckout ? 'Close' : 'Order this meal'}
+                        </button>
+                        <button type="button" onClick={() => copyPlannedMealOrderCommand(meal)}>
+                          Copy order command
+                        </button>
+                      </>}
                     </div>}
+                    {mealCheckout && <form className="ca-meal-checkout" onSubmit={reviewPlannedMealOrder} aria-label={`Order ${meal.title}`}>
+                      <p className="ca-meta">Ordering only this meal, for its planned time. Your meal plan stays unchanged.</p>
+                      <div className="ca-checkout-fields">
+                        <label>How to collect it
+                          <select value={mealCheckout.orderType} onChange={event => setCheckout({ ...mealCheckout, orderType: event.target.value, preview: null })}>
+                            <option value="DELIVERY">Home delivery</option>
+                            <option value="PICKUP">Pickup</option>
+                          </select>
+                        </label>
+                        {mealCheckout.orderType === 'DELIVERY' && <label>Delivery address
+                          <input required value={mealCheckout.deliveryAddress} onChange={event => setCheckout({ ...mealCheckout, deliveryAddress: event.target.value, preview: null })} />
+                        </label>}
+                        <label>Contact mobile
+                          <input inputMode="numeric" placeholder="Required the first time you order" value={mealCheckout.contactPhone} onChange={event => setCheckout({ ...mealCheckout, contactPhone: event.target.value, preview: null })} />
+                        </label>
+                      </div>
+                      {!mealCheckout.preview && <button type="submit" disabled={busy === 'checkout-review'}>
+                        {busy === 'checkout-review' ? 'Checking the menu…' : 'Review this order'}
+                      </button>}
+                      {mealCheckout.preview && <div className="ca-checkout-review" aria-live="polite">
+                        <strong>Confirm this exact order</strong>
+                        {(mealCheckout.preview.items || []).map(item => <p key={item.item_id}>
+                          {item.qty} × {item.item_name} · {money(item.unit_price_cents * item.qty, mealCheckout.preview.currency)}
+                        </p>)}
+                        <p>Total {money(mealCheckout.preview.total_cents, mealCheckout.preview.currency)} · {pretty(mealCheckout.preview.order_type)}</p>
+                        <p>{mealCheckout.preview.scheduled_local_text}</p>
+                        {mealCheckout.preview.delivery_address && <p>{mealCheckout.preview.delivery_address}</p>}
+                        {mealCheckout.preview.price_changed_since_plan && <p className="ca-meta">
+                          The current price differs from the plan estimate of {money(mealCheckout.preview.plan_estimate_cents, mealCheckout.preview.currency)}.
+                        </p>}
+                        <p className="ca-meta">{mealCheckout.preview.message}</p>
+                        <div className="ca-meal-actions">
+                          <button type="button" disabled={busy === 'checkout-confirm'} onClick={placePlannedMealOrder}>
+                            <Check size={14} /> {busy === 'checkout-confirm' ? 'Placing…' : 'Confirm and place order'}
+                          </button>
+                          <button type="button" onClick={() => setCheckout({ ...mealCheckout, preview: null })}>Change details</button>
+                        </div>
+                      </div>}
+                    </form>}
                   </article>
                 }) : <div className="ca-empty-state">No meals planned for this day. <Link href="/#discover">Start planning</Link></div>}
               </div>
