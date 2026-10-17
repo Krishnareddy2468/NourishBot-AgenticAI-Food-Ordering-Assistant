@@ -1,4 +1,4 @@
-# NourishBot — AI Scheduled Meal Ordering Assistant
+# NourishBot - AI Scheduled Meal Ordering Assistant
 
 NourishBot helps people plan breakfast, lunch, snacks, and dinner through Telegram or
 WhatsApp. It can discover restaurants with Google Maps, schedule an order through NourishBot,
@@ -134,13 +134,13 @@ provider before enabling it in a public environment.
 Telegram and WhatsApp handle these commands deterministically without sending them to the
 language model:
 
-- `privacy status` — view personalization, location, reminder, and analytics consent.
-- `enable memory` / `disable memory` — opt in to or stop personalization.
-- `export my memory` — receive the stored preference profile and masked linked-channel list.
-- `delete memory`, followed by `delete my memory permanently` — permanently remove stored personalization.
-- `enable location` / `disable location` — control whether shared coordinates may be used.
-- `enable reminders`, `disable reminders`, `enable analytics`, or `disable analytics` — change those purpose-specific decisions.
-- `link whatsapp`, `link telegram`, or `link web` — create an expiring code; send `link <code>` on the named target channel.
+- `privacy status` - view personalization, location, reminder, and analytics consent.
+- `enable memory` / `disable memory` - opt in to or stop personalization.
+- `export my memory` - receive the stored preference profile and masked linked-channel list.
+- `delete memory`, followed by `delete my memory permanently` - permanently remove stored personalization.
+- `enable location` / `disable location` - control whether shared coordinates may be used.
+- `enable reminders`, `disable reminders`, `enable analytics`, or `disable analytics` - change those purpose-specific decisions.
+- `link whatsapp`, `link telegram`, or `link web` - create an expiring code; send `link <code>` on the named target channel.
 
 A phone number alone never merges customer profiles. Cross-channel linking requires control of
 an existing verified channel and the target channel.
